@@ -1,0 +1,20 @@
+diff --git a/spiral/components.py b/spiral/components.py
+index 8b9b049..3d8027b 100644
+--- a/spiral/components.py
++++ b/spiral/components.py
+@@ -18,7 +18,14 @@ import functools
+ import logging
+ import time
+ from itertools import accumulate
+-from multiprocessing import Pool
++# NOTE: TimeoutError must come from multiprocessing, not the builtin.
++# `mp_pool.apply_async(...).get(timeout=...)` raises
++# multiprocessing.context.TimeoutError (ProcessError -> Exception), which the
++# builtin TimeoutError (OSError -> Exception) does NOT catch. Without this
++# import, the `except TimeoutError` in MATHOracle.get_reward is dead code: a
++# slow answer grade kills learner rank 0 and deadlocks the other ranks in
++# their next collective.
++from multiprocessing import Pool, TimeoutError
+ from typing import Any, List, Tuple
+ 
+ import numpy as np
