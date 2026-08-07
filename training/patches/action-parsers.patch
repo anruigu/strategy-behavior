@@ -1,0 +1,124 @@
+diff --git a/spiral/agents/utils.py b/spiral/agents/utils.py
+index 4ed5c9f..0159265 100644
+--- a/spiral/agents/utils.py
++++ b/spiral/agents/utils.py
+@@ -112,10 +112,119 @@ def simple_negotiation_parse_available_actions(observation: str):
+     return valid_actions if valid_actions else ["I'll think about my options."]
+ 
+ 
++_PIG_DICE_ACTIONS = ["[roll]", "[hold]"]
++
++
++def pig_dice_parse_available_actions(observation: str):
++    """Parse the action space for PigDice-v1.
++
++    Pig's action space is constant: whoever is to move may always '[roll]' or
++    '[hold]'. PigDiceEnv re-broadcasts "Available actions: '[roll]' or
++    '[hold]'" to the player on turn (after every non-busting roll, and again
++    after each rotation), so we read it off the observation the way the other
++    parsers do -- that keeps this correct if the env ever gates an action.
++
++    Unlike the others we fall back to the constant instead of returning [] when
++    the line is missing. extract_action() maps anything outside action_space to
++    INVALID_ACTION, so an empty list would silently turn every action of the
++    episode into a forfeit rather than surfacing as an error.
++
++    The env's regex also accepts the shorthands '[r]'/'[h]', but they are
++    deliberately left out: the player prompt only ever advertises the long
++    forms, and adding them would skew RandomAgent, which samples uniformly from
++    whatever this returns.
++    """
++    for line in reversed(observation.strip().split("\n")):
++        if "Available actions:" not in line:
++            continue
++        available_actions = [f"[{a}]" for a in re.findall(r"\[(.*?)\]", line)]
++        available_actions = [a for a in available_actions if a != "[GAME]"]
++        if available_actions:
++            return available_actions
++        break
++    return list(_PIG_DICE_ACTIONS)
++
++
++def _last_match(pattern: str, observation: str):
++    """Last match of `pattern` in the observation, or None.
++
++    LLMObservationWrapper keeps the whole history, so every earlier turn's
++    "Current bid: ..." line is still in the text. Only the most recent one
++    describes the state we are acting on.
++    """
++    matches = re.findall(pattern, observation)
++    return matches[-1] if matches else None
++
++
++def liars_dice_parse_available_actions(observation: str):
++    """Parse the action space for LiarsDice-v1.
++
++    Unlike the other envs here, Liar's Dice has a *parametric* action space:
++    '[Bid: QUANTITY, FACE]' for any bid strictly higher than the standing one,
++    plus '[Call]'. extract_action() rejects anything not literally in the list
++    it gets back, so we have to enumerate the legal bids rather than describe
++    them.
++
++    "Strictly higher" is LiarsDiceEnv._is_valid_bid: a higher quantity, or the
++    same quantity with a higher face. Quantity is also capped at the number of
++    dice still on the table -- bidding above that is rejected, so enumerating
++    past it would hand the policy actions that can only ever be invalid moves.
++
++    Two observation formats carry the standing bid: "Current bid: Quantity = 0,
++    Face Value = 0" on the opening turn and "Current bid: 3 of face 4"
++    thereafter. Both are matched, most recent wins.
++    """
++    # A Liar's Dice game is several ROUNDS. When a round ends the loser drops a
++    # die, everyone re-rolls, and current_bid resets to 0/0 -- but
++    # LLMObservationWrapper keeps the whole history, so the previous round's
++    # "Current bid: 3 of face 4" is still sitting in the text. Reading it would
++    # make us think a bid stands and offer '[Call]', which the env rejects as
++    # "Call made with no prior bid" and scores as an invalid move. So work only
++    # on the tail after the last re-roll, which is the current round.
++    round_tail = observation.rsplit("Your new dice are:", 1)[-1]
++
++    quantity, face = 0, 0
++    m = _last_match(r"Current bid: (\d+) of face (\d+)", round_tail)
++    if m:
++        quantity, face = int(m[0]), int(m[1])
++    else:
++        m = _last_match(r"Current bid: Quantity = (\d+), Face Value = (\d+)", round_tail)
++        if m:
++            quantity, face = int(m[0]), int(m[1])
++
++    # Live dice count. Each re-roll prints a "Remaining dice:" block, which is
++    # authoritative; before the first re-roll fall back to the opening counts.
++    # A stale (too high) total offers bids the env rejects with "Bid quantity N
++    # exceeds total dice count M" -- also an invalid move.
++    if "Remaining dice:" in observation:
++        block = observation.rsplit("Remaining dice:", 1)[-1]
++        counts = re.findall(r"Player \d+: (\d+)", block)
++        total_dice = sum(int(c) for c in counts) if counts else 10
++    else:
++        own = _last_match(r"You have (\d+) dice", observation)
++        others = re.findall(r"Player \d+ has (\d+) dice", observation)
++        total_dice = int(own) + int(others[0]) if own is not None and others else 10
++    total_dice = max(total_dice, 1)
++
++    actions = []
++    for q in range(max(1, quantity), total_dice + 1):
++        for f in range(1, 7):
++            if q > quantity or (q == quantity and f > face):
++                actions.append(f"[Bid: {q}, {f}]")
++    # Calling before anyone has bid has no last bidder to resolve against, so
++    # it is only offered once a bid stands.
++    if quantity > 0:
++        actions.append("[Call]")
++    return actions
++
++
+ _VALID_ACTION_PARSER = {
+     "TicTacToe-v0": tic_tac_toe_parse_available_moves,
+     "KuhnPoker-v1": kuhn_poker_parse_available_actions,
+     "SimpleNegotiation-v1": simple_negotiation_parse_available_actions,
++    "PigDice-v1": pig_dice_parse_available_actions,
++    "LiarsDice-v1": liars_dice_parse_available_actions,
++    "LiarsDice-v1-2d": liars_dice_parse_available_actions,
+ }
+ 
+ 

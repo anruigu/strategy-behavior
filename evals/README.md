@@ -92,8 +92,27 @@ Reads `$SAT_RUNS_DIR/<arm>/csv_data/evaluated/*.csv` for each arm named on the c
 ./sync_checkpoints.sh <src-save-path> <run-label> [interval-seconds]
 ```
 
-- **Tier 1 (always):** mirror completed checkpoints to `$SAT_CKPT_DIR/<run-label>/<step>` (colon-free step dirs; the NFS volume rejects `:`).
-- **Tier 2 (optional):** also upload to `s3://$S3_CHECKPOINT_BUCKET/$S3_PREFIX/`, gated by `S3_CHECKPOINT_BUCKET` being set and throttled by `S3_UPLOAD_EVERY` (a full run's checkpoints are ~190GB; uploading every 64th step keeps S3 spend down while `$SAT_CKPT_DIR` still holds every one).
+- **Tier 1:** mirror completed checkpoints to `$SAT_CKPT_DIR/<run-label>/<step>` (colon-free step dirs; the NFS volume rejects `:`). **Thinned by default** -- see below.
+- **Tier 2 (optional):** also upload to `s3://$S3_CHECKPOINT_BUCKET/$S3_PREFIX/`, gated by `S3_CHECKPOINT_BUCKET` being set and throttled by `S3_UPLOAD_EVERY`. Its cadence is independent of tier 1's: a step tier 1 thinned away is uploaded straight from the source copy.
+
+### Bounding disk
+
+A Qwen3-4B bf16 checkpoint is 7.6GB, and a 400-step run at `--save_steps 16` produces 25 of them -- ~190GB per run. `/workspace` is shared with other users, so that is only a handful of runs' worth of headroom. Two independent knobs:
+
+| Knob | Where | Use when |
+| --- | --- | --- |
+| `MIRROR_EVERY` / `MIRROR_STEPS` | `sync_checkpoints.sh` | `--save_path` is node-local and tier 1 is what lands on durable storage |
+| `--save_steps` | the run script | `--save_path` is *already* on durable storage, so there is no mirror step to thin |
+
+`MIRROR_EVERY` (default **64**) mirrors only steps divisible by it; `MIRROR_STEPS` is a comma-separated list of steps pinned regardless of the cadence. Pin the final step there -- it is the one you always want and `400 % 64 != 0`. `MIRROR_EVERY` must be a multiple of `--save_steps` or the modulo never hits; the startup log prints the steps a standard 400-step run would keep, so a bad pairing is visible immediately.
+
+```bash
+MIRROR_EVERY=64 MIRROR_STEPS=400 ./sync_checkpoints.sh ...  # 7 ckpts, ~53GB (default cadence)
+MIRROR_EVERY=16 ./sync_checkpoints.sh ...                   # every one, ~190GB (pre-2026-08 behaviour)
+MIRROR_EVERY=0 MIRROR_STEPS=256,400 ./sync_checkpoints.sh ...  # only those two
+```
+
+Note oat's own `--max_save_num` cannot express this: it deletes the *oldest* until N remain, which keeps a trailing window and drops the early curve.
 
 S3 uploads go through `s3_upload_dir.py <local-dir> <bucket> <key-prefix>`, a small multipart/concurrent uploader mirroring SkyRL-Fleet's `s3_checkpoints.py` convention (one key per file under `<key-prefix>/<relative-path>`); credentials come from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the dotenv at `$SAT_ENV_FILE`.
 

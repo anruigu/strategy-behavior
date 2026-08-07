@@ -28,8 +28,20 @@
 : "${SAT_VENV:=$HOME/venvs/spiral}"
 # MASK pins its own (conflicting) deps, so it gets a separate venv.  < evals/mask/.venv >
 : "${SAT_MASK_VENV:=$MASK_DIR/.venv}"
+# Reasoning-benchmark venv (evals/run_reasoning_bench.sh). An OVERLAY on
+# $SAT_VENV, not a copy: its own site-packages holds only the math harness's
+# deps (latex2sympy2 + antlr4==4.11.1, which conflicts with spiral's own
+# antlr4==4.13.2), plus a .pth appending $SAT_VENV's site-packages for
+# torch/vllm. Keeps those pins out of the training venv, which in-flight
+# training jobs are running from.                       < venvs/spiral-bench >
+: "${SAT_BENCH_VENV:=$HOME/venvs/spiral-bench}"
 # Tiny venv with boto3, only for the optional S3 checkpoint tier.    < venvs/tools >
 : "${SAT_TOOLS_PY:=python}"
+# CPU-only venv for the Tinker arm (training/tinker/): tinker + textarena, no
+# oat/vllm/deepspeed. It may live inside the checkout -- the nltk cwd import
+# guard that forces $SAT_VENV out of $SPIRAL_DIR only applies to processes
+# running from the spiral repo root, and this one never does.
+: "${SAT_TINKER_VENV:=$SAT_HOME/training/tinker/.venv}"
 
 # --- secrets ----------------------------------------------------------------
 # dotenv exporting OPENROUTER_API_KEY, WANDB_API_KEY, and (optional) AWS creds.
@@ -41,6 +53,12 @@
 : "${SAT_CKPT_DIR:=$SAT_HOME/ckpts}"                   # durable checkpoint mirror
 : "${SAT_RUNS_DIR:=$SAT_HOME/results/runs}"            # per-arm MASK harness copies + outputs
 : "${SAT_PREBUILT_DIR:=$SAT_HOME/prebuilt}"            # prebuilt fused_adam.so for slurm nodes
+: "${SAT_TINKER_OUT:=$SAT_HOME/outputs/tinker}"        # Tinker run dirs (history + checkpoints.jsonl)
+# Base model for the Tinker arm. NOT Qwen3-4B-Base: Tinker does not host it, so
+# the Tinker arm is a different model trained a different way (LoRA, not full
+# finetune) and its MASK numbers are not comparable to results/. Check the live
+# list at https://tinker-docs.thinkingmachines.ai/tinker/models.json.
+: "${SAT_TINKER_BASE_MODEL:=Qwen/Qwen3.5-9B-Base}"
 
 # --- MASK judge -------------------------------------------------------------
 # NOT gpt-4o: on OpenRouter it is served by Azure, which content-filters MASK's

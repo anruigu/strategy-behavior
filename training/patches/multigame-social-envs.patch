@@ -1,0 +1,40 @@
+diff --git a/spiral/envs/__init__.py b/spiral/envs/__init__.py
+index 690855c..d9e401d 100644
+--- a/spiral/envs/__init__.py
++++ b/spiral/envs/__init__.py
+@@ -38,6 +38,16 @@ register(
+     entry_point="spiral.envs.LiarsDice.env:LiarsDiceEnv",
+ )
+ 
++# Liar's Dice, round-capped (two-player). A player is eliminated after losing
++# two dice, so an episode is ~2-3 rounds instead of ~6. The default num_dice=5
++# averages ~33 model calls per self-play episode -- as expensive per step as
++# PigDice -- which the 0806 multigame plan explicitly wanted bounded.
++register(
++    id="LiarsDice-v1-2d",
++    entry_point="spiral.envs.LiarsDice.env:LiarsDiceEnv",
++    num_dice=2,
++)
++
+ # Truth and Deception (two-player)
+ register(
+     id="TruthAndDeception-v1",
+diff --git a/train_spiral.py b/train_spiral.py
+index 38a3571..2707183 100644
+--- a/train_spiral.py
++++ b/train_spiral.py
+@@ -472,7 +472,13 @@ class SelfPlayActor(PPOActor):
+                     for i, item in enumerate(response_logprobs)
+                 ]
+ 
+-            if env_id in ["DontSayIt-v0", "SimpleNegotiation-v1"]:  # DontSayIt-v0 don't have fixed action space
++            # TruthAndDeception-v1: the persuasion turns are free-form chat and
++            # only the final turn is constrained ('[Fact 1]'/'[Fact 2]'), so it
++            # has no single fixed action space to enumerate. extract_chat_action
++            # returns the \boxed{} contents verbatim, which the env's
++            # guess_fact{1,2}_pattern matches on that last turn -- same handling
++            # SimpleNegotiation already relies on for '[Accept]'/'[Deny]'.
++            if env_id in ["DontSayIt-v0", "SimpleNegotiation-v1", "TruthAndDeception-v1"]:  # don't have fixed action space
+                 clean_action = self.extract_chat_action(raw_action)
+             else:
+                 action_space = get_valid_action_parser(env_id)(observation)
