@@ -96,7 +96,12 @@ if [[ " $BENCH_SUITES " == *" general "* ]]; then
     cd "$BENCH_DIR" || exit 1
     log "starting vLLM server on :$BENCH_PORT (tp=$(echo "$BENCH_GPUS" | tr ',' '\n' | wc -l))"
     TP=$(echo "$BENCH_GPUS" | tr ',' '\n' | wc -l)
-    vllm serve "$MODEL" --port "$BENCH_PORT" --tensor-parallel-size "$TP" \
+    # `python -m ...`, not the `vllm serve` console script: $SAT_BENCH_VENV is an
+    # overlay that puts $SAT_VENV's site-packages on sys.path via a .pth, which
+    # makes vllm importable but does NOT put $SAT_VENV/bin on $PATH -- so
+    # `vllm serve` is command-not-found here even though `import vllm` works.
+    python -m vllm.entrypoints.openai.api_server --model "$MODEL" \
+        --port "$BENCH_PORT" --tensor-parallel-size "$TP" \
         --max-model-len 16384 --enable-prefix-caching --dtype bfloat16 \
         > "$BENCH_OUT/vllm-server.log" 2>&1 &
     SERVER_PID=$!

@@ -9,7 +9,7 @@
 # a checkpoint written there cannot even be evaluated elsewhere. Shared
 # /workspace is the durable location.
 #
-# Tier 1: mirror to $SAT_CKPT_DIR/<run-label>/<step>.
+# Tier 1: mirror to /workspace/allie/ckpts/<run-label>/<step>.
 #   Step dirs are renamed colon-free; the NFS volume rejects ':' in filenames,
 #   which is also why oat's default save_path could not point at /workspace.
 #
@@ -40,12 +40,10 @@
 #   that tier 1 thinned away is uploaded straight from the source copy, so
 #   S3_UPLOAD_EVERY still means what it always meant.
 set -uo pipefail
-SAT_HOME="${SAT_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
-source "$SAT_HOME/config.sh"
 SRC="${1:?usage: sync_checkpoints.sh <src-save-path> <run-label> [interval]}"
 LABEL="${2:?run label}"
 INTERVAL="${3:-300}"
-DEST="$SAT_CKPT_DIR/$LABEL"
+DEST="/workspace/allie/ckpts/$LABEL"
 MIRROR_EVERY="${MIRROR_EVERY:-64}"
 MIRROR_STEPS="${MIRROR_STEPS:-}"
 S3_UPLOAD_EVERY="${S3_UPLOAD_EVERY:-64}"
@@ -116,7 +114,7 @@ while true; do
         if [ -n "${S3_CHECKPOINT_BUCKET:-}" ] && [ -d "$out" ] && [ ! -f "$out/.s3-uploaded" ]; then
             if [ $((n % S3_UPLOAD_EVERY)) -eq 0 ]; then
                 log "uploading $step -> s3://$S3_CHECKPOINT_BUCKET/$S3_PREFIX/$step/"
-                if "$SAT_TOOLS_PY" "$SAT_HOME/evals/s3_upload_dir.py" \
+                if /workspace/allie/venvs/tools/bin/python /workspace/allie/evals/s3_upload_dir.py \
                        "$out" "$S3_CHECKPOINT_BUCKET" "$S3_PREFIX/$step"; then
                     touch "$out/.s3-uploaded"; log "  uploaded $step"
                 else

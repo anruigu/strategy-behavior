@@ -6,7 +6,7 @@
 Mirrors the approach in SkyRL-Fleet's integrations/fleet/s3_checkpoints.py:
 multipart transfer config, concurrent uploads, one key per file under
 <key-prefix>/<relative-path>. Credentials come from AWS_ACCESS_KEY_ID /
-AWS_SECRET_ACCESS_KEY (both live in the dotenv referenced by $SAT_ENV_FILE).
+AWS_SECRET_ACCESS_KEY (both live in /workspace/allie/.env).
 """
 import os
 import sys

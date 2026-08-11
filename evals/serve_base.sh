@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SAT_HOME="${SAT_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
-source "$SAT_HOME/config.sh"
-source "$SAT_VENV/bin/activate"
-set -a; . "$SAT_ENV_FILE"; set +a
-export HF_HOME="$SAT_HF_HOME"
-export CUDA_VISIBLE_DEVICES="${4:-0}"
+source /workspace/allie/venvs/spiral/bin/activate
+set -a; . /workspace/allie/.env; set +a
+export HF_HOME=/workspace/allie/.cache/huggingface
+export CUDA_VISIBLE_DEVICES=7
 MODEL="${1:-Qwen/Qwen3-4B-Base}"
 NAME="${2:-qwen3-4b-base}"
 PORT="${3:-8000}"

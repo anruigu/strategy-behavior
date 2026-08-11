@@ -2,7 +2,7 @@
 """Compare MASK arms with the belief-elicitation confound made explicit.
 
     compare_mask_arms.py <arm1> <arm2> [...]
-    (arm = directory name under $SAT_RUNS_DIR)
+    (arm = directory name under /workspace/allie/evals/runs/)
 
 Why this exists rather than just diffing all_results.json:
 
@@ -30,9 +30,7 @@ from collections import defaultdict
 
 import pandas as pd
 
-RUNS = os.environ.get("SAT_RUNS_DIR") or os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "results", "runs"
-)
+RUNS = "/workspace/allie/evals/runs"
 
 
 def belief_col_sets(df):
