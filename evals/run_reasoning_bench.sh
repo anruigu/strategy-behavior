@@ -18,10 +18,12 @@
 #     served through a local vLLM OpenAI endpoint, max_tokens 8192
 #
 # WHY THIS EXISTS rather than calling spiral's evals/benchmarks/eval.sh:
-#   * That script's last step uploads to wandb org "stlm" / project
+#   * That script's last step uploaded to wandb org "stlm" / project
 #     "oat-game-eval" -- SPIRAL's own org, which we cannot write to. It runs
 #     under `set -e`, so the upload failure would discard the run. We collect
-#     to CSV locally instead and leave wandb out.
+#     to CSV locally instead and leave wandb out. (The vendored eval.sh now
+#     defaults to thefleet/strategy-behavior, so the upload would succeed, but
+#     this script still stays out of wandb -- see the CUDA pinning below.)
 #   * It hardcodes CUDA_VISIBLE_DEVICES=4,5 and SERVER_PORT=7000, both of which
 #     collide with anything else on the box.
 #

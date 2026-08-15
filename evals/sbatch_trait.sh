@@ -4,16 +4,19 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --time=08:00:00
-#SBATCH --output=/workspace/allie/evals/slurm-trait-%j.out
-#SBATCH --error=/workspace/allie/evals/slurm-trait-%j.out
+#SBATCH --output=/workspace/allie/strategy-behavior/evals/slurm-trait-%j.out
+#SBATCH --error=/workspace/allie/strategy-behavior/evals/slurm-trait-%j.out
 # Usage: sbatch sbatch_rewardhacks.sh <arm-name> <model-path-or-hf-id> [--limit N]
 set -euo pipefail
 ARM="$1"; MODEL="$2"; shift 2
 PORT=8000   # node-local
 
-source /workspace/allie/venvs/spiral/bin/activate
+: "${SAT_HOME:=/workspace/allie/strategy-behavior}"   # repo root; override to relocate
+: "${SAT_VENV:=/workspace/allie/venvs/spiral}"        # serving/eval venv (openai + pandas)
+
+source "$SAT_VENV/bin/activate"
 set -a; . /workspace/allie/.env; set +a
-source /workspace/allie/evals/node_env.sh
+source "$SAT_HOME/evals/node_env.sh"
 
 # vllm engine workers are multiprocessing forks: killing only the api_server
 # parent reparents them to init where they keep the GPU reservation and OOM the
@@ -43,25 +46,24 @@ fi
 setsid python -m vllm.entrypoints.openai.api_server \
   --model "$MODEL" --served-model-name "$ARM" --port $PORT \
   --gpu-memory-utilization 0.85 --max-model-len 8192 --max-num-seqs 64 \
-  --dtype bfloat16 --disable-log-requests > /workspace/allie/evals/vllm-trait-$ARM.log 2>&1 &
+  --dtype bfloat16 --disable-log-requests > "$SAT_HOME/evals/vllm-trait-$ARM.log" 2>&1 &
 VLLM_PID=$!
 READY=0
 for i in $(seq 1 240); do
   if curl -s "http://localhost:$PORT/v1/models" 2>/dev/null | grep -q "$ARM"; then READY=1; break; fi
-  kill -0 $VLLM_PID 2>/dev/null || { echo "FATAL: vllm died after $((i*5))s"; tail -40 /workspace/allie/evals/vllm-trait-$ARM.log; exit 1; }
+  kill -0 $VLLM_PID 2>/dev/null || { echo "FATAL: vllm died after $((i*5))s"; tail -40 "$SAT_HOME/evals/vllm-trait-$ARM.log"; exit 1; }
   sleep 5
 done
 # Do NOT fall through when the server never came up: the eval would still run and
 # every request would 404, producing a full set of plausible-looking but empty
 # results. One earlier run scored 15/80 items this way and reported 100.0 on
 # every trait.
-[ "$READY" = "1" ] || { echo "FATAL: vllm not ready after 1200s"; tail -40 /workspace/allie/evals/vllm-trait-$ARM.log; exit 1; }
+[ "$READY" = "1" ] || { echo "FATAL: vllm not ready after 1200s"; tail -40 "$SAT_HOME/evals/vllm-trait-$ARM.log"; exit 1; }
 echo "server up after $((i*5))s"
 
 
-# MASK's venv has pandas + the openai SDK; the spiral venv is left untouched
-# because running training jobs import from it.
+# Client only needs openai + pandas, both present in $SAT_VENV (the spiral venv).
 # NOT `exec`: exec replaces this shell, which discards the EXIT trap above and
 # leaves the vllm engine workers alive holding ~119GB of the node's GPU.
-/workspace/allie/evals/mask/.venv/bin/python \
-     /workspace/allie/evals/trait/run_trait.py "$ARM" "$PORT" "$@"
+"$SAT_VENV/bin/python" \
+     "$SAT_HOME/evals/trait/run_trait.py" "$ARM" "$PORT" "$@"

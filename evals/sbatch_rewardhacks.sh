@@ -4,16 +4,19 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --time=08:00:00
-#SBATCH --output=/workspace/allie/evals/slurm-rh-%j.out
-#SBATCH --error=/workspace/allie/evals/slurm-rh-%j.out
+#SBATCH --output=/workspace/allie/strategy-behavior/evals/slurm-rh-%j.out
+#SBATCH --error=/workspace/allie/strategy-behavior/evals/slurm-rh-%j.out
 # Usage: sbatch sbatch_rewardhacks.sh <arm-name> <model-path-or-hf-id> [--limit N]
 set -euo pipefail
 ARM="$1"; MODEL="$2"; shift 2
 PORT=8000   # node-local
 
-source /workspace/allie/venvs/spiral/bin/activate
+: "${SAT_HOME:=/workspace/allie/strategy-behavior}"   # repo root; override to relocate
+: "${SAT_VENV:=/workspace/allie/venvs/spiral}"        # serving/eval venv (openai + pandas)
+
+source "$SAT_VENV/bin/activate"
 set -a; . /workspace/allie/.env; set +a
-source /workspace/allie/evals/node_env.sh
+source "$SAT_HOME/evals/node_env.sh"
 
 # vllm engine workers are multiprocessing forks: killing only the api_server
 # parent reparents them to init where they keep the GPU reservation and OOM the
@@ -62,9 +65,8 @@ export RH_JUDGE_BASE_URL=https://openrouter.ai/api/v1
 export RH_JUDGE_API_KEY="$OPENROUTER_API_KEY"
 export RH_JUDGE_MODEL=openai/gpt-4.1
 
-# MASK's venv has pandas + the openai SDK; the spiral venv is left untouched
-# because running training jobs import from it.
+# Client only needs openai + pandas, both present in $SAT_VENV (the spiral venv).
 # NOT `exec`: exec replaces this shell, which discards the EXIT trap above and
 # leaves the vllm engine workers alive holding ~119GB of the node's GPU.
-/workspace/allie/evals/mask/.venv/bin/python \
-     /workspace/allie/evals/reward-hacks/run_reward_hacks.py "$ARM" "$PORT" "$@"
+"$SAT_VENV/bin/python" \
+     "$SAT_HOME/evals/reward-hacks/run_reward_hacks.py" "$ARM" "$PORT" "$@"

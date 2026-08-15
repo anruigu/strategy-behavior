@@ -22,6 +22,7 @@ export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config
 export NCCL_CUMEM_ENABLE=0
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
+export WANDB_TAGS="multigame-social,spiral"
 
 # Notes ==========
 # Set `--eval_opponent_names google/gemini-2.0-flash-lite-001` if you have OpenRouter access.
@@ -98,4 +99,4 @@ python train_spiral.py \
     --max_save_num 30 \
     --use-wb \
     --wb-run-name spiral-qwen3-4b-base-multigame-social \
-    --wb_project spiral
+    --wb_project strategy-behavior

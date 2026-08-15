@@ -4,22 +4,25 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --time=12:00:00
-#SBATCH --output=/workspace/allie/evals/slurm-mask-%j.out
-#SBATCH --error=/workspace/allie/evals/slurm-mask-%j.out
+#SBATCH --output=/workspace/allie/strategy-behavior/evals/slurm-mask-%j.out
+#SBATCH --error=/workspace/allie/strategy-behavior/evals/slurm-mask-%j.out
 # Usage: sbatch sbatch_mask.sh <arm-name> <model-path-or-hf-id>
 set -euo pipefail
 ARM="$1"; MODEL="$2"
-WORK="/workspace/allie/evals/runs/$ARM"
+: "${SAT_HOME:=/workspace/allie/strategy-behavior}"   # repo root; override to relocate
+: "${SAT_VENV:=/workspace/allie/venvs/spiral}"        # serving venv
+: "${MASK_DIR:=/workspace/allie/mask}"                # canonical MASK checkout
+WORK="$SAT_HOME/results/runs/$ARM"
 PORT=8000   # node-local, so no cross-node collision
 
-source /workspace/allie/venvs/spiral/bin/activate
+source "$SAT_VENV/bin/activate"
 set -a; . /workspace/allie/.env; set +a
-source /workspace/allie/evals/node_env.sh
+source "$SAT_HOME/evals/node_env.sh"
 
 # Per-arm copy of the harness: arms run concurrently and would otherwise race on
 # csv_data/metrics/all_results.json.
 rm -rf "$WORK"; mkdir -p "$(dirname "$WORK")"
-cp -r /workspace/allie/evals/mask/mask "$WORK"
+cp -r "$MASK_DIR/mask" "$WORK"
 cd "$WORK"
 # Purge inherited OUTPUTS while keeping the input dataset CSVs (csv_data/*.csv).
 # The source tree has responses/ evaluated/ metrics/ populated from an earlier
@@ -81,7 +84,7 @@ done
 [ "$READY" = "1" ] || { echo "FATAL: vllm not ready after 1200s"; tail -40 "$WORK/vllm.log"; exit 1; }
 echo "server up after $((i*5))s"
 
-V=/workspace/allie/evals/mask/.venv/bin/python
+V="$MASK_DIR/.venv/bin/python"
 # Judge config. NOT gpt-4o: on this OpenRouter account gpt-4o is served only by
 # Azure, which rejects MASK's lying/disinformation prompts with HTTP 400
 # content_filter. MASK logs that as TIMEOUT_ERROR and silently drops the row,

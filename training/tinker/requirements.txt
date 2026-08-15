@@ -1,0 +1,36 @@
+# Dependencies for the Tinker self-play arm.
+#
+# Deliberately NOT `pip install -e $SPIRAL_DIR`: that pulls oat, vllm and
+# deepspeed, i.e. the entire GPU training stack this arm exists to avoid.
+# spiral is imported off sys.path instead (see selfplay.import_spiral), and the
+# only spiral modules used -- envs, template, agents.utils, agents.random,
+# utils -- need nothing but textarena.
+#
+#   python3.11 -m venv "$SAT_TINKER_VENV"
+#   "$SAT_TINKER_VENV/bin/pip" install -r requirements.txt
+#
+# Unlike $SAT_VENV this one has no CUDA in it and can live anywhere, including
+# a laptop. It also has no reason to live outside the checkout: the nltk cwd
+# import guard that forces $SAT_VENV out of $SPIRAL_DIR only bites when the
+# process runs *from* the spiral repo root, and this one never does.
+
+tinker
+tinker-cookbook          # tokenizer resolution + weights.download/build_lora_adapter
+
+textarena==0.6.4         # pinned to what $SAT_VENV has, so the games match
+transformers>=4.44       # tokenizer fallback when tinker-cookbook cannot resolve one
+
+# torch is used only to build tinker.TensorData; the CPU wheel is fine and is
+# ~200MB instead of ~2.5GB. Install it explicitly if you do not want pip to
+# resolve a CUDA build:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch
+torch
+
+# Optional, only touched when --use-wb is passed -- but install it even if you
+# do not plan to, because *missing* is worse than absent here. import_spiral
+# puts $SPIRAL_DIR on sys.path[0], and a spiral checkout that has ever run oat
+# has a `wandb/` run directory sitting in it. With no real wandb installed that
+# directory resolves as a namespace package, so `import wandb` succeeds and
+# `_init_wandb` dies on `module 'wandb' has no attribute 'init'` instead of
+# taking its ImportError fallback.
+wandb

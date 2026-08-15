@@ -22,6 +22,7 @@ export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config
 export NCCL_CUMEM_ENABLE=0
 export LP_DEBUG=1
 export LP_LOG_LEVEL=DEBUG
+export WANDB_TAGS="kuhn,spiral"
 
 # Notes ==========
 # Setting `--save_steps 16` to save checkpoints every 16 policy iteration steps.
@@ -72,4 +73,4 @@ python train_spiral.py \
     --max_save_num 30 \
     --use-wb \
     --wb-run-name spiral-qwen3-4b-base-kp-4k-self-play \
-    --wb_project spiral
+    --wb_project strategy-behavior

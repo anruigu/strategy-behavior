@@ -1,0 +1,55 @@
+diff --git a/spiral/template.py b/spiral/template.py
+index fb10610..9f57658 100644
+--- a/spiral/template.py
++++ b/spiral/template.py
+@@ -12,11 +12,42 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++import os
+ from typing import Optional
+ 
++# Soft switch honoured by Qwen3 / Qwen3.5 / Qwen3.6 hybrid-thinking models: it
++# makes them emit an empty <think></think> and answer directly.
++#
++# Why this exists: the templates below were written for Qwen3-4B-Base, which has
++# no thinking mode. Point the same prompt at a hybrid-thinking *instruct* model
++# and it opens a <think> block that does not close inside --generate_max_length,
++# so no \boxed{} is ever produced, extract_action() falls through to the whole
++# response text, that is not in the action space, and every game ends as a
++# turn-1 forfeit. Measured on Qwen/Qwen3-8B at 4096 tokens: 99.8% invalid
++# actions, mean game length 1.002. With /no_think: ~700 tokens and a clean
++# \boxed{[bet]}.
++#
++# Opt-in via the environment so the default behaviour is byte-identical to
++# upstream for base models:  export SPIRAL_NO_THINK=1
++_NO_THINK = os.environ.get("SPIRAL_NO_THINK", "").lower() in ("1", "true", "yes")
++
++
++def _maybe_no_think(observation: str) -> str:
++    """Append the marker AFTER the observation, never inside it.
++
++    The per-env valid-action parsers in spiral/agents/utils.py read the *last
++    line* of the observation (kuhn_poker_parse_available_actions,
++    pig_dice_parse_available_actions), so the marker must only ever reach the
++    rendered prompt -- which is what these template functions produce. The
++    observation object the parsers receive is untouched.
++    """
++    return observation + "\n/no_think" if _NO_THINK else observation
++
++
+ 
+ def apply_qwen3_template(observation: str, system_prompt: Optional[str] = None) -> str:
+     del system_prompt
++    observation = _maybe_no_think(observation)
+     return (
+         f"<|im_start|>user\nYou are playing a two-player zero-sum game. Make valid actions to win.\nObservation: {observation}"
+         "\nPlease reason step by step, and put your final answer within \\boxed{}.<|im_end|>\n"
+@@ -28,6 +59,7 @@ def apply_qwen3_general_template(
+     question: str, system_prompt: Optional[str] = None
+ ) -> str:
+     del system_prompt
++    question = _maybe_no_think(question)
+     return (
+         f"<|im_start|>user\nQuestion: {question}"
+         "\nPlease reason step by step, and put your final answer within \\boxed{}.<|im_end|>\n"

@@ -42,6 +42,7 @@ config.sh          shared paths/knobs; every script sources it (override via env
 env.example        secrets template -> copy to .env
 node_env.sh        cluster env preamble for slurm jobs ($HOME is node-local here)
 training/          SPIRAL self-play: run scripts, slurm launcher, oat patch  -> training/README.md
+training/tinker/   the same self-play loop on the Tinker API (no local GPU)  -> training/tinker/README.md
 evals/             MASK pipeline, model serving, checkpoint sync              -> evals/README.md
 results/           MASK metrics summaries + confound-aware comparison         -> results/README.md
 docs/methodology.md  the full eval battery (deception / personality / social-eng / reward-hacking)
@@ -70,6 +71,8 @@ git clone https://github.com/spiral-rl/spiral "$SPIRAL_DIR"
 git -C "$SPIRAL_DIR" apply "$PWD/training/patches/components-timeout.patch"
 cp training/run_kuhn.sh training/run_multi.sh training/launch_run.sh "$SPIRAL_DIR"/
 # ... create the py3.10 venv at $SAT_VENV, then:  bash training/launch_run.sh
+# (no GPU? training/tinker/ runs the same self-play through the Tinker API;
+#  it changes the base model, so read training/tinker/README.md first)
 
 # 2. serve a model + run MASK (see evals/README.md)
 bash evals/serve_base.sh Qwen/Qwen3-4B-Base base-redo 8000 0   # in one shell
