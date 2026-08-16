@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exploit-bench traces</title>
+<style>
+  /* Palette: dataviz reference instance, categorical slots 1-3, validated
+     all-pairs in both modes by viz/validate_palette.py.
+       light  CVD dE 9.2 (deutan) / normal dE 24.0
+       dark   CVD dE 9.4 (deutan) / normal dE 20.9
+     Light-mode aqua sits at 2.74:1 on the light surface -> below the 3:1 gate,
+     so the relief rule applies: a table view ships alongside every chart and
+     bars carry selective direct labels. */
+  .viz-root {
+    color-scheme: light;
+    --surface-0:      #f4f4f2;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #efefec;
+    --border:         #dcdcd6;
+    --border-strong:  #c2c2b9;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #78776f;
+    --series-defender:    #2a78d6;
+    --series-sycophant:   #eb6834;
+    --series-stonewaller: #1baf7a;
+    --grid:           #e6e6e1;
+    --zero:           #b4b4ab;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-0:      #131312;
+      --surface-1:      #1a1a19;
+      --surface-2:      #232322;
+      --border:         #34342f;
+      --border-strong:  #4a4a43;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #96958b;
+      --series-defender:    #3987e5;
+      --series-sycophant:   #d95926;
+      --series-stonewaller: #199e70;
+      --grid:           #2c2c29;
+      --zero:           #5c5c55;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-0:      #131312;
+    --surface-1:      #1a1a19;
+    --surface-2:      #232322;
+    --border:         #34342f;
+    --border-strong:  #4a4a43;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #96958b;
+    --series-defender:    #3987e5;
+    --series-sycophant:   #d95926;
+    --series-stonewaller: #199e70;
+    --grid:           #2c2c29;
+    --zero:           #5c5c55;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 20px 60px; }
+
+  header.top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 19px; font-weight: 620; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 2px 0 16px; }
+  .spacer { flex: 1; }
+
+  button, select {
+    font: inherit; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover, select:hover { background: var(--surface-2); }
+  button[aria-pressed="true"] { background: var(--surface-2); border-color: var(--text-muted); }
+
+  .tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    border: none; background: none; border-radius: 0; padding: 9px 15px;
+    color: var(--text-secondary); font-weight: 520;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { background: var(--surface-2); color: var(--text-primary); }
+  .tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 11px; padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 3px; }
+  .card .note { color: var(--text-muted); font-size: 12px; margin: 0 0 14px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; }
+  .tile .k { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 12px; font-weight: 550; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .tile .v { font-size: 27px; font-weight: 640; letter-spacing: -0.02em; margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .tile .d { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
+
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .tick { fill: var(--text-muted); font-size: 11px; }
+  .tlab { fill: var(--text-secondary); font-size: 11px; }
+  .dlab { fill: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .zeroline { stroke: var(--zero); stroke-width: 1.5; }
+  .bar { cursor: pointer; }
+  .bar:hover { stroke: var(--text-primary); stroke-width: 1.5; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-secondary); font-weight: 570; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--text-primary); }
+
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+          border: 1px solid var(--border-strong); color: var(--text-secondary); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  .scroll { max-height: 560px; overflow: auto; }
+
+  .turn { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; margin-bottom: 9px; }
+  .turn.adversary { background: var(--surface-2); }
+  .turn .who { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary);
+               font-weight: 570; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 5px; }
+  .turn .txt { white-space: pre-wrap; font-size: 13px; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 12.5px; }
+  .kv dt { color: var(--text-secondary); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 7px 10px; font-size: 12px; z-index: 50;
+    box-shadow: 0 4px 14px rgba(0,0,0,.14); max-width: 280px;
+  }
+  #tip b { font-weight: 600; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body class="viz-root" data-palette="#2a78d6,#eb6834,#1baf7a">
+<style>
+  /* Reasoning is set apart from the utterance on purpose: indented, muted, and
+     rule-marked, so it never reads as something the counterparty was told. */
+  .viz-root .think {
+    margin: 6px 0 8px 14px; padding: 8px 10px;
+    border-left: 2px dashed var(--border-strong);
+    background: var(--surface-2); border-radius: 0 6px 6px 0;
+  }
+  .viz-root .think .txt { color: var(--text-secondary); font-style: italic; white-space: pre-wrap; }
+  .viz-root .pill.think { background: transparent; border: 1px dashed var(--border-strong); }
+  .viz-root .thinkToggle {
+    margin-left: 6px; font: inherit; font-size: 12px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 1px 8px; color: var(--text-primary);
+  }
+</style>
+<div class="wrap">
+  <header class="top">
+    <h1>Exploit-bench — traces</h1>
+    <div class="spacer"></div>
+    <a href="channels.html" style="color:var(--text-secondary);font-size:13px">message channels →</a>
+    <button id="viewToggle" aria-pressed="false">Table view</button>
+    <button id="themeToggle">Dark</button>
+  </header>
+  <p class="sub" id="sub"></p>
+
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="panel"></div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const PROFILES = ["defender", "sycophant", "stonewaller"];
+const COLOR = {
+  defender: "var(--series-defender)",
+  sycophant: "var(--series-sycophant)",
+  stonewaller: "var(--series-stonewaller)",
+};
+const PROFILE_NOTE = {
+  defender: "grants exactly what is owed, then closes",
+  sycophant: "grants the entitlement, then walks toward the ask",
+  stonewaller: "grants nothing, including what is owed",
+};
+
+/* ---- series axis ----
+   Stub-target tabs plot one bar per profile; the message-channel tabs plot one
+   bar per arm of the 2x2 (docs/0816-tool.md). Both come through here, so a tab
+   that names its own series gets it and every older tab keeps the profiles.
+
+   The channel tabs reuse palette slots 1-2 rather than introducing two more
+   hues: hue carries the *attacker* channel, which is the factor that moved
+   anything, and the mandate factor -- degenerate on every vendor but OpenAI --
+   is hatched rather than solid. Four unrelated hues would have pushed the
+   all-pairs CVD margin down to the 6.0 floor; two hues sit at 24.7 (light) and
+   26.8 (dark).
+
+   The mandate distinction is a hatch and not a tint on purpose. The same hue at
+   55% opacity composites to 1.9-2.3:1 against either surface, well under the
+   3:1 non-text gate; a hatch keeps every stroke at full strength, so the second
+   level costs no contrast. */
+const SERIES = (d) => {
+  if (d && d.series) return d.series;            // channel tabs name their own
+  if (!d || !targetsOf(d).length) return PROFILES;
+  const members = inGroup(d, groupOf(d));
+  // Chart mode over an unchartable group shows one target, not N grey bars.
+  if (!tableView && !chartable(d)) return [soloOf(d)];
+  return members;
+};
+const NOTES = (d) => (d && d.notes) ? d.notes : PROFILE_NOTE;
+const ARM_COLOR = { user: "var(--series-defender)", tool: "var(--series-sycophant)" };
+const attackerOf = (name) => String(name).split("/")[1] || "";
+
+function colorOf(name) {
+  if (COLOR[name]) return COLOR[name];
+  const arm = ARM_COLOR[attackerOf(name)];
+  if (arm) return arm;
+  // A frontier target charted on its own takes categorical slot 1. Slots are
+  // only ever assigned by position within a group of <= PALETTE_SLOTS, so no
+  // chart ever renders more distinct hues than the palette validates.
+  const d = DATA && DATA.domains[active];
+  if (d) {
+    const members = inGroup(d, groupOf(d));
+    const i = members.indexOf(name);
+    if (i >= 0 && members.length <= PALETTE_SLOTS) return SLOT[i];
+  }
+  return "var(--text-muted)";
+}
+const SLOT = ["var(--series-defender)", "var(--series-sycophant)", "var(--series-stonewaller)"];
+// Second level of the mandate factor: same hue, hatched.
+const isHatched = (name) => String(name).startsWith("developer/");
+const hatchDefs = () => `<defs>` + Object.keys(ARM_COLOR).map(a =>
+  `<pattern id="hatch-${a}" width="5" height="5" patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)">
+     <rect width="5" height="5" fill="${ARM_COLOR[a]}"/>
+     <line x1="0" y1="0" x2="0" y2="5" stroke="var(--surface-1)" stroke-width="1.8"/>
+   </pattern>`).join("") + `</defs>`;
+const fillOf = (name) =>
+  isHatched(name) ? `url(#hatch-${attackerOf(name)})` : colorOf(name);
+function swatchStyle(name) {
+  const c = colorOf(name);
+  return isHatched(name)
+    ? `background:repeating-linear-gradient(45deg,${c} 0 3px,var(--surface-1) 3px 4.8px)`
+    : `background:${c}`;
+}
+
+/* ---- target groups ----
+   A domain may carry stub targets (wiring fixtures with known answers) and
+   frontier targets (real models). They are never mixed into one chart: the
+   defender stub scoring exactly 0.000 is a plumbing check, and putting it in
+   the same bar group as a model invites reading one as the other.
+
+   The palette is validated for exactly THREE categorical slots (see README and
+   validate_palette.py). So a group with more than three members does not get
+   three-plus hues invented for it -- `chartable()` is false, the view defaults
+   to the table, and the chart shows one target at a time in slot 1. That keeps
+   the published all-pairs CVD margin true instead of quietly exceeding it. */
+let DATA = null, active = 0, tableView = false, selected = {}, group = {}, soloTarget = {};
+// Reasoning is collapsed by default: it is usually longer than the utterance
+// and would bury the thing that actually got scored.
+let thinkOpen = false;
+
+const PALETTE_SLOTS = 3;
+const targetsOf = (d) => d.targets || [];
+const groupOf = (d) => group[d.key] || (targetsOf(d).some(t => t.kind === "frontier")
+  && !targetsOf(d).some(t => t.kind === "stub") ? "frontier" : "stub");
+const inGroup = (d, g) => targetsOf(d).filter(t => t.kind === g).map(t => t.key);
+const groupsOf = (d) => ["stub", "frontier"].filter(g => inGroup(d, g).length);
+const chartable = (d) => inGroup(d, groupOf(d)).length <= PALETTE_SLOTS;
+const soloOf = (d) => soloTarget[d.key] || inGroup(d, groupOf(d))[0];
+const labelOf = (d, key) => (targetsOf(d).find(t => t.key === key) || {}).label || key;
+
+const fmt = (v, d = 3) => v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + v.toFixed(d);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---- tooltip ---- */
+const tip = document.getElementById("tip");
+function showTip(html, ev) {
+  tip.innerHTML = html; tip.style.opacity = "1";
+  const r = tip.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => { tip.style.opacity = "0"; };
+
+/* ---- grouped horizontal bars: mean demand capture by technique ----
+   Color carries profile identity; length carries the signed value against a
+   zero baseline. One axis only. Data-ends are rounded 4px away from the
+   baseline and square at it, so the bar reads as anchored. 2px gap between
+   adjacent bars in a group. Direct labels are selective -- the largest-
+   magnitude bar per group only -- with the full numbers in the table view,
+   which is also what discharges the light-mode contrast relief. */
+function barChart(dom) {
+  const rows = dom.by_technique;
+  if (!rows.length) return "<p class='note'>No technique cells in this panel.</p>";
+  const SER = SERIES(dom);
+
+  const vals = [];
+  rows.forEach(r => SER.forEach(p => { const v = r.means[p]; if (v !== null && v !== undefined) vals.push(v); }));
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = (hi - lo) * 0.08 || 0.1;
+  lo -= pad; hi += pad;
+
+  const BAR = 11, GAP = 2, GROUP_PAD = 13;
+  const groupH = SER.length * BAR + (SER.length - 1) * GAP;
+  const rowH = groupH + GROUP_PAD;
+  const L = 172, R = 54, T = 26, B = 34;
+  const W = 1000, plotW = W - L - R;
+  const H = T + rows.length * rowH + B;
+  const x = v => L + (v - lo) / (hi - lo) * plotW;
+
+  const ticks = [];
+  const span = hi - lo;
+  const step = span > 4 ? 1 : span > 2 ? 0.5 : span > 1 ? 0.25 : 0.1;
+  for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) ticks.push(+t.toFixed(4));
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Mean demand capture by technique and ${dom.series ? "channel arm" : "target profile"}">`;
+  if (dom.series) s += hatchDefs();
+  ticks.forEach(t => {
+    s += `<line class="gridline" x1="${x(t).toFixed(1)}" y1="${T - 6}" x2="${x(t).toFixed(1)}" y2="${H - B}"/>`;
+    s += `<text class="tick" x="${x(t).toFixed(1)}" y="${H - B + 15}" text-anchor="middle">${t}</text>`;
+  });
+
+  rows.forEach((r, i) => {
+    const gy = T + i * rowH;
+    s += `<text class="tlab" x="${L - 10}" y="${gy + groupH / 2 + 4}" text-anchor="end">${esc(r.technique)}</text>`;
+    SER.forEach((p, k) => {
+      const v = r.means[p];
+      if (v === null || v === undefined) return;
+      const y = gy + k * (BAR + GAP);
+      const x0 = x(0), x1 = x(v);
+      const w = Math.max(Math.abs(x1 - x0), 1.5);
+      const bx = Math.min(x0, x1);
+      const neg = v < 0;
+      // rounded only on the data end
+      const rr = Math.min(4, w);
+      const d = neg
+        ? `M${bx + rr},${y} h${w - rr} v${BAR} h${-(w - rr)} a${rr},${rr} 0 0 1 ${-rr},${-rr} v${-(BAR - 2 * rr)} a${rr},${rr} 0 0 1 ${rr},${-rr} z`
+        : `M${bx},${y} h${w - rr} a${rr},${rr} 0 0 1 ${rr},${rr} v${BAR - 2 * rr} a${rr},${rr} 0 0 1 ${-rr},${rr} h${-(w - rr)} z`;
+      const t = `<b>${esc(r.technique)}</b><br>${p} — mean demand capture <b>${fmt(v)}</b><br>${r.n[p]} episode${r.n[p] === 1 ? "" : "s"}`;
+      s += `<path class="bar" d="${d}" fill="${fillOf(p)}" tabindex="0"
+             data-tip="${esc(t)}"><title>${esc(r.technique)} · ${p} · ${fmt(v)}</title></path>`;
+    });
+    // selective direct label: largest |value| in the group
+    let best = null;
+    SER.forEach((p, k) => {
+      const v = r.means[p];
+      if (v === null || v === undefined) return;
+      if (!best || Math.abs(v) > Math.abs(best.v)) best = { v, k };
+    });
+    if (best && Math.abs(best.v) > 1e-9) {
+      const y = gy + best.k * (BAR + GAP) + BAR - 2;
+      const anchor = best.v < 0 ? "end" : "start";
+      const dx = best.v < 0 ? -6 : 6;
+      s += `<text class="dlab" x="${(x(best.v) + dx).toFixed(1)}" y="${y}" text-anchor="${anchor}">${fmt(best.v, 2)}</text>`;
+    }
+  });
+
+  s += `<line class="zeroline" x1="${x(0).toFixed(1)}" y1="${T - 6}" x2="${x(0).toFixed(1)}" y2="${H - B}"/>`;
+  s += `<text class="tick" x="${W - R + 6}" y="${H - B + 15}">demand capture</text>`;
+  s += `</svg>`;
+  return s;
+}
+
+function techniqueTable(dom) {
+  const SER = dom.series ? SERIES(dom) : inGroup(dom, groupOf(dom));
+  let s = `<div class="scroll"><table><thead><tr><th>Technique</th>`;
+  SER.forEach(p => s += `<th class="num">${esc(p)}</th>`);
+  s += `<th class="num">n / series</th></tr></thead><tbody>`;
+  dom.by_technique.forEach(r => {
+    s += `<tr><td class="mono">${esc(r.technique)}</td>`;
+    SER.forEach(p => s += `<td class="num">${fmt(r.means[p])}</td>`);
+    s += `<td class="num">${r.n[SER[0]]}</td></tr>`;
+  });
+  s += `</tbody></table></div>`;
+  return s;
+}
+
+function tiles(dom) {
+  const note = NOTES(dom);
+  const members = dom.series ? SERIES(dom) : inGroup(dom, groupOf(dom));
+  return `<div class="tiles">` + members.map(p => {
+    const s = dom.summary[p] || {};
+    // Under-grant rate rides along with the mean on purpose. A low demand
+    // capture next to a high under-grant rate is a competence failure wearing
+    // a robustness costume, and the number alone hides that.
+    const comp = (s.inadequate_rate ? `under-granted ${(s.inadequate_rate * 100).toFixed(0)}%` : "")
+      + (s.leak_rate ? `${s.inadequate_rate ? " · " : ""}leaked ${(s.leak_rate * 100).toFixed(0)}%` : "");
+    return `<div class="tile">
+      <div class="k"><span class="swatch" style="${swatchStyle(p)}"></span>${esc(labelOf(dom, p))}</div>
+      <div class="v">${fmt(s.mean_dc)}</div>
+      <div class="d">mean demand capture · ${s.n ?? 0} episodes</div>
+      <div class="d">${esc(note[p] ?? comp)}</div>
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+function episodeRows(dom) {
+  const keep = dom.series ? null : new Set(inGroup(dom, groupOf(dom)));
+  const eps = dom.episodes;
+  const head = dom.series ? "Arm" : "Target";
+  let s = `<div class="scroll"><table><thead><tr>
+    <th>Case</th><th>Technique</th><th>${head}</th>
+    <th class="num">DC</th><th class="num">Mag</th><th class="num">Turns</th></tr></thead><tbody>`;
+  eps.forEach((e, i) => {
+    if (keep && !keep.has(e.target)) return;
+    s += `<tr data-ep="${i}" ${selected[dom.key] === i ? 'aria-selected="true"' : ""}>
+      <td class="mono">${esc(e.case)}</td>
+      <td class="mono">${esc(e.technique)}</td>
+      <td><span class="swatch" style="${swatchStyle(e.target)};display:inline-block;margin-right:6px"></span>${esc(labelOf(dom, e.target))}</td>
+      <td class="num">${fmt(e.dc)}</td>
+      <td class="num">${e.magnitude === null || e.magnitude === undefined ? "—" : e.magnitude.toFixed(1)}</td>
+      <td class="num">${e.turns ?? "—"}</td></tr>`;
+  });
+  s += `</tbody></table></div>`;
+  return s;
+}
+
+function trace(dom) {
+  const i = selected[dom.key];
+  if (i === undefined || !dom.episodes[i]) {
+    return `<p class="note">Select an episode to read its trace.</p>`;
+  }
+  const e = dom.episodes[i];
+  const flags = Object.entries(e.flags).filter(([, v]) => v === true).map(([k]) => k);
+  const lists = [
+    ["acts", e.acts], ["withheld defensible", e.withheld],
+    ["unsupported concessions", e.unsupported], ["leaked facts", e.leaked],
+    ["violations", e.violations],
+  ].filter(([, v]) => v && v.length);
+
+  let s = `<dl class="kv">
+    <dt>target</dt><dd class="mono">${esc(labelOf(dom, e.target))}</dd>
+    <dt>case</dt><dd class="mono">${esc(e.case)}</dd>
+    <dt>cell</dt><dd class="mono">${esc(e.technique)} · intensity ${esc(e.intensity)} · ${e.informed ? "informed" : "blind"}</dd>
+    <dt>floor / ask / cap</dt><dd>${fmt(e.floor, 1)} / ${fmt(e.ask, 1)} / ${fmt(e.cap, 1)}</dd>
+    <dt>realized</dt><dd>${fmt(e.realized, 1)}</dd>
+    <dt>demand capture</dt><dd><b>${fmt(e.dc)}</b> · magnitude ${e.magnitude?.toFixed(1) ?? "—"}</dd>
+  </dl>`;
+  if (flags.length) s += `<p style="margin:10px 0 0">${flags.map(f => `<span class="pill">${esc(f)}</span>`).join(" ")}</p>`;
+  lists.forEach(([k, v]) => {
+    s += `<p class="note" style="margin:8px 0 0"><b>${esc(k)}:</b> <span class="mono">${v.map(esc).join(", ")}</span></p>`;
+  });
+  const granted = Object.entries(e.grant || {}).filter(([, v]) => v);
+  if (granted.length) {
+    s += `<p class="note" style="margin:8px 0 0"><b>granted:</b> <span class="mono">${
+      granted.map(([k, v]) => `${esc(k)}=${esc(v)}`).join(" · ")}</span></p>`;
+  }
+  if (Object.keys(e.positions).length) {
+    s += `<p class="note" style="margin:8px 0 0"><b>positions:</b> <span class="mono">${
+      Object.entries(e.positions).map(([k, v]) => `${esc(k)}=${esc(v)}`).join(" · ")}</span></p>`;
+  }
+
+  const anyThinking = e.transcript.some(t => t.thinking);
+  s += `<div style="margin-top:14px">`;
+  if (anyThinking) {
+    s += `<p class="note" style="margin:0 0 8px">Reasoning is shown separately from the
+      utterance and is <b>never scored</b> — the ledger and the canary check read the
+      utterance only, so an action line drafted while deliberating is not a concession
+      and a secret named in reasoning is not a disclosure.
+      <button class="thinkToggle" data-open="${thinkOpen ? "1" : "0"}">${
+        thinkOpen ? "Hide" : "Show"} reasoning</button></p>`;
+  }
+  e.transcript.forEach(t => {
+    const adv = t.speaker === "adversary";
+    s += `<div class="turn ${adv ? "adversary" : ""}">
+      <div class="who">${adv ? "adversary" : "target"}
+        ${t.technique ? `<span class="pill">${esc(t.technique)}</span>` : ""}
+        ${t.thinking ? `<span class="pill think">thinking ${t.thinking.length}c</span>` : ""}</div>`;
+    if (t.thinking && thinkOpen) {
+      s += `<div class="think"><div class="who">reasoning · not scored</div>
+        <div class="txt">${esc(t.thinking)}</div></div>`;
+    }
+    s += `<div class="txt">${esc(t.text)}</div></div>`;
+  });
+  if (!e.transcript.length) s += `<p class="note">No transcript recorded for this episode.</p>`;
+  s += `</div>`;
+  return s;
+}
+
+function render() {
+  const dom = DATA.domains[active];
+  // Remember where every scroll container was, keyed by position, and restore
+  // after the rebuild. Cheap, and it makes the view toggle non-destructive.
+  const prevScroll = [...document.querySelectorAll("#panel .scroll")].map(e => e.scrollTop);
+  document.getElementById("tabs").innerHTML = DATA.domains.map((d, i) =>
+    `<button class="tab" role="tab" aria-selected="${i === active}" data-i="${i}">${esc(d.label)}
+      <span style="color:var(--text-muted);font-weight:400"> ${d.n_episodes}</span></button>`).join("");
+  try {
+    renderPanel(dom);
+    // Restore scroll positions by container position. Rebuilding the panel's
+    // innerHTML resets every .scroll container, which made the view toggle and
+    // the group switch throw away your place in a long episode list.
+    const panes = document.querySelectorAll("#panel .scroll");
+    if (panes.length === prevScroll.length) {
+      panes.forEach((e, i) => { e.scrollTop = prevScroll[i]; });
+    }
+  } catch (err) {
+    // A panel that fails to build must not take navigation down with it. This
+    // used to be the failure mode: tabs were painted first, handlers were
+    // rebound last, and anything throwing in between left the tabs on screen
+    // and dead, with nothing in the UI to say why. Tab handling is now
+    // delegated from #tabs and bound once, so it survives whatever happens
+    // here; this catch makes the failure visible instead of silent.
+    console.error(err);
+    document.getElementById("panel").innerHTML =
+      `<div class="card"><h2>Could not render this panel</h2>
+        <p class="note">Tab navigation still works — try another tab. Details:</p>
+        <pre class="mono" style="white-space:pre-wrap">${esc((err && err.stack) || err)}</pre></div>`;
+  }
+}
+
+function renderPanel(dom) {
+  const groups = dom.series ? [] : groupsOf(dom);
+  const g = groupOf(dom), members = dom.series ? SERIES(dom) : inGroup(dom, g);
+  const solo = !tableView && !chartable(dom);
+  const nEps = dom.series ? dom.n_episodes
+    : dom.episodes.filter(e => members.includes(e.target)).length;
+
+  const groupPicker = groups.length > 1 ? `
+    <div class="legend" style="margin-bottom:10px">
+      <label>Targets
+        <select id="groupSel">${groups.map(k =>
+          `<option value="${k}" ${k === g ? "selected" : ""}>${
+            k === "stub" ? "Stub fixtures" : "Frontier models"} (${inGroup(dom, k).length})</option>`).join("")}
+        </select></label>
+      ${solo ? `<label>Charting
+        <select id="soloSel">${members.map(k =>
+          `<option value="${k}" ${k === soloOf(dom) ? "selected" : ""}>${esc(labelOf(dom, k))}</option>`).join("")}
+        </select></label>` : ""}
+    </div>` : "";
+
+  const kindNote = dom.series ? "" : (g === "stub"
+    ? `<p class="note">Stub fixtures: scripted targets with known answers. The defender
+       should score exactly 0.000 — this is a wiring check, not a measurement.</p>`
+    : `<p class="note">Frontier models on <span class="mono">bz-trace-v1</span>, the same
+       cell as the reported panel. Read these as evidence; read the stub tab as plumbing.</p>`);
+
+  const paletteNote = (!dom.series && !chartable(dom))
+    ? `<p class="note">This group has ${members.length} targets and the palette validates
+       ${PALETTE_SLOTS} categorical slots, so the table is the default view and the chart
+       shows one target at a time. See <span class="mono">viz/README.md</span>.</p>`
+    : "";
+
+  document.getElementById("panel").innerHTML = `
+    <p class="sub">${esc(dom.blurb)}</p>
+    ${kindNote}
+    ${groupPicker}
+    ${tiles(dom)}
+    <div class="card">
+      <h2>Mean demand capture by technique</h2>
+      <p class="note">One row per primitive; one bar per ${dom.series ? "channel arm" : "target"}.
+        Signed, never clamped — negative means the target ended below the floor.</p>
+      ${paletteNote}
+      <div class="legend">${SERIES(dom).map(p =>
+        `<span><span class="swatch" style="${swatchStyle(p)}"></span>${esc(labelOf(dom, p))}</span>`).join("")}</div>
+      <div id="chartArea">${tableView ? techniqueTable(dom) : barChart(dom)}</div>
+    </div>
+    <div class="split">
+      <div class="card">
+        <h2>Episodes</h2>
+        <p class="note">${nEps} episodes across ${members.length}
+          ${dom.series ? "channel arms" : (g === "stub" ? "stub targets" : "frontier targets")}.
+          Click a row for its trace.</p>
+        ${episodeRows(dom)}
+      </div>
+      <div class="card">
+        <h2>Trace</h2>
+        <p class="note">Adversary utterance, target reply, and what the oracle priced.</p>
+        <div class="scroll" id="tracePane">${trace(dom)}</div>
+      </div>
+    </div>`;
+
+  document.querySelectorAll("[data-tip]").forEach(el => {
+    el.addEventListener("mousemove", ev => showTip(el.dataset.tip, ev));
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("focus", ev => showTip(el.dataset.tip, { clientX: el.getBoundingClientRect().right, clientY: el.getBoundingClientRect().top }));
+    el.addEventListener("blur", hideTip);
+  });
+}
+
+/* Table is the default whenever the active group exceeds the palette. The
+   toggle still works from there -- chart mode just narrows to one target. */
+function syncView() {
+  const d = DATA.domains[active];
+  if (!d.series) tableView = !chartable(d);
+  const btn = document.getElementById("viewToggle");
+  btn.setAttribute("aria-pressed", String(tableView));
+  btn.textContent = tableView ? "Chart view" : "Table view";
+}
+
+document.getElementById("viewToggle").onclick = (e) => {
+  tableView = !tableView;
+  e.target.setAttribute("aria-pressed", String(tableView));
+  e.target.textContent = tableView ? "Chart view" : "Table view";
+  render();
+};
+document.getElementById("themeToggle").onclick = (e) => {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  e.target.textContent = dark ? "Dark" : "Light";
+};
+
+/* Delegated, bound once, never rebound. #tabs and #panel are the only two
+   containers render() replaces the contents of, and neither is itself
+   replaced -- so a listener on the container outlives every re-render and
+   every failure inside one. */
+document.getElementById("tabs").addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".tab");
+  if (!btn || !DATA) return;
+  active = +btn.dataset.i;
+  syncView();
+  render();
+});
+
+document.getElementById("panel").addEventListener("click", (ev) => {
+  const tog = ev.target.closest(".thinkToggle");
+  if (tog && DATA) {
+    thinkOpen = !thinkOpen;
+    const pane = document.getElementById("tracePane");
+    const top = pane ? pane.scrollTop : 0;
+    if (pane) { pane.innerHTML = trace(DATA.domains[active]); pane.scrollTop = top; }
+    return;
+  }
+  const tr = ev.target.closest("tbody tr[data-ep]");
+  if (!tr || !DATA) return;
+  const dom = DATA.domains[active];
+  selected[dom.key] = +tr.dataset.ep;
+  // Repaint the trace pane ONLY. A full render() replaces the panel's
+  // innerHTML, which resets every .scroll container -- so clicking a row near
+  // the bottom of a long episode list snapped the list back to the top and
+  // lost your place. Nothing else on the page depends on the selection.
+  const pane = document.getElementById("tracePane");
+  if (!pane) { render(); return; }
+  document.querySelectorAll("#panel tbody tr[data-ep][aria-selected]")
+    .forEach(r => r.removeAttribute("aria-selected"));
+  tr.setAttribute("aria-selected", "true");
+  pane.innerHTML = trace(dom);
+  pane.scrollTop = 0;   // the trace itself starts at the top; the list does not move
+});
+
+document.getElementById("panel").addEventListener("change", (ev) => {
+  if (!DATA) return;
+  const dom = DATA.domains[active];
+  if (ev.target.id === "groupSel") {
+    group[dom.key] = ev.target.value;
+    delete selected[dom.key];   // an episode index means nothing across groups
+    syncView();
+    render();
+  } else if (ev.target.id === "soloSel") {
+    soloTarget[dom.key] = ev.target.value;
+    render();
+  }
+});
+
+fetch("data.json").then(r => r.json()).then(d => {
+  DATA = d;
+  const chan = DATA.domains.filter(x => x.series).length;
+  const nFrontier = new Set();
+  DATA.domains.forEach(d => (d.targets || [])
+    .filter(t => t.kind === "frontier").forEach(t => nFrontier.add(t.label)));
+  document.getElementById("sub").textContent =
+    `Scripted adversary panels: ${DATA.domains.length} domains against three stub fixtures` +
+    (nFrontier.size ? `, plus ${nFrontier.size} frontier models` : ``) +
+    (chan ? `, then ${chan} live targets across the message-channel 2×2` : ``) + `. ` +
+    `Every number is read from the episode record as the oracle priced it — nothing here is recomputed.`;
+  syncView();
+  render();
+}).catch(err => {
+  document.getElementById("panel").innerHTML =
+    `<div class="card"><h2>Could not load data.json</h2><p class="note">${esc(err)}</p></div>`;
+});
+</script>
+</body>
+</html>

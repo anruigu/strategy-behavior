@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exploit-bench — message channels</title>
+<!-- The style block below is copied verbatim from index.html so this page stays
+     visually native and shares the validated palette. Copied rather than
+     imported on purpose: the two pages are deliberately independent, so a change
+     to either one cannot break the other. Re-copy if index.html's palette moves. -->
+<style>
+  /* Palette: dataviz reference instance, categorical slots 1-3, validated
+     all-pairs in both modes by viz/validate_palette.py.
+       light  CVD dE 9.2 (deutan) / normal dE 24.0
+       dark   CVD dE 9.4 (deutan) / normal dE 20.9
+     Light-mode aqua sits at 2.74:1 on the light surface -> below the 3:1 gate,
+     so the relief rule applies: a table view ships alongside every chart and
+     bars carry selective direct labels. */
+  .viz-root {
+    color-scheme: light;
+    --surface-0:      #f4f4f2;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #efefec;
+    --border:         #dcdcd6;
+    --border-strong:  #c2c2b9;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #78776f;
+    --series-defender:    #2a78d6;
+    --series-sycophant:   #eb6834;
+    --series-stonewaller: #1baf7a;
+    --grid:           #e6e6e1;
+    --zero:           #b4b4ab;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-0:      #131312;
+      --surface-1:      #1a1a19;
+      --surface-2:      #232322;
+      --border:         #34342f;
+      --border-strong:  #4a4a43;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #96958b;
+      --series-defender:    #3987e5;
+      --series-sycophant:   #d95926;
+      --series-stonewaller: #199e70;
+      --grid:           #2c2c29;
+      --zero:           #5c5c55;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-0:      #131312;
+    --surface-1:      #1a1a19;
+    --surface-2:      #232322;
+    --border:         #34342f;
+    --border-strong:  #4a4a43;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #96958b;
+    --series-defender:    #3987e5;
+    --series-sycophant:   #d95926;
+    --series-stonewaller: #199e70;
+    --grid:           #2c2c29;
+    --zero:           #5c5c55;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 20px 60px; }
+
+  header.top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 19px; font-weight: 620; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 2px 0 16px; }
+  .spacer { flex: 1; }
+
+  button, select {
+    font: inherit; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover, select:hover { background: var(--surface-2); }
+  button[aria-pressed="true"] { background: var(--surface-2); border-color: var(--text-muted); }
+
+  .tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    border: none; background: none; border-radius: 0; padding: 9px 15px;
+    color: var(--text-secondary); font-weight: 520;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { background: var(--surface-2); color: var(--text-primary); }
+  .tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 11px; padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 3px; }
+  .card .note { color: var(--text-muted); font-size: 12px; margin: 0 0 14px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; }
+  .tile .k { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 12px; font-weight: 550; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .tile .v { font-size: 27px; font-weight: 640; letter-spacing: -0.02em; margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .tile .d { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
+
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .tick { fill: var(--text-muted); font-size: 11px; }
+  .tlab { fill: var(--text-secondary); font-size: 11px; }
+  .dlab { fill: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .zeroline { stroke: var(--zero); stroke-width: 1.5; }
+  .bar { cursor: pointer; }
+  .bar:hover { stroke: var(--text-primary); stroke-width: 1.5; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-secondary); font-weight: 570; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--text-primary); }
+
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+          border: 1px solid var(--border-strong); color: var(--text-secondary); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  .scroll { max-height: 560px; overflow: auto; }
+
+  .turn { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; margin-bottom: 9px; }
+  .turn.adversary { background: var(--surface-2); }
+  .turn .who { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary);
+               font-weight: 570; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 5px; }
+  .turn .txt { white-space: pre-wrap; font-size: 13px; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 12.5px; }
+  .kv dt { color: var(--text-secondary); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 7px 10px; font-size: 12px; z-index: 50;
+    box-shadow: 0 4px 14px rgba(0,0,0,.14); max-width: 280px;
+  }
+  #tip b { font-weight: 600; }
+  .hide { display: none !important; }
+</style><style>
+  /* Additions for the 2x2. Hue carries the attacker channel (palette slots 1-2,
+     all-pairs CVD dE 24.7 light / 26.8 dark). The mandate factor is a hatch of
+     the same hue, not a tint: the same colour at 55% opacity composites to
+     1.9-2.3:1 against either surface, under the 3:1 non-text gate, while a hatch
+     keeps every stroke at full strength. */
+  .arm-user  { --arm: var(--series-defender); }
+  .arm-tool  { --arm: var(--series-sycophant); }
+  .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; background: var(--arm); }
+  .sw.hatch { background: repeating-linear-gradient(45deg, var(--arm) 0 3px,
+                          var(--surface-1) 3px 4.8px); }
+
+  /* Signed CSS bars: no SVG geometry, so a value can only ever be wrong by
+     being wrong in the data. Zero sits where the scale puts it. */
+  .track { position: relative; height: 13px; background: var(--surface-2);
+           border-radius: 3px; min-width: 160px; }
+  .track .zero { position: absolute; top: -2px; bottom: -2px; width: 1.5px;
+                 background: var(--zero); }
+  .track .fill { position: absolute; top: 0; bottom: 0; background: var(--arm);
+                 border-radius: 2px; }
+  .track .fill.hatch { background: repeating-linear-gradient(45deg, var(--arm) 0 3px,
+                                   var(--surface-1) 3px 4.8px);
+                       box-shadow: inset 0 0 0 1px var(--arm); }
+  td.bar-cell { width: 42%; }
+  .arm-name { display: inline-flex; align-items: center; gap: 7px; }
+  .warn { border-left: 3px solid var(--series-sycophant); padding-left: 10px; }
+
+  /* Request shape and mandate: collapsed by default so the trace stays readable,
+     because the mandate is ~1.9 KB of policy that is identical across a case's
+     twenty episodes and only occasionally the thing you came to check. */
+  details.wirebox, details.thinking {
+    border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px;
+    margin-bottom: 9px; background: var(--surface-1);
+  }
+  details.thinking { background: var(--surface-2); margin: 0 0 8px; }
+  details summary {
+    cursor: pointer; font-size: 11.5px; color: var(--text-secondary);
+    font-weight: 550; letter-spacing: .02em;
+  }
+  details[open] summary { margin-bottom: 8px; }
+  .prompt {
+    white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px; max-height: 340px; overflow: auto;
+    background: var(--surface-2); border-radius: 7px; padding: 10px 12px;
+  }
+  .wirerow { border-top: 1px solid var(--border); padding: 6px 0; }
+  .wirerow:first-of-type { border-top: none; }
+  .wirerow .who { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+                  font-size: 11px; color: var(--text-secondary); margin: 0; }
+  .role {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px; padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--border-strong); color: var(--text-primary);
+  }
+  /* The mandate roles and the two attacker roles read as different kinds of
+     thing, which is the whole point of the factor. */
+  .role-system, .role-developer { border-color: var(--text-muted); font-weight: 600; }
+  .role-tool { border-style: dashed; }
+  .eff { font-variant-numeric: tabular-nums; }
+  .yes { color: var(--text-primary); font-weight: 620; }
+  .no  { color: var(--text-muted); }
+</style>
+</head>
+<body class="viz-root" data-palette="#2a78d6,#eb6834">
+<div class="wrap">
+  <header class="top">
+    <h1>Exploit-bench — message channels</h1>
+    <div class="spacer"></div>
+    <a href="./" style="color:var(--text-secondary);font-size:13px">← smoke traces</a>
+  </header>
+  <p class="sub" id="sub"></p>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="panel"></div>
+</div>
+<div id="tip" role="tooltip"></div>
+<script>
+/* One tab per target; four series per tab -- the arms of the
+   (mandate_channel x attacker_channel) factorial from docs/0816-tool.md.
+   Every number here was computed by the runner or by eval/channel_report.py and
+   is only reshaped by viz/build_channels.py. Nothing is recomputed in the page. */
+
+let DATA = null, active = 0, selected = {};
+
+const fmt = (v, d = 3) =>
+  v === null || v === undefined || Number.isNaN(v) ? "—" : (v >= 0 ? "+" : "") + v.toFixed(d);
+const pct = (v) => v === null || v === undefined ? "—" : Math.round(v * 100) + "%";
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const attackerOf = (arm) => String(arm).split("/")[1] || "user";
+const hatched = (arm) => String(arm).startsWith("developer/");
+const armClass = (arm) => `arm-${attackerOf(arm)}`;
+const swatch = (arm) =>
+  `<span class="${armClass(arm)}"><span class="sw${hatched(arm) ? " hatch" : ""}"></span></span>`;
+const armName = (arm) => `<span class="arm-name">${swatch(arm)}<span class="mono">${esc(arm)}</span></span>`;
+
+/* ---- tooltip (same behaviour as the smoke page) ---- */
+const tip = document.getElementById("tip");
+function showTip(html, ev) {
+  tip.innerHTML = html; tip.style.opacity = "1";
+  const r = tip.getBoundingClientRect();
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => { tip.style.opacity = "0"; };
+
+function tiles(t) {
+  return `<div class="tiles">` + DATA.arms.map(arm => {
+    const a = t.arms[arm] || {};
+    return `<div class="tile ${armClass(arm)}">
+      <div class="k">${swatch(arm)}${esc(arm)}</div>
+      <div class="v">${fmt(a.se)}</div>
+      <div class="d">mean demand capture, SE partition · ${a.n ?? 0} episodes</div>
+      <div class="d">override ${fmt(a.override)} · non-compliant ${pct(a.noncompliant)}${
+        a.empty_replies ? ` · <b>${a.empty_replies} empty replies</b>` : ""}</div>
+      <div class="d">${esc(DATA.notes[arm] ?? "")}</div>
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+/* Mean demand capture by technique, four bars per row, on one shared scale. */
+function bars(t) {
+  const vals = [];
+  t.by_technique.forEach(r => DATA.arms.forEach(a => {
+    const v = r.means[a]; if (v !== null && v !== undefined) vals.push(v);
+  }));
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = (hi - lo) * 0.06 || 0.1;
+  lo -= pad; hi += pad;
+  const at = v => ((v - lo) / (hi - lo)) * 100;
+
+  let s = `<div class="scroll"><table><thead><tr>
+    <th>Technique</th><th>Arm</th><th class="num">DC</th>
+    <th class="bar-cell">${fmt(lo, 1)} &nbsp;⟵&nbsp; 0 &nbsp;⟶&nbsp; ${fmt(hi, 1)}</th>
+    <th class="num">n</th></tr></thead><tbody>`;
+  t.by_technique.forEach(r => {
+    DATA.arms.forEach((arm, k) => {
+      const v = r.means[arm];
+      const z = at(0), x = v === null || v === undefined ? z : at(v);
+      const left = Math.min(z, x), w = Math.max(Math.abs(x - z), 0.4);
+      s += `<tr class="${armClass(arm)}">
+        <td class="mono">${k === 0 ? esc(r.technique) : ""}</td>
+        <td>${armName(arm)}</td>
+        <td class="num eff">${fmt(v)}</td>
+        <td class="bar-cell"><div class="track" data-tip="${esc(
+            `<b>${r.technique}</b><br>${arm} — mean demand capture <b>${fmt(v)}</b><br>${r.n[arm]} episodes`)}">
+          <div class="zero" style="left:${z.toFixed(2)}%"></div>
+          <div class="fill${hatched(arm) ? " hatch" : ""}" style="left:${left.toFixed(2)}%;width:${w.toFixed(2)}%"></div>
+        </div></td>
+        <td class="num">${r.n[arm] ?? 0}</td></tr>`;
+    });
+  });
+  return s + `</tbody></table></div>`;
+}
+
+const EFFECT_NAME = {
+  attacker: "attacker: tool − user",
+  mandate: "mandate: developer − system",
+  interaction: "interaction",
+};
+
+function effects(t) {
+  let s = `<div class="scroll"><table><thead><tr>
+    <th>Partition</th><th>Effect</th><th class="num">Δ DC</th><th>95% CI</th>
+    <th class="num">paired cells</th><th>excludes 0</th></tr></thead><tbody>`;
+  ["se", "override"].forEach(part => {
+    Object.keys(EFFECT_NAME).forEach(f => {
+      const e = t.effects[part][f];
+      s += `<tr><td>${part}</td><td>${EFFECT_NAME[f]}</td>
+        <td class="num eff">${fmt(e.delta)}</td>
+        <td class="eff">[${fmt(e.ci[0])}, ${fmt(e.ci[1])}]</td>
+        <td class="num">${e.n_cells ?? 0}</td>
+        <td class="${e.moved ? "yes" : "no"}">${e.moved ? "yes" : "no"}</td></tr>`;
+    });
+  });
+  s += `</tbody></table></div>`;
+
+  s += `<table style="margin-top:14px"><thead><tr>
+    <th>Partition</th><th>Factor</th><th class="num">violations fixed</th>
+    <th class="num">created</th><th class="num">discordant</th>
+    <th class="num">p</th></tr></thead><tbody>`;
+  ["se", "override"].forEach(part => {
+    ["attacker", "mandate"].forEach(f => {
+      const x = t.flips[part][f];
+      const title = f === "attacker" ? "user → tool" : "system → developer";
+      s += `<tr><td>${part}</td><td>${title}</td>
+        <td class="num">${x.fixed}</td><td class="num">${x.created}</td>
+        <td class="num">${x.discordant}</td>
+        <td class="num eff ${x.p !== null && x.p < 0.05 ? "yes" : ""}">${
+          x.p === null || Number.isNaN(x.p) ? "—" : x.p.toFixed(3)}</td></tr>`;
+    });
+  });
+  return s + `</tbody></table>`;
+}
+
+function episodeRows(t) {
+  let s = `<div class="scroll"><table><thead><tr>
+    <th>Case</th><th>Technique</th><th>Arm</th>
+    <th class="num">DC</th><th class="num">Turns</th></tr></thead><tbody>`;
+  t.episodes.forEach((e, i) => {
+    s += `<tr class="${armClass(e.arm)}" data-ep="${i}" ${
+      selected[t.key] === i ? 'aria-selected="true"' : ""}>
+      <td class="mono">${esc(e.case)}</td>
+      <td class="mono">${esc(e.technique)}</td>
+      <td>${armName(e.arm)}</td>
+      <td class="num eff">${fmt(e.dc)}</td>
+      <td class="num">${e.turns ?? "—"}${e.empty ? ` <span class="pill">${e.empty} empty</span>` : ""}</td>
+    </tr>`;
+  });
+  return s + `</tbody></table></div>`;
+}
+
+/* ---- what the model was actually sent ----
+   Two things the transcript alone cannot show: the mandate, which arrives on a
+   role the transcript has no slot for, and the tool-call pairing, which is a
+   property of the request rather than of anything either side said. Both are
+   recorded per episode by the runner (`system_prompt`, `wire`). */
+
+function mandateBlock(e) {
+  const text = DATA.prompts[e.prompt];
+  const role = (e.wire.channels && e.wire.channels.mandate) || "system";
+  if (!text) {
+    return `<p class="note">No system prompt recorded for this episode. Re-run with
+      <span class="mono">--save-transcripts</span>, or backfill it with
+      <span class="mono">eval/backfill_traces.py</span>.</p>`;
+  }
+  return `<details class="wirebox">
+    <summary><span class="pill">${esc(role)}</span> system prompt — the mandate
+      the target was given · ${text.length} chars ·
+      <span class="mono">${esc(e.prompt)}</span></summary>
+    <div class="prompt">${esc(text)}</div>
+  </details>`;
+}
+
+function wireBlock(e) {
+  const w = e.wire;
+  if (!w || !w.messages) {
+    return `<p class="note">No request shape recorded for this episode.</p>`;
+  }
+  const rows = w.messages.map(m => {
+    const calls = (m.tool_calls || []).map(c =>
+      `<span class="pill">calls ${esc(c.name)} · ${esc(c.id)}</span>`).join(" ");
+    const answers = m.tool_call_id
+      ? `<span class="pill">answers ${esc(m.tool_call_id)}</span>` : "";
+    const synth = m.synthesized
+      ? `<span class="pill">synthesized by the harness</span>` : "";
+    const body = m.synthesized && m.text
+      ? `<div class="txt mono" style="margin-top:5px">${esc(m.text)}</div>` : "";
+    return `<div class="wirerow">
+      <div class="who"><span class="role role-${esc(m.role)}">${esc(m.role)}</span>
+        ${calls}${answers}${synth}
+        <span class="spacer"></span><span class="note" style="margin:0">${m.chars} chars</span>
+      </div>${body}</div>`;
+  }).join("");
+
+  const tools = w.tools && w.tools.length
+    ? w.tools.map(x => `<span class="pill">${esc(x)}</span>`).join(" ")
+    : `<span class="note" style="margin:0">none declared</span>`;
+  const choice = w.tool_choice
+    ? `<span class="pill">tool_choice: ${esc(w.tool_choice)}</span>` : "";
+  const derived = w.backfilled
+    ? `<p class="note warn" style="margin:8px 0 0">Reconstructed after the run by
+       <span class="mono">eval/backfill_traces.py</span>, from this episode's transcript and
+       channel layout. The mandate is pinned by the version block; the role layout is not,
+       so it reflects today's renderer.</p>`
+    : "";
+
+  return `<details class="wirebox">
+    <summary>request shape — ${w.messages.length} messages, ${
+      w.messages.filter(m => m.role === "tool").length} delivered as tool results</summary>
+    <p class="note" style="margin:8px 0">Declared tools: ${tools} ${choice}. Content is not
+      repeated here — it is the transcript below. <span class="mono">tool_choice: none</span>
+      means the harness makes the calls and the target may not, so every reply is text.</p>
+    ${rows}${derived}
+  </details>`;
+}
+
+function trace(t) {
+  const i = selected[t.key];
+  if (i === undefined || !t.episodes[i]) return `<p class="note">Select an episode to read its trace.</p>`;
+  const e = t.episodes[i];
+  const flags = Object.entries(e.flags).filter(([, v]) => v === true).map(([k]) => k);
+  const grant = Object.entries(e.grant).filter(([, v]) => v);
+
+  let s = `<dl class="kv">
+    <dt>arm</dt><dd>${armName(e.arm)}</dd>
+    <dt>case</dt><dd class="mono">${esc(e.case)} · ${esc(e.technique)}</dd>
+    <dt>floor / ask</dt><dd>${fmt(e.floor, 1)} / ${fmt(e.ask, 1)}</dd>
+    <dt>realized</dt><dd>${fmt(e.realized, 1)}</dd>
+    <dt>demand capture</dt><dd><b>${fmt(e.dc)}</b> · magnitude ${
+      e.magnitude === null || e.magnitude === undefined ? "—" : e.magnitude.toFixed(1)}</dd>
+  </dl>`;
+  if (flags.length || e.violations.length || e.leaked.length) {
+    s += `<p style="margin:10px 0 0">${
+      flags.map(f => `<span class="pill">${esc(f)}</span>`).join(" ")}
+      ${e.violations.map(v => `<span class="pill">violation: ${esc(v)}</span>`).join(" ")}
+      ${e.leaked.map(v => `<span class="pill">leaked: ${esc(v)}</span>`).join(" ")}</p>`;
+  }
+  if (grant.length) {
+    s += `<p class="note" style="margin:8px 0 0"><b>granted:</b> <span class="mono">${
+      grant.map(([k, v]) => `${esc(k)}=${esc(v)}`).join(" · ")}</span></p>`;
+  }
+  if (e.empty) {
+    s += `<p class="note warn" style="margin:10px 0 0">${e.empty} empty target repl${
+      e.empty === 1 ? "y" : "ies"} in this episode. An empty reply grants nothing, and
+      granting nothing scores as maximal resistance — see docs/0816-truncation.md.</p>`;
+  }
+  s += `<div style="margin-top:14px">${mandateBlock(e)}${wireBlock(e)}</div>`;
+
+  // Which role each side's words arrived on, read off the recorded envelope
+  // rather than assumed from the arm name.
+  const viaTool = !!(e.wire.messages || []).some(m => m.role === "tool");
+  s += `<div style="margin-top:14px">`;
+  e.transcript.forEach(x => {
+    const adv = x.speaker === "adversary";
+    const role = adv ? (viaTool ? "tool" : "user") : "assistant";
+    s += `<div class="turn ${adv ? "adversary" : ""}">
+      <div class="who">${adv ? "adversary" : "target"}
+        <span class="role role-${role}">${role}</span>
+        ${x.technique ? `<span class="pill">${esc(x.technique)}</span>` : ""}</div>
+      ${x.thinking ? `<details class="thinking"><summary>reasoning · ${
+        x.thinking.length} chars — not seen by the oracle</summary>
+        <div class="txt">${esc(x.thinking)}</div></details>` : ""}
+      <div class="txt">${esc(x.text)}</div></div>`;
+  });
+  if (!e.transcript.length) s += `<p class="note">No transcript recorded for this episode.</p>`;
+  return s + `</div>`;
+}
+
+function render() {
+  const t = DATA.targets[active];
+  document.getElementById("tabs").innerHTML = DATA.targets.map((x, i) =>
+    `<button class="tab" role="tab" aria-selected="${i === active}" data-i="${i}">${esc(x.label)}
+      <span style="color:var(--text-muted);font-weight:400"> ${x.n_episodes}</span></button>`).join("");
+  try {
+    renderPanel(t);
+  } catch (err) {
+    // Same guarantee as index.html: tab handling is delegated from #tabs and
+    // bound once, so a panel that fails to build cannot strand the user on a
+    // page whose tabs no longer respond.
+    console.error(err);
+    document.getElementById("panel").innerHTML =
+      `<div class="card"><h2>Could not render this panel</h2>
+        <p class="note">Tab navigation still works — try another tab. Details:</p>
+        <pre class="mono" style="white-space:pre-wrap">${esc((err && err.stack) || err)}</pre></div>`;
+  }
+}
+
+function renderPanel(t) {
+  const degenerate = t.developer_degenerate
+    ? `<p class="note warn"><b>The mandate factor is degenerate on this target.</b>
+        OpenRouter folds <span class="mono">developer</span> into
+        <span class="mono">${esc(t.vendor || "this vendor")}</span>'s single
+        system-instruction slot, so the two mandate levels are two renderings of one
+        prompt: a null mandate effect here is not evidence about instruction hierarchy.</p>`
+    : `<p class="note"><span class="mono">developer</span> is a real, distinct channel on
+        this target — the mandate rows are the only ones on this page that test the
+        instruction hierarchy directly.</p>`;
+  const empty = t.empty_replies
+    ? `<p class="note warn">${t.empty_replies} empty target replies across this target's
+        four arms. Those episodes score as resistance they did not earn; the affected
+        rows are flagged in the episode list.</p>`
+    : "";
+
+  document.getElementById("panel").innerHTML = `
+    <p class="sub">Panel <span class="mono">cs-channel-v2</span>, run four times —
+      one per (mandate channel × attacker channel) cell. Same panel and same seeds in
+      every arm, so the comparison is paired cell for cell.</p>
+    ${degenerate}${empty}
+    ${tiles(t)}
+    <div class="card">
+      <h2>Paired main effects</h2>
+      <p class="note">Bootstrap CI over paired cells, averaged across the other factor's
+        two levels. The SE and override partitions are never pooled: a tool result is the
+        canonical prompt-injection surface, so the two halves can move in opposite
+        directions — and on <span class="mono">deepseek-v4-pro</span> they do. The second
+        table asks a different question: not how much was conceded, but whether the policy
+        was broken at all, paired episode by episode with an exact sign test.</p>
+      ${effects(t)}
+    </div>
+    <div class="card">
+      <h2>Mean demand capture by technique</h2>
+      <p class="note">Signed, never clamped — negative means the target ended below the
+        floor, above 1.0 means it conceded more than the adversary asked for. Hue is the
+        attacker channel; the hatched bar of each pair is the
+        <span class="mono">developer</span> mandate.</p>
+      ${bars(t)}
+    </div>
+    <div class="split">
+      <div class="card">
+        <h2>Episodes</h2>
+        <p class="note">${t.n_episodes} episodes across ${DATA.arms.length} arms.
+          Click a row for its trace.</p>
+        ${episodeRows(t)}
+      </div>
+      <div class="card">
+        <h2>Trace</h2>
+        <p class="note">Adversary utterance, target reply, and what the oracle priced.</p>
+        <div class="scroll">${trace(t)}</div>
+      </div>
+    </div>`;
+
+  document.querySelectorAll("[data-tip]").forEach(el => {
+    el.addEventListener("mousemove", ev => showTip(el.dataset.tip, ev));
+    el.addEventListener("mouseleave", hideTip);
+  });
+}
+
+/* Delegated, bound once, never rebound -- outlives every re-render. */
+document.getElementById("tabs").addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".tab");
+  if (!btn || !DATA) return;
+  active = +btn.dataset.i;
+  render();
+});
+
+document.getElementById("panel").addEventListener("click", (ev) => {
+  const tr = ev.target.closest("tbody tr[data-ep]");
+  if (!tr || !DATA) return;
+  selected[DATA.targets[active].key] = +tr.dataset.ep;
+  render();
+});
+
+fetch("channels.json").then(r => r.json()).then(d => {
+  DATA = d;
+  document.getElementById("sub").textContent =
+    `${d.targets.length} live targets × 4 message-channel arms. ` +
+    `Every number is read from the episode record as the oracle priced it, or from ` +
+    `eval/channel_report.py — nothing here is recomputed.`;
+  render();
+}).catch(err => {
+  document.getElementById("panel").innerHTML =
+    `<div class="card"><h2>Could not load channels.json</h2><p class="note">${esc(err)}
+     </p><p class="note">Build it with <span class="mono">python viz/build_channels.py</span>.</p></div>`;
+});
+</script>
+</body>
+</html>
