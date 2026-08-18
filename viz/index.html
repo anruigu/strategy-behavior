@@ -167,6 +167,20 @@
   }
   .viz-root .think .txt { color: var(--text-secondary); font-style: italic; white-space: pre-wrap; }
   .viz-root .pill.think { background: transparent; border: 1px dashed var(--border-strong); }
+  /* The brief is set apart from the conversation the way reasoning is, but with
+     a solid rule rather than a dashed one: reasoning is the target's private
+     deliberation, the system prompt is input it was handed. Neither is
+     something the counterparty said. */
+  .viz-root .sysprompt {
+    margin: 8px 0 4px; padding: 10px 12px;
+    border-left: 3px solid var(--border-strong);
+    background: var(--surface-2); border-radius: 0 6px 6px 0;
+    max-height: 340px; overflow: auto;
+  }
+  .viz-root .sysprompt .txt {
+    color: var(--text-secondary); white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  }
   .viz-root .thinkToggle {
     margin-left: 6px; font: inherit; font-size: 12px; cursor: pointer;
     background: var(--surface-2); border: 1px solid var(--border);
@@ -178,6 +192,8 @@
     <h1>Exploit-bench — traces</h1>
     <div class="spacer"></div>
     <a href="channels.html" style="color:var(--text-secondary);font-size:13px">message channels →</a>
+    <a href="consistency.html" style="color:var(--text-secondary);font-size:13px">counterparty identity →</a>
+    <a href="cases.html" style="color:var(--text-secondary);font-size:13px">case sets →</a>
     <button id="viewToggle" aria-pressed="false">Table view</button>
     <button id="themeToggle">Dark</button>
   </header>
@@ -277,15 +293,33 @@ let DATA = null, active = 0, tableView = false, selected = {}, group = {}, soloT
 // Reasoning is collapsed by default: it is usually longer than the utterance
 // and would bury the thing that actually got scored.
 let thinkOpen = false;
+// Eval by default is wrong here: the frozen set is the instrument, but hiding
+// the training rollouts hides what the policy actually sees. Show both and let
+// the `set` column say which is which.
+let setFilter = {};
+// The brief is long and identical across every episode of a case, so it is
+// collapsed by default too -- but it is the other half of "what did this model
+// see", and a reply is not readable without the question.
+let promptOpen = false;
 
 const PALETTE_SLOTS = 3;
 const targetsOf = (d) => d.targets || [];
-const groupOf = (d) => group[d.key] || (targetsOf(d).some(t => t.kind === "frontier")
-  && !targetsOf(d).some(t => t.kind === "stub") ? "frontier" : "stub");
+const groupOf = (d) => group[d.key] || (inGroup(d, "stub").length ? "stub" : groupsOf(d)[0]);
 const inGroup = (d, g) => targetsOf(d).filter(t => t.kind === g).map(t => t.key);
-const groupsOf = (d) => ["stub", "frontier"].filter(g => inGroup(d, g).length);
+const KINDS = ["stub", "open", "frontier"];
+const KIND_LABEL = {stub: "Stub fixtures", open: "Open weights",
+                    frontier: "Frontier models"};
+// Which scenario set an episode came from — orthogonal to which target ran it.
+const SET_LABEL = {all: "All scenarios", eval: "Eval set (frozen)",
+                   train: "Training set (generated)"};
+const groupsOf = (d) => KINDS.filter(g => inGroup(d, g).length);
 const chartable = (d) => inGroup(d, groupOf(d)).length <= PALETTE_SLOTS;
 const soloOf = (d) => soloTarget[d.key] || inGroup(d, groupOf(d))[0];
+const setOf = (d) => setFilter[d.key] || "all";
+const setsIn = (d) => {
+  const s = new Set((d.episodes || []).map(e => e.set || "eval"));
+  return ["eval", "train"].filter(k => s.has(k));
+};
 const labelOf = (d, key) => (targetsOf(d).find(t => t.key === key) || {}).label || key;
 
 const fmt = (v, d = 3) => v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + v.toFixed(d);
@@ -417,20 +451,28 @@ function tiles(dom) {
 
 function episodeRows(dom) {
   const keep = dom.series ? null : new Set(inGroup(dom, groupOf(dom)));
+  const wantSet = dom.series ? "all" : setOf(dom);
   const eps = dom.episodes;
   const head = dom.series ? "Arm" : "Target";
+  const anyDiff = eps.some(e => e.difficulty);
   let s = `<div class="scroll"><table><thead><tr>
-    <th>Case</th><th>Technique</th><th>${head}</th>
-    <th class="num">DC</th><th class="num">Mag</th><th class="num">Turns</th></tr></thead><tbody>`;
+    <th>Case</th><th>Set</th><th>Technique</th><th>${head}</th>
+    <th class="num">DC</th><th class="num">Mag</th><th class="num">Turns</th>
+    ${anyDiff ? '<th class="num">pass</th><th class="num">sd</th>' : ""}</tr></thead><tbody>`;
   eps.forEach((e, i) => {
     if (keep && !keep.has(e.target)) return;
+    if (wantSet !== "all" && (e.set || "eval") !== wantSet) return;
     s += `<tr data-ep="${i}" ${selected[dom.key] === i ? 'aria-selected="true"' : ""}>
       <td class="mono">${esc(e.case)}</td>
+      <td><span class="pill">${esc(e.set || "eval")}</span></td>
       <td class="mono">${esc(e.technique)}</td>
       <td><span class="swatch" style="${swatchStyle(e.target)};display:inline-block;margin-right:6px"></span>${esc(labelOf(dom, e.target))}</td>
       <td class="num">${fmt(e.dc)}</td>
       <td class="num">${e.magnitude === null || e.magnitude === undefined ? "—" : e.magnitude.toFixed(1)}</td>
-      <td class="num">${e.turns ?? "—"}</td></tr>`;
+      <td class="num">${e.turns ?? "—"}</td>
+      ${anyDiff ? `<td class="num">${e.difficulty ? e.difficulty.pass_rate.toFixed(2) : "—"}</td>
+                   <td class="num">${e.difficulty ? e.difficulty.sd_dc.toFixed(3) : "—"}</td>` : ""}
+      </tr>`;
   });
   s += `</tbody></table></div>`;
   return s;
@@ -451,11 +493,15 @@ function trace(dom) {
 
   let s = `<dl class="kv">
     <dt>target</dt><dd class="mono">${esc(labelOf(dom, e.target))}</dd>
-    <dt>case</dt><dd class="mono">${esc(e.case)}</dd>
+    <dt>case</dt><dd class="mono">${esc(e.case)} · ${esc(e.set || "eval")} set</dd>
     <dt>cell</dt><dd class="mono">${esc(e.technique)} · intensity ${esc(e.intensity)} · ${e.informed ? "informed" : "blind"}</dd>
     <dt>floor / ask / cap</dt><dd>${fmt(e.floor, 1)} / ${fmt(e.ask, 1)} / ${fmt(e.cap, 1)}</dd>
     <dt>realized</dt><dd>${fmt(e.realized, 1)}</dd>
     <dt>demand capture</dt><dd><b>${fmt(e.dc)}</b> · magnitude ${e.magnitude?.toFixed(1) ?? "—"}</dd>
+    ${e.difficulty ? `<dt>difficulty</dt><dd>solved ${e.difficulty.solved}/${e.difficulty.n}
+      · sd ${e.difficulty.sd_dc.toFixed(3)} · <b>${esc(e.difficulty.bucket)}</b>
+      <span class="note">(k=${e.difficulty.k} on ${esc(e.difficulty.target)}; kept when
+      either the pass rate or the spread is informative)</span></dd>` : ""}
   </dl>`;
   if (flags.length) s += `<p style="margin:10px 0 0">${flags.map(f => `<span class="pill">${esc(f)}</span>`).join(" ")}</p>`;
   lists.forEach(([k, v]) => {
@@ -471,6 +517,20 @@ function trace(dom) {
       Object.entries(e.positions).map(([k, v]) => `${esc(k)}=${esc(v)}`).join(" · ")}</span></p>`;
   }
 
+  const brief = e.prompt_ref && dom.prompts ? dom.prompts[e.prompt_ref] : null;
+  if (brief) {
+    s += `<div style="margin-top:12px">
+      <button class="thinkToggle" data-role="prompt">${
+        promptOpen ? "Hide" : "Show"} system prompt</button>
+      <span class="note" style="margin-left:8px">the brief this target worked from
+        · ${brief.length}c · shared by every episode of <span class="mono">${esc(e.case)}</span></span>`;
+    if (promptOpen) {
+      s += `<div class="sysprompt"><div class="who">system prompt · what the target was told</div>
+        <div class="txt">${esc(brief)}</div></div>`;
+    }
+    s += `</div>`;
+  }
+
   const anyThinking = e.transcript.some(t => t.thinking);
   s += `<div style="margin-top:14px">`;
   if (anyThinking) {
@@ -478,7 +538,7 @@ function trace(dom) {
       utterance and is <b>never scored</b> — the ledger and the canary check read the
       utterance only, so an action line drafted while deliberating is not a concession
       and a secret named in reasoning is not a disclosure.
-      <button class="thinkToggle" data-open="${thinkOpen ? "1" : "0"}">${
+      <button class="thinkToggle" data-role="think">${
         thinkOpen ? "Hide" : "Show"} reasoning</button></p>`;
   }
   e.transcript.forEach(t => {
@@ -544,17 +604,45 @@ function renderPanel(dom) {
           `<option value="${k}" ${k === g ? "selected" : ""}>${
             k === "stub" ? "Stub fixtures" : "Frontier models"} (${inGroup(dom, k).length})</option>`).join("")}
         </select></label>
+      ${setsIn(dom).length > 1 ? `<label>Scenarios
+        <select id="setSel">${["all", ...setsIn(dom)].map(k =>
+          `<option value="${k}" ${k === setOf(dom) ? "selected" : ""}>${
+            SET_LABEL[k] || k}</option>`).join("")}
+        </select></label>` : ""}
       ${solo ? `<label>Charting
         <select id="soloSel">${members.map(k =>
           `<option value="${k}" ${k === soloOf(dom) ? "selected" : ""}>${esc(labelOf(dom, k))}</option>`).join("")}
         </select></label>` : ""}
     </div>` : "";
 
-  const kindNote = dom.series ? "" : (g === "stub"
-    ? `<p class="note">Stub fixtures: scripted targets with known answers. The defender
-       should score exactly 0.000 — this is a wiring check, not a measurement.</p>`
-    : `<p class="note">Frontier models on <span class="mono">bz-trace-v1</span>, the same
-       cell as the reported panel. Read these as evidence; read the stub tab as plumbing.</p>`);
+  const KIND_NOTE = {
+    stub: `Stub fixtures: scripted targets with known answers. The defender should
+      score exactly 0.000 — this is a wiring check, not a measurement.`,
+    frontier: `Frontier models on <span class="mono">bz-trace-v1</span>, the same cell as
+      the reported panel. Read these as evidence; read the stub group as plumbing.`,
+    _train_note: `Rollouts over the <b>generated training set</b>
+      (<span class="mono">bz-scenarios-train-v1</span>), shown in matched trust pairs:
+      each <span class="mono">…c</span> scenario and its <span class="mono">…v</span> twin
+      have the same account, demand and script, differing only in whether the buyer's
+      assertion is on the record. These are what the policy <i>sees</i>, not how it
+      scores — the frozen eval scenarios are the instrument and are never trained on.`,
+    open: `Open-weights models evaluated as RL base candidates, same panel and budget as
+      the frontier group. Kept separate because on <span class="mono">bz-candidate-v1</span>
+      every one of them sits at or below sonnet-5 on lift — a finding that disappears if
+      the two sets are pooled. Check reasoning length before trusting a low score here:
+      qwen3.5-9b writes ~11k characters per turn and empties its budget before speaking.`,
+  };
+  const setNote = (!dom.series && setsIn(dom).length > 1) ? `
+    <p class="note"><b>Two scenario sets.</b> <span class="mono">eval</span> is the
+    frozen <span class="mono">bz-scenarios-v1</span> — the instrument, never trained
+    on. <span class="mono">train</span> is the generated
+    <span class="mono">bz-scenarios-train-v1</span>, shown in matched trust pairs
+    (<span class="mono">…c</span> contested and <span class="mono">…v</span> its
+    verified twin: same account, same demand, same script, differing only in whether
+    the buyer's assertion is on the record). A number computed on a training
+    scenario is not comparable to one computed on the frozen set.</p>` : "";
+  const kindNote = dom.series ? "" :
+    `<p class="note">${KIND_NOTE[g] || ""}</p>${setNote}`;
 
   const paletteNote = (!dom.series && !chartable(dom))
     ? `<p class="note">This group has ${members.length} targets and the palette validates
@@ -580,7 +668,7 @@ function renderPanel(dom) {
       <div class="card">
         <h2>Episodes</h2>
         <p class="note">${nEps} episodes across ${members.length}
-          ${dom.series ? "channel arms" : (g === "stub" ? "stub targets" : "frontier targets")}.
+          ${dom.series ? "channel arms" : (KIND_LABEL[g] || g).toLowerCase()}.
           Click a row for its trace.</p>
         ${episodeRows(dom)}
       </div>
@@ -636,7 +724,8 @@ document.getElementById("tabs").addEventListener("click", (ev) => {
 document.getElementById("panel").addEventListener("click", (ev) => {
   const tog = ev.target.closest(".thinkToggle");
   if (tog && DATA) {
-    thinkOpen = !thinkOpen;
+    if (tog.dataset.role === "prompt") promptOpen = !promptOpen;
+    else thinkOpen = !thinkOpen;
     const pane = document.getElementById("tracePane");
     const top = pane ? pane.scrollTop : 0;
     if (pane) { pane.innerHTML = trace(DATA.domains[active]); pane.scrollTop = top; }
@@ -666,6 +755,10 @@ document.getElementById("panel").addEventListener("change", (ev) => {
     group[dom.key] = ev.target.value;
     delete selected[dom.key];   // an episode index means nothing across groups
     syncView();
+    render();
+  } else if (ev.target.id === "setSel") {
+    setFilter[dom.key] = ev.target.value;
+    delete selected[dom.key];   // an episode index does not survive a filter
     render();
   } else if (ev.target.id === "soloSel") {
     soloTarget[dom.key] = ev.target.value;

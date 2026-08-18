@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from math import isfinite
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,9 +36,11 @@ OUT = Path(__file__).resolve().parent / "channels.json"
 
 # (tag, label) per target, in the order the tabs should appear.
 TARGETS: tuple[tuple[str, str], ...] = (
-    ("dsv4pro", "deepseek-v4-pro"),
-    ("gpt56terra", "gpt-5.6-terra"),
+    ("oss120", "gpt-oss-120b"),
+    ("oss20", "gpt-oss-20b"),
     ("g37", "gemini-3.7-flash"),
+    ("gpt56terra", "gpt-5.6-terra"),
+    ("dsv4pro", "deepseek-v4-pro"),
 )
 ARMS: tuple[str, ...] = ("system/user", "developer/user", "system/tool", "developer/tool")
 ARM_NOTE = {
@@ -48,6 +51,23 @@ ARM_NOTE = {
 }
 
 FLAGS = ("compliant", "inadequate", "closed_by_target")
+
+
+def finite(obj):
+    """NaN and infinity -> null, everywhere in the bundle.
+
+    JSON has no NaN. Python writes one anyway, and the browser then fails the whole
+    document rather than the one field, so a `p` that was legitimately undefined
+    takes the page down with it. `null` is the honest encoding and the page already
+    renders it as an em dash.
+    """
+    if isinstance(obj, float):
+        return obj if isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [finite(v) for v in obj]
+    return obj
 
 
 def arm_file(tag: str, arm: str) -> Path:
@@ -73,9 +93,14 @@ def episode(rec: dict, arm: str) -> dict:
         "ask": rec.get("ask"),
         "realized": rec.get("realized"),
         "turns": rec.get("turns"),
-        # The validity column, per episode: an empty target reply grants nothing
-        # and so scores as maximal resistance. See docs/0816-truncation.md.
+        # Two validity columns, per episode. An empty target reply grants nothing
+        # and so scores as maximal resistance (docs/0816-truncation.md). And an
+        # episode whose labelled technique was never uttered is not evidence about
+        # that technique at all -- under cs-env-1 that was most of some arms.
         "empty": rec.get("empty_replies") or 0,
+        "technique_turns": rec.get("technique_turns"),
+        "closed": bool(rec.get("closed_by_target")),
+        "env": rec.get("versions", {}).get("env", "?"),
         "flags": {k: rec[k] for k in FLAGS if k in rec},
         "grant": rec.get("grant") or {},
         "violations": rec.get("violations") or [],
@@ -111,13 +136,37 @@ def stats(tags: list[str]) -> dict[str, dict]:
         return {r["tag"]: r for r in json.loads(js.read_text())}
 
 
+def env_versions(tag: str) -> set[str]:
+    """Which harness version each arm of this target was run under."""
+    out: set[str] = set()
+    for arm in ARMS:
+        p = arm_file(tag, arm)
+        if not p.exists():
+            continue
+        for line in p.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                out.add(json.loads(line)["versions"].get("env", "?"))
+                break
+    return out
+
+
 def main() -> int:
     present: list[tuple[str, str]] = []
     for tag, label in TARGETS:
-        if all(arm_file(tag, a).exists() for a in ARMS):
-            present.append((tag, label))
-        else:
+        if not all(arm_file(tag, a).exists() for a in ARMS):
             print(f"  {tag}: incomplete 2x2 - skipped")
+            continue
+        # Four arms are comparable only if one harness produced them. Under
+        # cs-env-1 a target's [CLOSE] ended the episode, so an arm where the
+        # target closed early ran a fraction of the turns of one where it did not
+        # -- mixing that with cs-env-2 would put a conversation-length artifact
+        # into a chart about message channels, which is the exact bug that
+        # retired the first set of these runs.
+        seen = env_versions(tag)
+        if len(seen) > 1:
+            raise SystemExit(f"{tag}: arms span {sorted(seen)} -- re-run the whole 2x2 "
+                             "under one env version before viewing it")
+        present.append((tag, label))
     if not present:
         print("no complete 2x2 runs found; nothing to build")
         return 1
@@ -172,8 +221,16 @@ def main() -> int:
         print(f"  {tag:12} {len(eps):3} episodes, {len(techniques)} techniques, "
               f"{sum(e['empty'] for e in eps)} empty replies")
 
-    OUT.write_text(json.dumps(bundle, ensure_ascii=False, separators=(",", ":")) + "\n",
-                   encoding="utf-8")
+    # `json.dumps` will happily write bare NaN, which is not JSON and which
+    # `JSON.parse` rejects with a syntax error pointing at a byte offset -- so the
+    # page dies on load and says nothing about which statistic was undefined. A
+    # NaN here is meaningful (a sign test with no discordant pairs has no p), so it
+    # becomes null, and `allow_nan=False` makes any future non-finite value an
+    # exception at build time instead of a broken page at read time.
+    OUT.write_text(
+        json.dumps(finite(bundle), ensure_ascii=False, separators=(",", ":"),
+                   allow_nan=False) + "\n",
+        encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)} ({OUT.stat().st_size / 1024:.0f} KB)")
     return 0
 

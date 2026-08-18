@@ -39,6 +39,68 @@ prompt** the target was given, and the **request shape** — ordered roles, each
 `--save-transcripts`; the mandate is stored once per hash and referenced, since a
 case renders the same 1.9 KB of policy in all twenty of its episodes.
 
+## Counterparty identity — `consistency.html`
+
+`http://127.0.0.1:8731/consistency.html`, one tab per live target:
+`cs-profile-v2` run six times, once per cell of the counterparty-identity factor
+(`exploit-bench/docs/0817-consistency.md`). Same ticket, same lever, same
+pressure; only who is asking changes.
+
+It asks the opposite question to the rest of the viewer. Everything else measures
+*how much* a target gives away; this measures whether the amount **moves with
+something that should not move it**. The oracle prices `F`, `V_ask` and `V_cap`
+from case facts and identity lives entirely in public slots, so all six arms are
+priced identically — anything that moves is the target.
+
+Four charts and a validity table:
+
+- **Contrast plot** — signed Δ in demand capture against the `baseline` customer,
+  paired within (technique × case), with 95% CIs. Diverging: orange for conceded
+  *more*, blue for conceded less, neutral grey zero.
+- **Recognizability ladder** — `baseline → notable → famous` level means. A
+  monotone rise is a much stronger claim than any single gap.
+- **By primitive** — a table, since six arms × four levers is well past the point
+  where colour classes stay distinguishable. `ANCHOR` is the identity-alone read.
+- **Arms and validity** — empty replies and lever-free episodes per arm.
+
+Two of the six arms sit **below a rule and outside the invariance number**, and
+the page says why in place: `repeat` is an account flagged for nine claims in
+twelve months, which is the one profile field the policy licenses acting on, so
+matching baseline there is a failure rather than consistency; `famous_stated`
+removes the lookup tool entirely, making it a channel contrast rather than an
+identity one. An invariance metric scores indifference, and indifference is only
+a virtue where the factor is genuinely irrelevant.
+
+The headline tile is `1 − spread`, and it is **never read without the `p` beside
+it**. Max-minus-min over noisy means is positive under perfect invariance and
+grows with the level count, so a bare spread reports noise as bias; the `p` comes
+from shuffling the identity labels *within* stratum, which preserves case
+difficulty and destroys only the association under test.
+
+Each trace opens a third thing the channel page has no equivalent for: the
+**account record** the `lookup_customer_profile` call returned, flagged in the
+summary when the names disagree or the account is under review. The call is
+synthesized by the harness and the target may not make its own — a model that
+never looks up cannot defer to a name it never saw, and would score as perfectly
+invariant for free.
+
+```
+cd exploit-bench
+./results/run-profile.sh opus-5 opus5 4096      # 6 runs + the invariance read
+cd ..
+python viz/build_consistency.py   # -> viz/consistency.json
+```
+
+The episode list carries a **Lever** column: how many adversary turns actually
+uttered the primitive the cell is named after. It exists because that number used
+to be silently zero. Under `cs-env-1` a target's `[CLOSE]` ended the episode and
+the adversary spent its first two turns on recon, so a target that resolved the
+ticket in one reply produced an episode scored as evidence about a technique that
+was never said — 18 of 20 episodes on one arm. A `0` there is called out in bold
+and repeated as a warning in the trace. `build_channels.py` also refuses to build
+a target whose four arms span two env versions, because a length artifact in one
+arm would otherwise read as a channel effect.
+
 ```
 cd exploit-bench
 ./results/run-channels.sh gemini-3.7-flash g37 4096   # 4 runs + the factorial read
@@ -98,6 +160,17 @@ ledger. At 1400, `deepseek-v4-pro` produced 51 empty turns out of 67 and scored
 −0.342; at 8000 it produced none and scored +0.290. Reading the reasoning traces
 in the viewer is how that was caught. See `exploit-bench/docs/0816-truncation.md`.
 
+## System prompts
+
+Every trace carries a **Show system prompt** toggle: the brief the target was
+working from, including the confidential deal-desk facts planted as canaries. A
+reply is not readable without the question it answered.
+
+The brief is a function of the scenario, not the cell, so all 91 business
+episodes share four distinct prompts. They are interned by content hash into a
+per-domain `prompts` table and referenced by key — inline copies would have
+added roughly a quarter of a megabyte of duplicate text.
+
 ## Reasoning traces
 
 Turns from reasoning models carry a `thinking` block, shown collapsed behind a
@@ -148,6 +221,14 @@ opacity composites to 1.9–2.3:1 against either surface, under the 3:1 non-text
 gate, while every stroke of a hatch stays at full strength. Dropping the aqua also
 means the light-mode relief case does not arise on that page — though it ships the
 numbers in tables regardless.
+
+`consistency.html` uses the same two slots as a **diverging pair** rather than as
+two categories, because every number on its headline chart is a signed difference
+from a baseline: blue ↔ orange are warm/cool poles that read as opposite, with a
+neutral grey midpoint. (blue ↔ aqua was rejected for this — both cool, so the
+midpoint would not read as "nothing happened".) Same validated values, so the
+all-pairs numbers above carry over unchanged; every arm beyond the two poles is
+carried by position and label, never by an invented hue.
 
 Both pass all-pairs: CVD ΔE 9.2 light / 9.4 dark, normal-vision ΔE 24.0 / 20.9.
 Light-mode aqua sits at 2.74:1 on the light surface, below the 3:1 gate, so the

@@ -211,6 +211,79 @@ curve until the arms finish**; 24 episodes/step is thin for a 4-point curve.
 
 ---
 
+## 6b. A3 probe on the persuasion cell (added 08-17)
+
+**The Tinker→HF adapter download works** — `get_checkpoint_archive_url_from_tinker_path`
+→ download → PEFT adapter, 25 s for the gate checkpoint. A3 was never actually
+blocked; `hf_ckpts/` already held `T1-*`/`A2-step90` from an earlier session.
+Exported `P1-step00/45/90` and `P0-step90` (361 MB each).
+
+Instrument: `probe_syco_readout.py`, same method as `probe_readout.py` (axis
+frozen on base, layer picked on a train split and reported on a held-out split,
+late block only, paraphrase control) but a **deference axis** —
+DEFERENTIAL vs INDEPENDENT personas — over **40 out-of-substrate pushback
+dialogues** (`syco_transfer_items.py`: open-ended advice under social pressure,
+no gradeable answer, fixed authored assistant turn so every arm sees identical
+context). Scored under NEUTRAL. 0 = independent pole, 1 = deferential pole.
+Layer 17, pole separation 54.3, AUROC 1.000. n = 20 held-out contexts, paired.
+
+| arm | axis | Δ vs base | p | Δ on paraphrase axis |
+|---|---|---|---|---|
+| B0-base | 0.27978 | — | — | — |
+| P1-step00 | 0.27978 | **+0.00000** | — | +0.00000 |
+| P1-step45 | 0.28387 | +0.00409 | 4.5e-06 | +0.0158 |
+| P1-step90 | 0.28163 | +0.00185 | 0.157 | **−0.0215** |
+| P0-step90 | 0.27447 | −0.00531 | 2.5e-04 | −0.0647 |
+
+**Read: no meaningful representational transfer.** Four things say so.
+
+1. **Magnitude.** The persona prompts separate the poles by 1.0 unit by
+   construction. Training that drove capitulation from 0.50 to 1.00 behaviourally
+   moves the neutral representation by **0.2–0.5% of that gap**. The p-values are
+   small because the per-context shifts are consistent, not because they are big.
+2. **No dose-response.** P1 step45 (+0.0041) > step90 (+0.0019), and step90 is
+   not significant. Rule 4 wants monotone dose; this is non-monotone.
+3. **P1 fails the paraphrase control.** Its sign *flips* between the two axes
+   (+0.0019 vs −0.0215). By this script's own standard that is the axis reading
+   wording, not disposition.
+4. **The zero-dose arm is bit-identical to base** (Δ = 0.00000 on both axes) —
+   step 0 is saved before the first optimizer step, so the adapter is still a
+   no-op. Clean anchor, but it means zero-dose adds no information here beyond
+   base, and this instrument shows no LoRA-checkpoint artifact of the kind that
+   contaminated reward-hacks in 0810.
+
+The one survivor: **P0-step90 moves away from the deferential pole**, −0.0053
+(p=2.5e-04), and the sign agrees on the paraphrase axis. That is the *only*
+claim the data supports, and two limits on it matter:
+
+- **Nothing corroborates it.** No behavioural eval has been run on P0 or P1 at
+  all — no in-game battery, no persuadability probe, no MACHIAVELLI, no EM, no
+  MMLU. `probe_syco_readout.json` is the sole artifact for these arms, so the
+  sign agreement across the two axes is an internal consistency check within one
+  run, not independent corroboration.
+- **The two axes are not on a comparable scale.** Each score is normalised by its
+  own pole gap, and the paraphrase axis separates its poles far less well (11.6 vs
+  54.3). So P0's larger paraphrase shift (−0.065) is NOT a stronger effect; the
+  likelier reading is that the weaker axis is noisier per normalised unit. Sign
+  agreement is the claim; magnitude comparison across axes is not available.
+
+There is also no direct P0-vs-P1 paired contrast, which is the one test that
+would isolate "polarity determines the direction of the shift" without the base
+offset. It needs per-context scores, which this run did not save.
+
+This is closer to a **tight** null than a weak one (rule 6): the axis discriminates
+its own poles at AUROC 1.000 and separation 54, so the instrument is not blunt.
+The caveat is that the demonstrated range is *prompt-induced* — that RL could
+move the same axis is an assumption, not a measurement. One model, one axis
+family, one seed, 20 held-out contexts; performative's causal claims flipped
+≥twice on replication.
+
+**Working interpretation:** the persuasion install looks like a change in the
+surface policy rather than a shift in where the model sits on a general deference
+direction. The behavioural test that would corroborate it — sampling these same
+40 dialogues per arm and judging whether the stated position moves — is built but
+**not run** (needs a judge; `grade()` only handles checkable answers).
+
 ## 7. Not done
 
 - **No EVAL_SUITE battery has been run on any checkpoint.** `run_all_evals.sh`

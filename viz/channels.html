@@ -226,6 +226,13 @@
   <header class="top">
     <h1>Exploit-bench — message channels</h1>
     <div class="spacer"></div>
+    <!-- The sibling factor page. Both are one-target-per-tab with one series per
+         arm; they are separate pages because the statistic differs -- a 2x2 reads
+         as a factorial with hue and hatch carrying the two factors, while the six
+         identity arms read as a spread against a permutation null. See
+         viz/build_consistency.py. -->
+    <a href="consistency.html" style="color:var(--text-secondary);font-size:13px">counterparty identity →</a>
+    <a href="cases.html" style="color:var(--text-secondary);font-size:13px">case sets →</a>
     <a href="./" style="color:var(--text-secondary);font-size:13px">← smoke traces</a>
   </header>
   <p class="sub" id="sub"></p>
@@ -358,7 +365,9 @@ function effects(t) {
 function episodeRows(t) {
   let s = `<div class="scroll"><table><thead><tr>
     <th>Case</th><th>Technique</th><th>Arm</th>
-    <th class="num">DC</th><th class="num">Turns</th></tr></thead><tbody>`;
+    <th class="num">DC</th><th class="num">Turns</th>
+    <th class="num" title="adversary turns that carried the labelled technique">Lever</th>
+    </tr></thead><tbody>`;
   t.episodes.forEach((e, i) => {
     s += `<tr class="${armClass(e.arm)}" data-ep="${i}" ${
       selected[t.key] === i ? 'aria-selected="true"' : ""}>
@@ -367,6 +376,11 @@ function episodeRows(t) {
       <td>${armName(e.arm)}</td>
       <td class="num eff">${fmt(e.dc)}</td>
       <td class="num">${e.turns ?? "—"}${e.empty ? ` <span class="pill">${e.empty} empty</span>` : ""}</td>
+      <td class="num">${e.technique_turns === null || e.technique_turns === undefined
+        ? "—"
+        : (e.technique_turns === 0
+            ? `<b title="the labelled primitive was never uttered">0</b>`
+            : e.technique_turns)}</td>
     </tr>`;
   });
   return s + `</tbody></table></div>`;
@@ -447,6 +461,9 @@ function trace(t) {
   let s = `<dl class="kv">
     <dt>arm</dt><dd>${armName(e.arm)}</dd>
     <dt>case</dt><dd class="mono">${esc(e.case)} · ${esc(e.technique)}</dd>
+    <dt>lever applied</dt><dd>${e.technique_turns === null || e.technique_turns === undefined
+      ? "—" : `${e.technique_turns} of ${e.turns} adversary turns carried ${esc(e.technique)}`}${
+      e.closed ? " · the target tried to close" : ""}</dd>
     <dt>floor / ask</dt><dd>${fmt(e.floor, 1)} / ${fmt(e.ask, 1)}</dd>
     <dt>realized</dt><dd>${fmt(e.realized, 1)}</dd>
     <dt>demand capture</dt><dd><b>${fmt(e.dc)}</b> · magnitude ${
@@ -461,6 +478,11 @@ function trace(t) {
   if (grant.length) {
     s += `<p class="note" style="margin:8px 0 0"><b>granted:</b> <span class="mono">${
       grant.map(([k, v]) => `${esc(k)}=${esc(v)}`).join(" · ")}</span></p>`;
+  }
+  if (e.technique_turns === 0) {
+    s += `<p class="note warn" style="margin:10px 0 0">The primitive this cell is named
+      after was never uttered — every adversary turn here was recon or an opener. This
+      episode is not evidence about <span class="mono">${esc(e.technique)}</span>.</p>`;
   }
   if (e.empty) {
     s += `<p class="note warn" style="margin:10px 0 0">${e.empty} empty target repl${
@@ -530,6 +552,20 @@ function renderPanel(t) {
       every arm, so the comparison is paired cell for cell.</p>
     ${degenerate}${empty}
     ${tiles(t)}
+    <div class="card">
+      <h2>Open weights against frontier</h2>
+      <p class="note">Every target that has run the baseline arm — (system, user) on this
+        same panel, under <span class="mono">cs-env-2</span> — on one axis. Solid is lift
+        over each target's own lever-free control, which is the ranking quantity; hatched
+        is raw demand capture, which ranks generosity. The gap between them is the whole
+        reason the control exists. Right panel: the same numbers per primitive, family
+        means. Regenerate with
+        <span class="mono">python eval/plot_open.py</span>.</p>
+      <a href="open-vs-frontier.png" target="_blank"><img src="open-vs-frontier.png"
+        alt="Lift and raw demand capture per target, open weights against frontier, and
+             per-primitive family means"
+        style="width:100%;border:1px solid var(--border);border-radius:9px"></a>
+    </div>
     <div class="card">
       <h2>Paired main effects</h2>
       <p class="note">Bootstrap CI over paired cells, averaged across the other factor's
