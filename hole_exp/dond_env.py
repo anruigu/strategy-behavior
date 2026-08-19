@@ -57,10 +57,11 @@ from __future__ import annotations
 
 import itertools
 import random
+import pathlib
 import sys
 from typing import Callable, Dict, List, Optional, Tuple
 
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import core  # noqa: E402
 

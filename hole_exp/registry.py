@@ -19,10 +19,11 @@ why `capture` means the same thing in the trust game and in the bribery domain.
 from __future__ import annotations
 
 import sys
+from pathlib import Path  # noqa: E402
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import core  # noqa: E402
 
@@ -63,13 +64,15 @@ def _load() -> Dict[str, EnvSpec]:
     import gatekeep_env
     import ipd_env
     import markets_env
+    import merchant_env
     import politics_env
     import pubgoods_env
     import trust_env
     import ultimatum_env
 
     mods = [ipd_env, ultimatum_env, dond_env, pubgoods_env, trust_env,
-            politics_env, markets_env, commerce_env, gatekeep_env, agency_env]
+            politics_env, markets_env, commerce_env, gatekeep_env, agency_env,
+            merchant_env]
     specs = {}
     for m in mods:
         specs[m.NAME] = EnvSpec(
@@ -82,7 +85,59 @@ def _load() -> Dict[str, EnvSpec]:
     return specs
 
 
+def _load_gen() -> Dict[str, EnvSpec]:
+    """Spec-backed environments (the breadth generator, 0818 plan).
+
+    `specs/*.json` is the ACCEPTED corpus: human-curated, loaded always, and a
+    broken file raises rather than silently thinning the roster.
+    `specs/candidates/*.json` is the pipeline's working set — generated but not
+    yet signed off — and loads only under HOLE_GEN_CANDIDATES=1, so a
+    half-tuned candidate can never wander into a training mix or a default
+    check run by existing. Files starting with `_` are pipeline artifacts, not
+    specs (see spec.spec_files).
+    """
+    import os
+
+    import spec
+    import spec_env
+
+    specs_dir = Path(__file__).resolve().parent / "specs"
+    files = spec.spec_files(specs_dir)
+    if os.environ.get("HOLE_GEN_CANDIDATES"):
+        files += spec.spec_files(specs_dir / "candidates")
+    out: Dict[str, EnvSpec] = {}
+    for f in files:
+        sp = spec_env.load_spec(f)  # validates; raises SpecError with the path
+        if sp.name != f.stem:
+            raise SystemExit(f"{f}: spec name {sp.name!r} != filename")
+        if sp.name in out:
+            raise SystemExit(f"duplicate generated env {sp.name!r} ({f})")
+        out[sp.name] = spec_env.build_env_spec(sp)
+    return out
+
+
 ENVS: Dict[str, EnvSpec] = _load()
+
+_GEN = _load_gen()
+_collide = set(_GEN) & set(ENVS)
+if _collide:
+    raise SystemExit(f"generated env names collide with hand-written envs: "
+                     f"{sorted(_collide)}")
+ENVS.update(_GEN)
+
+# The ten matched-pair cells of the hole atlas (0817/0818): one affordance each,
+# measured once per round, so transfer can be ranked BY hole type. `merchant` is
+# deliberately not one of them -- it is the deep single-domain scale-up (many
+# heterogeneous holes inside one commercial persona), a different experiment
+# that reuses the same interface and gates. Keeping it out of ATLAS is what
+# stops it from silently joining the atlas mixed run or the potency ranking.
+ATLAS = ("ipd", "ultimatum", "dond", "public_goods", "trust",
+         "politics", "markets", "commerce", "gatekeeping", "principal_agent")
+DEEP = ("merchant",)
+# Spec-backed breadth corpus. Grows as generated domains are accepted; never
+# feeds ATLAS or DEEP, and joins a run only when named (like `merchant`).
+GEN = tuple(_GEN)
+
 SUITE1 = tuple(n for n, s in ENVS.items() if s.suite == 1)
 SUITE2 = tuple(n for n, s in ENVS.items() if s.suite == 2)
 

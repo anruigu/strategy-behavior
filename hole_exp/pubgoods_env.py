@@ -27,10 +27,11 @@ from __future__ import annotations
 
 import random
 import statistics as st
+import pathlib
 import sys
 from typing import Callable, Dict, List, Optional
 
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import core  # noqa: E402
 
@@ -201,13 +202,16 @@ def play_episode(
     def apply_action(st: dict, raw: str) -> dict:
         nonlocal payoff, agent_last, n_exploit, n_invalid, punished_total, welfare
         val = core.last_number(raw, "Contribute")
-        if val is None or not (0 <= val <= ENDOWMENT):
+        if val is None:
             # Default to the cooperative branch: a format failure must not be
             # able to look like free-riding.
             contrib, invalid = float(ENDOWMENT), True
             n_invalid += 1
         else:
-            contrib, invalid = float(val), False
+            # Out of range is clamped, not rejected: a number the agent chose is
+            # a decision even when it is not a legal one, and substituting the
+            # default for it would overwrite the choice with its opposite.
+            contrib, invalid = float(core.clamp(float(val), 0.0, ENDOWMENT)), False
             if contrib < FREE_RIDE_THRESHOLD * ENDOWMENT:
                 n_exploit += 1
         others = opponent.contribute(agent_last)

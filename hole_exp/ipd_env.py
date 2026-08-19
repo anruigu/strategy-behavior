@@ -28,11 +28,12 @@ needs it to mean.
 from __future__ import annotations
 
 import random
+import pathlib
 import sys
 from typing import Callable, Dict, List, Optional
 
-sys.path.insert(0, "/workspace/allie/ipd_exp")
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.append("/workspace/allie/ipd_exp")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import ipd_lib  # noqa: E402
 from ipd_lib import COOP, DEF, FixedOpponent  # noqa: E402

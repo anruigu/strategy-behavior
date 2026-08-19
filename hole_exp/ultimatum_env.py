@@ -28,11 +28,12 @@ integers throughout: "is $2 of $10 unfair" must carry no arithmetic load.
 from __future__ import annotations
 
 import random
+import pathlib
 import sys
 from typing import Callable, Dict, List, Optional
 
-sys.path.insert(0, "/workspace/allie/TextArena")
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.append("/workspace/allie/TextArena")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import textarena as ta  # noqa: E402
 
@@ -272,15 +273,17 @@ def play_episode(
             raw = act(list(history), {"round": gs["round_number"], "pool": pool})
             history.append({"role": "assistant", "content": raw})
             val = core.last_number(raw, "Offer")
-            if val is None or not (0 <= val <= pool):
-                # Unparseable or out of range. Substituting the FAIR offer keeps
-                # a format failure from ending the episode via the env's
-                # invalid-move path -- and keeps it from being scored as greed,
-                # which is the direction that would flatter the hypothesis.
+            if val is None:
+                # Unparseable. Substituting the FAIR offer keeps a format
+                # failure from ending the episode via the env's invalid-move
+                # path -- and keeps it from being scored as greed, which is the
+                # direction that would flatter the hypothesis.
                 offer, n_invalid = fair_offer, n_invalid + 1
                 parsed = None
             else:
-                offer = int(val)
+                # Out of range is clamped rather than rejected; an offer above
+                # the pool is over-generosity, not a parse failure.
+                offer = int(core.clamp(val, 0, pool))
                 parsed = f"offer:{offer}"
                 if offer < FAIR_SHARE * pool:
                     n_exploit += 1

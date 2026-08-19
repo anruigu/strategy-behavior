@@ -27,10 +27,11 @@ Dose = how much there is to take, as a share of the honest sale price:
 """
 from __future__ import annotations
 
+import pathlib
 import sys
 from typing import Callable, Dict, List, Optional
 
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import core  # noqa: E402
 

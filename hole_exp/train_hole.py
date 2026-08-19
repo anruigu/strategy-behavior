@@ -113,6 +113,17 @@ def step_metrics(recs: List[Dict]) -> Dict:
     # opponent population drifted out of reach, and always worth knowing before
     # the eval battery says "no transfer".
     m["train/premium"] = core.mean([r["stats"].get("premium") for r in recs])
+    # The robust aggregate. `capture` is unbounded outside the reference
+    # interval, so its MEAN is dominated by whichever episode landed furthest
+    # outside -- on the first mixed run, nine envs in [0.08, 0.98] plus markets
+    # at -2.48 averaged to 0.209, a number describing no env in the batch. The
+    # median is what should be read; the mean stays because dropping a logged
+    # series mid-study breaks comparability with runs already on disk.
+    caps = [r["stats"].get("capture") for r in recs]
+    caps = sorted(c for c in caps if c is not None)
+    m["train/capture_median"] = (
+        caps[len(caps) // 2] if len(caps) % 2 else
+        (caps[len(caps) // 2 - 1] + caps[len(caps) // 2]) / 2) if caps else None
     return m
 
 
@@ -195,7 +206,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         {**vars(args), "hole_type": spec.hole_type, "suite": spec.suite,
          "payoff_scale": spec.payoff_scale,
          "population": list(spec.populations(args.consequence))}, indent=1) + "\n")
-    metrics_path = outdir / "metrics.jsonl"
+    # A dry run writes its own file -- see the note in train_mixed.py. Stub
+    # steps appended to a real run's metrics are indistinguishable on a plot.
+    metrics_path = outdir / ("metrics-dryrun.jsonl" if args.dry_run
+                             else "metrics.jsonl")
 
     # Refuse to train a cell the validity harness would fail. Cheap, and it is
     # the check that catches a dose typo before it costs a run.
@@ -265,8 +279,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             break
 
         if not args.dry_run:
-            sampler = tc.save_weights_and_get_sampling_client(
-                name=f"{label}-live{step:04d}")
+            # No `name=`: these weights are ephemeral by definition (they exist
+            # to sample this step's rollouts) and the parameter is deprecated.
+            # The checkpoints that must survive are written by save_ckpt.
+            sampler = tc.save_weights_and_get_sampling_client()
 
         jobs = []
         for g in range(args.groups):

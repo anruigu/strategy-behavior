@@ -30,10 +30,11 @@ Dose = the size of the offer, as a share of the honest professional payoff:
 from __future__ import annotations
 
 import random
+import pathlib
 import sys
 from typing import Callable, Dict, List, Optional
 
-sys.path.insert(0, "/workspace/allie/hole_exp")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import core  # noqa: E402
 

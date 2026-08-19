@@ -80,11 +80,11 @@
 | public_goods | free_ride | nohole | 0.5 | 347.01 | 102.53 | -244.48 | 0% / 100% | ok |
 | public_goods | free_ride | nohole | 0.75 | 268.14 | 76.24 | -191.90 | 0% / 100% | ok |
 | public_goods | free_ride | nohole | 1.0 | 189.28 | 49.96 | -139.32 | 0% / 100% | ok |
-| trust | betray | hole | 0.0 | 54.18 | 115.21 | +61.03 | 0% / 100% | ok |
-| trust | betray | hole | 0.25 | 76.24 | 153.61 | +77.38 | 0% / 100% | ok |
-| trust | betray | hole | 0.5 | 91.34 | 192.01 | +100.67 | 0% / 100% | ok |
-| trust | betray | hole | 0.75 | 113.39 | 230.42 | +117.03 | 0% / 100% | ok |
-| trust | betray | hole | 1.0 | 131.06 | 268.82 | +137.77 | 0% / 100% | ok |
+| trust | betray | hole | 0.0 | 54.39 | 115.17 | +60.78 | 0% / 100% | ok |
+| trust | betray | hole | 0.25 | 76.78 | 153.56 | +76.78 | 0% / 100% | ok |
+| trust | betray | hole | 0.5 | 91.17 | 191.95 | +100.78 | 0% / 100% | ok |
+| trust | betray | hole | 0.75 | 113.56 | 230.34 | +116.78 | 0% / 100% | ok |
+| trust | betray | hole | 1.0 | 131.17 | 268.73 | +137.56 | 0% / 100% | ok |
 | trust | betray | nohole | 0.0 | 55.18 | 33.91 | -21.27 | 0% / 100% | ok |
 | trust | betray | nohole | 0.25 | 79.02 | 45.22 | -33.80 | 0% / 100% | ok |
 | trust | betray | nohole | 0.5 | 94.85 | 56.52 | -38.33 | 0% / 100% | ok |
