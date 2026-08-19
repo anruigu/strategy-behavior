@@ -1,5 +1,45 @@
 # Trace viewer
 
+`index.html` is the **landing page**: five groups of runs, each answering a
+different question, with the evidence in each and whether any of it is in a
+state where the headline should not be read. Everything else is one click from
+there.
+
+| group | page | question |
+|---|---|---|
+| Domains | `domains.html` | how much does a target concede, per domain? |
+| Message channels | `channels.html` | does it matter which role the counterparty speaks on? |
+| Counterparty identity | `consistency.html` | does the amount move with who is asking? |
+| Principal identity | `principal.html` | does it bargain differently depending on who each party *is*? |
+| Case sets | `cases.html` | what are the panels actually made of? |
+
+The viewer grew one page at a time and had become a flat mesh — five pages each
+linking sideways to two or three others, no hub, and no way to tell which
+bundles were even built. The landing page is that hub; every other page now
+carries exactly one back-link and no sideways ones.
+
+**It is a triage surface, not a results surface.** It deliberately shows no
+demand-capture number: a single figure per bundle, stripped of the arm structure
+that gives it meaning, is the bare scalar the benchmark's own reporting rules
+refuse. What it does show is health, because every bundle has at least one way
+of looking finished while measuring nothing — empty replies, lever-free
+episodes, degenerate permutation nulls, a factorial with a hole in it. Flags are
+`OK` / `WARN` / `STOP`, where **STOP** means the headline is not readable as
+stated. Every count is derived from the bundle on disk by `build_index.py`, so a
+card claiming six targets is reporting what the builder wrote.
+
+```
+python viz/build_index.py     # -> viz/index.json, after any other build
+python viz/check_bundles.py   # asserts every field the pages read is present
+```
+
+`check_bundles.py` exists because there is no headless browser here: a page that
+renders blank because one key was renamed cannot be caught by loading it, so the
+field lists are transcribed from what the JavaScript actually dereferences and a
+missing one fails at the command line instead.
+
+## Domains — `domains.html`
+
 Three tabs — Politics, Customer service, Business — over episodes from
 `exploit-bench/eval/runner.py`. Each tab shows mean demand capture per target, a
 per-technique breakdown, and a clickable episode list that opens the full
@@ -89,6 +129,58 @@ cd exploit-bench
 ./results/run-profile.sh opus-5 opus5 4096      # 6 runs + the invariance read
 cd ..
 python viz/build_consistency.py   # -> viz/consistency.json
+```
+
+## Principal identity, both seats — `principal.html`
+
+One tab per target, three **readings** inside each. The adjacent page above
+sweeps *who is asking* inside one customer-service ticket — six arms, one seat,
+one domain. This sweeps *who each party is* across eight negotiation dyads and
+**two seats**, which is the part `docs/0817-agent-principal.md` is actually
+about: put the agent on the strong side and have it negotiate against a
+vulnerable counterparty, and the question stops being under-advocacy and becomes
+differential extraction.
+
+| reading | agent acts for | swept | reads |
+|---|---|---|---|
+| `faith_weak` | the individual | its **own principal** | does it bargain equally hard for everyone it represents? |
+| `faith_strong` | the institution | its **own principal** | same, from the powerful seat |
+| `exploit` | the institution | the **counterparty** | does it extract differentially by who is across the table? |
+
+A reading is the unit, and a target has three at once — which is why this is its
+own page rather than tabs on `consistency.html`. A page built to show one axis of
+six arms has nowhere to put the seat.
+
+Same statistical discipline as the consistency page, and for the same reasons:
+the contrast plot is paired within (dyad × lever), the headline spread is read
+against a **permutation null** that shuffles identity labels *within* block, and
+marker fill is gated on the omnibus as well as the interval — with four arms
+tested at once, one CI clearing zero under a null omnibus is the
+multiple-comparisons false positive the permutation test exists to catch.
+
+**The validity row is not decorative on this page.** The first sweep found the
+instrument measuring *action-channel compliance* rather than negotiation: models
+argued in prose and never wrote the action line, so 24–99% of episodes recorded
+no settlement at all. An agent that never settles is perfectly invariant for
+free, and that is indistinguishable from even-handedness in any spread statistic.
+So every reading carries `action_rate` (turns that used the channel) and
+`prose_figure_rate` (turns that named a number outside it), and a target below
+50% gets a **STOP** banner above its numbers. The same finding is why the
+degenerate-null case is called out by name: a zero-width permutation null returns
+`p = 1.0` by construction, which looks exactly like the fairest possible result.
+
+The trace pane carries a **sibling strip**: the other identity arms of the same
+dyad and lever, each with its demand capture and its delta against the mean of
+the baseline replicates. Same brief, same counterparty script, one sentence
+different — clicking across them is how a reader checks a claim that a model
+treated two people differently, and the difference usually shows up in how the
+agent talks rather than in the figure it settles on.
+
+```
+cd exploit-bench
+bash results/run_identity.sh opus-5           # 3 readings; run several in parallel
+cd ..
+python viz/build_principal.py   # -> viz/principal.json
 ```
 
 The episode list carries a **Lever** column: how many adversary turns actually

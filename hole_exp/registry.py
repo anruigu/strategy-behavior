@@ -116,7 +116,35 @@ def _load_gen() -> Dict[str, EnvSpec]:
     return out
 
 
+def _load_games() -> Dict[str, EnvSpec]:
+    """TIER 1 of the 0818 scale-up: TextArena games run by `game_env`.
+
+    Loaded unconditionally -- unlike the generated Suite-2 candidates, these
+    wrap already-tested TextArena logic rather than model-authored text, so
+    there is no curation step standing between them and the roster.
+    """
+    import game_env
+    import games_tier1
+
+    return {g.name: game_env.build_env_spec(g) for g in games_tier1.TIER1}
+
+
+def _load_native() -> Dict[str, EnvSpec]:
+    """Games designed around a hole rather than found to contain one."""
+    import native_env
+    import native_games
+
+    return {g.NAME: native_env.build_env_spec(g) for g in native_games.GAMES}
+
+
 ENVS: Dict[str, EnvSpec] = _load()
+
+_GAMES = {**_load_games(), **_load_native()}
+_gcollide = set(_GAMES) & set(ENVS)
+if _gcollide:
+    raise SystemExit(f"game env names collide with hand-written envs: "
+                     f"{sorted(_gcollide)}")
+ENVS.update(_GAMES)
 
 _GEN = _load_gen()
 _collide = set(_GEN) & set(ENVS)
@@ -137,6 +165,9 @@ DEEP = ("merchant",)
 # Spec-backed breadth corpus. Grows as generated domains are accepted; never
 # feeds ATLAS or DEEP, and joins a run only when named (like `merchant`).
 GEN = tuple(_GEN)
+# TextArena game cells (0818 scale-up tier 1). Like GEN, they join a run only
+# when named; the atlas roster above is unaffected by how many land here.
+GAMES = tuple(_GAMES)
 
 SUITE1 = tuple(n for n, s in ENVS.items() if s.suite == 1)
 SUITE2 = tuple(n for n, s in ENVS.items() if s.suite == 2)

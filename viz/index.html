@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exploit-bench — run groups</title>
+<style>
+  /* Palette: dataviz reference instance. This page draws no chart, so it uses
+     only surfaces, ink and the three status steps — categorical slots are not
+     touched, and a triage colour is never one of them (status colours are
+     reserved, and always ship with a label, never colour alone). */
+  .viz-root {
+    color-scheme: light;
+    --surface-0:      #f4f4f2;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #efefec;
+    --border:         #dcdcd6;
+    --border-strong:  #c2c2b9;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #78776f;
+    --ok:             #1baf7a;
+    --warn:           #eda100;
+    --stop:           #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-0:      #131312;
+      --surface-1:      #1a1a19;
+      --surface-2:      #232322;
+      --border:         #34342f;
+      --border-strong:  #4a4a43;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #96958c;
+      --ok:             #199e70;
+      --warn:           #c98500;
+      --stop:           #e66767;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-0:      #131312;
+    --surface-1:      #1a1a19;
+    --surface-2:      #232322;
+    --border:         #34342f;
+    --border-strong:  #4a4a43;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #96958c;
+    --ok:             #199e70;
+    --warn:           #c98500;
+    --stop:           #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 20px 70px; }
+  header.top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 19px; font-weight: 620; margin: 0; letter-spacing: -0.01em; }
+  .spacer { flex: 1; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 6px 0 22px; max-width: 78ch; }
+  button {
+    font: inherit; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover { background: var(--surface-2); }
+
+  .groups { display: flex; flex-direction: column; gap: 14px; }
+  .g {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .g:hover { border-color: var(--border-strong); background: var(--surface-2); }
+  .g.unbuilt { opacity: .62; }
+  .g.unbuilt:hover { border-color: var(--border); background: var(--surface-1); cursor: default; }
+
+  .ghead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .g h2 { font-size: 15px; font-weight: 640; margin: 0; letter-spacing: -0.01em; }
+  .q { color: var(--text-secondary); font-size: 13px; }
+  .arrow { color: var(--text-muted); font-size: 13px; }
+  .blurb { color: var(--text-secondary); font-size: 13px; margin: 7px 0 0; max-width: 82ch; }
+
+  .counts { display: flex; gap: 20px; flex-wrap: wrap; margin: 12px 0 0; }
+  .c .v { font-size: 20px; font-weight: 640; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .c .k { color: var(--text-muted); font-size: 11.5px; }
+
+  .flags { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; }
+  .f { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
+       color: var(--text-secondary); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 5px; }
+  .f.ok   .dot { background: var(--ok); }
+  .f.warn .dot { background: var(--warn); }
+  .f.stop .dot { background: var(--stop); }
+  .f .lvl { font-weight: 620; text-transform: uppercase; letter-spacing: .05em;
+            font-size: 10.5px; flex: none; width: 34px; margin-top: 1px; }
+  .f.ok   .lvl { color: var(--ok); }
+  .f.warn .lvl { color: var(--warn); }
+  .f.stop .lvl { color: var(--stop); }
+
+  .build { color: var(--text-muted); font-size: 11.5px; margin-top: 11px;
+           font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .legend { color: var(--text-muted); font-size: 12px; margin: 26px 0 0;
+            border-top: 1px solid var(--border); padding-top: 14px; max-width: 82ch; }
+  .legend b { color: var(--text-secondary); }
+</style>
+</head>
+<body class="viz-root">
+<div class="wrap">
+  <header class="top">
+    <h1>Exploit-bench — run groups</h1>
+    <div class="spacer"></div>
+    <button id="themeToggle">Dark</button>
+  </header>
+  <p class="sub">
+    Five groups of runs, each answering a different question. This page is
+    <b>triage</b>, not results: it shows how much evidence is in each bundle and
+    whether any of it is in a state where the headline should not be read. The
+    numbers behind each are one click away — deliberately, because a single
+    figure per bundle, stripped of the arm structure that gives it meaning, is
+    the bare scalar the benchmark's own reporting rules refuse.
+  </p>
+
+  <div class="groups" id="groups"></div>
+
+  <p class="legend">
+    <b>OK</b> nothing blocking. &nbsp;
+    <b>WARN</b> read the caveat before quoting a number. &nbsp;
+    <b>STOP</b> the headline is not readable as stated — usually because the
+    instrument measured something other than what it claims.
+    Every count is derived from the bundle on disk by <code>build_index.py</code>,
+    so a group that says six targets is saying what the builder actually wrote.
+  </p>
+</div>
+
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function card(g) {
+  const s = g.summary || {};
+  if (!s.built) {
+    return `<div class="g unbuilt">
+      <div class="ghead"><h2>${esc(g.title)}</h2>
+        <span class="q">${esc(g.question)}</span></div>
+      <p class="blurb">${esc(g.blurb)}</p>
+      <div class="flags"><div class="f warn"><span class="dot"></span>
+        <span class="lvl">warn</span><span>not built yet</span></div></div>
+      <div class="build">${esc(g.build)}</div>
+    </div>`;
+  }
+  const counts = (s.counts || []).map(([v, k]) =>
+    `<div class="c"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`
+  ).join("");
+  const flags = (s.flags || []).map(f =>
+    `<div class="f ${esc(f.level)}"><span class="dot"></span>
+       <span class="lvl">${esc(f.level)}</span><span>${esc(f.text)}</span></div>`
+  ).join("");
+  return `<a class="g" href="${esc(g.page)}">
+    <div class="ghead"><h2>${esc(g.title)}</h2>
+      <span class="q">${esc(g.question)}</span>
+      <span class="spacer"></span><span class="arrow">open →</span></div>
+    <p class="blurb">${esc(g.blurb)}</p>
+    <div class="counts">${counts}</div>
+    <div class="flags">${flags}</div>
+  </a>`;
+}
+
+fetch("index.json", { cache: "no-store" })
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById("groups").innerHTML = d.groups.map(card).join("");
+  })
+  .catch(e => {
+    document.getElementById("groups").innerHTML =
+      `<div class="g unbuilt"><h2>index.json missing</h2>
+       <p class="blurb">Run <code>python viz/build_index.py</code>.</p>
+       <div class="build">${esc(e)}</div></div>`;
+  });
+
+const root = document.documentElement;
+const btn = document.getElementById("themeToggle");
+const saved = localStorage.getItem("viz-theme");
+if (saved) root.setAttribute("data-theme", saved);
+const sync = () => {
+  const dark = root.getAttribute("data-theme") === "dark" ||
+    (!root.getAttribute("data-theme") &&
+      matchMedia("(prefers-color-scheme: dark)").matches);
+  btn.textContent = dark ? "Light" : "Dark";
+};
+btn.onclick = () => {
+  const dark = root.getAttribute("data-theme") === "dark" ||
+    (!root.getAttribute("data-theme") &&
+      matchMedia("(prefers-color-scheme: dark)").matches);
+  root.setAttribute("data-theme", dark ? "light" : "dark");
+  localStorage.setItem("viz-theme", dark ? "light" : "dark");
+  sync();
+};
+sync();
+</script>
+</body>
+</html>

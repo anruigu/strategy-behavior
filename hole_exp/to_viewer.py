@@ -236,8 +236,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.from_run:
         run_dir = Path(args.from_run)
         cfg = json.loads((run_dir / "config.json").read_text())
-        spec = registry.get(cfg["env"])
-        rows = {step: [to_row(r, spec, step) for r in recs]
+        # `train_hole.py` writes one env per run ("env"); `train_mixed.py`
+        # writes a list ("envs") and its episodes come from all of them. Read
+        # the env off each RECORD and fall back to the config only for the
+        # single-cell layout -- keying the whole run off cfg["env"] raised
+        # KeyError on every mixed run, i.e. no mixed run was ever importable.
+        default_env = cfg.get("env")
+        rows = {step: [to_row(r, registry.get(r.get("env") or default_env), step)
+                       for r in recs]
                 for step, recs in from_run(run_dir).items()}
         alias = args.alias if args.alias != "hole-atlas-scripted" else run_dir.name
         out = write_run(alias, rows, f"training run {run_dir.name}")

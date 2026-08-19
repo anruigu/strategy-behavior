@@ -129,6 +129,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--use-wb", action="store_true")
     ap.add_argument("--wb-project", default="strategy-behavior")
     ap.add_argument("--wb-entity", default="thefleet")
+    ap.add_argument("--label-suffix", default="",
+                    help="appended to the run label/outdir/checkpoint names so "
+                         "two mixes that differ only in a factor the label does "
+                         "not encode (e.g. game vs natural framing) do not "
+                         "collide on disk or in wandb")
     args = ap.parse_args(argv)
 
     # De-dupe while preserving order, so `--envs trust trust` cannot silently
@@ -144,7 +149,8 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"every env is sampled every step (they rotate by step)", flush=True)
 
     core.load_env_file()
-    label = f"mixed_{args.consequence}_d{args.dose:g}_s{args.seed}"
+    sfx = f"_{args.label_suffix}" if args.label_suffix else ""
+    label = f"mixed{sfx}_{args.consequence}_d{args.dose:g}_s{args.seed}"
     outdir = Path(args.out) / label
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "config.json").write_text(json.dumps(

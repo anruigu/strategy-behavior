@@ -97,16 +97,29 @@ async def main():
     ap.add_argument("arm"); ap.add_argument("port", type=int)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--conc", type=int, default=16)
+    ap.add_argument("--traits", default="",
+                    help="comma-separated subset, e.g. "
+                         "Machiavellianism,Narcissism,Psychopathy. Default: all 8. "
+                         "Spending the item budget on the scales a study is about "
+                         "is how a per-scale n gets large enough to resolve "
+                         "anything: --limit 600 over 8 scales is 75 items each, "
+                         "which moves in 1.33pp steps and cannot detect less than "
+                         "~20pp.")
     a = ap.parse_args()
 
+    traits = [t.strip() for t in a.traits.split(",") if t.strip()] or TRAITS
+    unknown = [t for t in traits if t not in TRAITS]
+    if unknown:
+        raise SystemExit(f"unknown trait(s) {unknown}; have {TRAITS}")
+
     data = json.load(open(TRAIT_JSON))
-    if a.limit:
+    if a.limit or traits != TRAITS:
         # keep the trait balance when subsampling
-        per = max(1, a.limit // len(TRAITS))
+        per = max(1, a.limit // len(traits)) if a.limit else len(data)
         by = defaultdict(list)
         for it in data:
             by[it["personality"]].append(it)
-        data = [x for t in TRAITS for x in by[t][:per]]
+        data = [x for t in traits for x in by[t][:per]]
     print(f"arm={a.arm} items={len(data)} (x2 for counterbalancing)", flush=True)
 
     client = AsyncOpenAI(base_url=f"http://localhost:{a.port}/v1", api_key="local")
@@ -142,10 +155,16 @@ async def main():
         key = "high" if arr.index(max(arr)) in (0, 1) else "low"
         cnt[it["personality"]][key] += 1
 
-    out = {"arm": a.arm, "n_items": len(data), "unscored": unscored, "scores": {}}
+    out = {"arm": a.arm, "n_items": len(data), "unscored": unscored,
+           "scores": {}, "n_per_scale": {}}
     for t in TRAITS:
         h, l = cnt[t]["high"], cnt[t]["low"]
         out["scores"][t] = round(100 * h / (h + l), 2) if (h + l) else None
+        # The denominator behind each score. Without it a reader cannot tell
+        # that a 600-item run is 75 items per scale -- a 1.33pp quantum that
+        # cannot resolve less than ~20pp -- and 22.67 vs 21.33 reads like a
+        # measurement rather than the single item it is.
+        out["n_per_scale"][t] = h + l
     d = os.path.join(HERE, "results"); os.makedirs(d, exist_ok=True)
     json.dump(out, open(os.path.join(d, f"{a.arm}.json"), "w"), indent=2)
     print(json.dumps(out, indent=2), flush=True)

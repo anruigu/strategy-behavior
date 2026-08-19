@@ -221,6 +221,106 @@ def clamp(x: float, lo: float, hi: float) -> float:
 
 
 # --------------------------------------------------------------------------
+# tool calls (the agentic surface, 0818-merchant-agentic §10)
+#
+# One bracketed mini-grammar rather than native function-calling tokens, for
+# three reasons the design note settles: it does not depend on a model's chat
+# template, it reuses this module's "LAST bracketed action wins" rule so a model
+# that reasons aloud about a tool and then calls another is scored on what it
+# called, and it keeps tool calls in the same scoring substrate as every other
+# environment in the suite.
+#
+#     [get_balance]
+#     [read_email id=2]
+#     [submit_invoice job=17, labor=800, parts=1600]
+#     [resolve_warranty claim_id=3, decision=deny]
+#
+# Values are numbers OR bare words -- `decision=deny` has to survive, so this
+# cannot reuse `last_mapping`, which is numbers-only by construction.
+# --------------------------------------------------------------------------
+
+TOOL_CALL_RE = re.compile(r"\[\s*([a-z_][a-z_0-9]*)\s*([^\[\]]*)\]", re.IGNORECASE)
+TOOL_ARG_RE = re.compile(r"([A-Za-z_][A-Za-z_0-9]*)\s*[:=]\s*"
+                         r"(\"[^\"]*\"|'[^']*'|\$?-?[\d,]*\.?\d+|[A-Za-z_][A-Za-z_0-9\-]*)")
+
+
+def parse_tool_call(text: str, tools: Optional[Sequence[str]] = None
+                    ) -> Optional[Tuple[str, Dict[str, object]]]:
+    """The LAST well-formed tool call in the reply, as (name, args).
+
+    `tools` restricts to known names: an unknown tool is not a call, it is a
+    malformed turn, and the caller counts it invalid rather than guessing what
+    the model meant. Returns None when nothing parses -- which the environment
+    must treat as the honest default (§2.7: garbage is never scored as
+    exploitation).
+
+    Numeric-looking values come back as floats and everything else as a
+    lower-cased string, so a predicate can compare `args["parts"] > true_cost`
+    and `args["decision"] == "deny"` without re-parsing.
+    """
+    known = {t.lower() for t in tools} if tools else None
+    best = None
+    for m in TOOL_CALL_RE.finditer(text or ""):
+        name = m.group(1).lower()
+        if known is not None and name not in known:
+            continue
+        best = m
+    if best is None:
+        return None
+    args: Dict[str, object] = {}
+    for k, v in TOOL_ARG_RE.findall(best.group(2) or ""):
+        v = v.strip().strip("\"'")
+        num = v.lstrip("$").replace(",", "")
+        try:
+            args[k.strip().lower()] = float(num)
+        except ValueError:
+            args[k.strip().lower()] = v.lower()
+    return best.group(1).lower(), args
+
+
+def run_tool_loop(
+    act: Callable[[List[dict], dict], str],
+    *,
+    state: dict,
+    system: str,
+    brief: str,
+    render: Callable[[dict], str],
+    apply_call: Callable[[dict, str], dict],
+    max_turns: int,
+) -> Tuple[List[Turn], dict]:
+    """An agentic loop that emits the same `Turn` list as `run_dialogue`.
+
+    Deliberately a sibling of `run_dialogue`, not a replacement: the nine
+    dialogue environments keep their loop untouched, and because both produce
+    `Turn(messages, action, parsed, meta)` the SFT/RL tokenisation, the masking,
+    the trace dumps and the viewer all extend to tool calls without a change
+    (§2.8 -- a tool-call turn is just another assistant turn).
+
+    `render(state)` returns the user-role text for this step: the last tool
+    result plus whatever observable state the environment exposes. `apply_call`
+    owns parsing and mutation and returns a dict describing what happened; it
+    must set `state["done"]` when the term is over. `max_turns` is the hard stop
+    so a policy that never advances the day still terminates.
+    """
+    history = [{"role": "system", "content": system},
+               {"role": "user", "content": brief}]
+    turns: List[Turn] = []
+    for t in range(max_turns):
+        state["turn"] = t
+        history.append({"role": "user", "content": render(state) + BREVITY})
+        raw = act(list(history), {"turn": t, **{k: v for k, v in state.items()
+                                               if isinstance(v, (int, float, str))}})
+        history.append({"role": "assistant", "content": raw})
+        info = apply_call(state, raw)
+        state["last_call"] = info
+        turns.append(Turn(messages=list(history[:-1]), action=raw,
+                          parsed=info.get("tool"), meta=info))
+        if state.get("done"):
+            break
+    return turns, state
+
+
+# --------------------------------------------------------------------------
 # the episode record
 # --------------------------------------------------------------------------
 

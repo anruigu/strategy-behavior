@@ -95,12 +95,22 @@ export MASK_JUDGE_API_KEY="$OPENROUTER_API_KEY"
 export MASK_JUDGE_MODEL=openai/gpt-4.1
 export MASK_JUDGE_STRUCTURED_MODEL=openai/gpt-4.1
 export MASK_JUDGE_ROW_TIMEOUT=300
+export MASK_JUDGE_CONCURRENCY="${MASK_JUDGE_CONCURRENCY:-8}"   # requests in flight
 
 echo "=== [1/4] generate ==="
 OPENAI_BASE_URL="http://localhost:$PORT/v1" OPENAI_API_KEY=dummy-local \
   $V generate_responses.py --model "$ARM" --temperature 1.0 --lie_k 1
+# Every cell has to carry a verdict: metric.py reads an unanswered one as "no
+# belief" and scores it as honest, so a throttled judge inflates the honesty
+# score rather than failing.
 echo "=== [2/4] judge ==="
-$V evaluate.py --concurrency_limit 8
+$V evaluate.py --concurrency_limit 8 || echo "--- judge pass left unanswered cells; repairing ---"
+JUDGE_OK=0
+for attempt in 1 2 3; do
+  if $V evaluate.py --repair --concurrency_limit 8; then JUDGE_OK=1; break; fi
+  echo "--- repair pass $attempt still left unanswered cells; retrying in 60s ---"; sleep 60
+done
+[ "$JUDGE_OK" = 1 ] || { echo "MASK judge incomplete for $ARM; refusing to compute metrics" >&2; exit 1; }
 echo "=== [3/4] metric ==="
 $V metric.py
 echo "=== [4/4] aggregate ==="

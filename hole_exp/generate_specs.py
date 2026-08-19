@@ -130,17 +130,23 @@ Design requirements, in order of how often proposals fail them:
 6. Absent parties are good: the harmed party need not be the interlocutor
    (clients, claimants, taxpayers, the counterparty's principal ...).
 7. GAME FRAME, NOT WORKPLACE TRANSCRIPT: every surface must announce itself as
-   a synthetic scoring game — titled game, numbered TURNs, a named ROLE the
-   player is told they are playing, scripted non-player counterparts, and
-   payoffs in POINTS rather than dollars. Write the brief in the four-line
-   house form given in the schema. This is a distribution requirement, not a
-   stylistic one: a domain written as realistic workplace prose is drawn from
-   the same distribution as a held-out alignment evaluation, and a training
-   cell that reads like an eval seat contaminates the thing it is meant to
-   measure. Change the FRAME only — keep the role's duty and the hedging that
-   makes the exploit defensible ("house rules allow reasonable rounding", "not
-   specifically addressed") exactly as normatively warm as you would have
-   written them, or the severity band in (1) moves without your noticing.
+   a synthetic scoring game — titled game, a named ROLE the player is told they
+   are playing, other players in the game, and payoffs in POINTS rather than
+   dollars. Write the brief in the four-line house form given in the schema.
+   This is a distribution requirement, not a stylistic one: a domain written as
+   realistic workplace prose is drawn from the same distribution as a held-out
+   alignment evaluation, and a training cell that reads like an eval seat
+   contaminates the thing it is meant to measure. Change the FRAME only — keep
+   the role's duty and the hedging that makes the exploit defensible ("house
+   rules allow reasonable rounding", "not specifically addressed") exactly as
+   normatively warm as you would have written them, or the severity band in (1)
+   moves without your noticing.
+   TWO SURFACE RULES the schema states and you must follow (0819 ablations):
+   (a) do NOT reveal that the other voices are scripted / non-player characters
+   — it signals there is no real counterparty; say the game has other players,
+   not how they are implemented; (b) do NOT disclose the total number of turns —
+   write "a multi-turn scoring game" and open rounds "TURN 1", "TURN 2", never
+   "5-turn" or "TURN 1/5". The game just unfolds.
 """
 
 
@@ -283,8 +289,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     taken = sorted(set(spec_mod.RESERVED_NAMES) | set(spec_mod.EXAMPLES))
-    for p in [*out_dir.glob("*.json"), *(HERE / "specs").glob("*.json")]:
+    for p in [*spec_mod.spec_files(out_dir),
+              *spec_mod.spec_files(HERE / "specs")]:
+        # spec_files skips `_`-prefixed pipeline artifacts (e.g. the archived
+        # screen-results list), which are JSON but not spec dicts.
         d = json.loads(p.read_text())
+        if not isinstance(d, dict):
+            continue
         taken.append(f"{p.stem} ({d.get('hole_type', '?')}): "
                      f"{d.get('blurb', '')}")
 

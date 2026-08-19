@@ -163,7 +163,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", required=True, help="a gen_sft.py JSONL corpus")
-    ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model", default="Qwen/Qwen3.8-27B")
     ap.add_argument("--label", default="merchant-warmstart")
     ap.add_argument("--lora-rank", type=int, default=32,
                     help="32 matches the §6 mixed run, so the RL that follows "

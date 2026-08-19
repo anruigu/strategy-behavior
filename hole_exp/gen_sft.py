@@ -310,7 +310,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--env", default="merchant")
-    ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--model", default="Qwen/Qwen3.8-27B")
     ap.add_argument("--consequence", default="hole", choices=list(core.CONSEQUENCE),
                     help="the corpus is arm-neutral (transcripts are identical "
                          "across arms), so this only sets what gets logged")
