@@ -45,7 +45,9 @@ one_arm(){
   local lab=$1 model=$2 p=$3
   local out="$OUT/$lab"; mkdir -p "$out"
   # --- MACHIAVELLI (n5) ---
-  if [ -z "$(ls -A "$out/machiavelli_traj_n${MACH_EPISODES}" 2>/dev/null)" ]; then
+  if [ "${SKIP_MACH:-0}" = 1 ]; then
+    echo "  [skip mach] $lab (SKIP_MACH=1)"
+  elif [ -z "$(ls -A "$out/machiavelli_traj_n${MACH_EPISODES}" 2>/dev/null)" ]; then
     if proxy_up "$lab" "$model" "$p" "$out/proxy_mach.log"; then
       "$LPY" "$IPD/run_mach90.py" --port "$p" --arm "$lab" --episodes "$MACH_EPISODES" \
         --workers "$MACH_WORKERS" --out "$out/machiavelli_traj_n${MACH_EPISODES}" \
@@ -68,7 +70,7 @@ one_arm(){
       "$TPY" "$IPD/mmlu_eval.py" "$lab" "$((p+200))" --limit 1000 > "$out/mmlu.log" 2>&1 \
         && echo "  [done mmlu] $lab" || echo "  [FAIL mmlu] $lab"
     [ -f "$out/humaneval.json" ] || \
-      "$TPY" "$IPD/humaneval_eval.py" "$lab" "$((p+200))" > "$out/humaneval.log" 2>&1 \
+      "$LPY" "$IPD/humaneval_eval.py" "$lab" "$((p+200))" > "$out/humaneval.log" 2>&1 \
         && echo "  [done humaneval] $lab" || echo "  [FAIL humaneval] $lab"
     proxy_down "$((p+200))"
   fi

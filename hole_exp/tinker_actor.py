@@ -17,21 +17,50 @@ from typing import Dict, List, Optional, Tuple
 
 import tinker
 
+# The sampling profile that gives Qwen3.8-27B healthy traces on the agentic
+# merchant. Found by `tune_sampling.py`; the numbers behind it, 16 episodes each:
+#
+#   t1.0 / 384 / no stop     invalid 0.927   <- unusable, replies cut mid-call
+#   t1.0 / 512 / stop "]"    invalid 0.417
+#   t0.7 / p0.9 / 512 / stop invalid 0.023   <- this
+#
+# Both knobs are load-bearing and neither is sufficient alone: the stop sequence
+# removes truncation (the model cannot ramble past its own action), and the lower
+# entropy stops it looping before it gets there. Qwen3.6-27B is fine either way,
+# which is why this went unnoticed until 3.6 was slated for retirement.
+TUNED_TOOL_SAMPLING = {"temperature": 0.7, "top_p": 0.9, "max_tokens": 512,
+                       "close_bracket": True}
+
 
 class Renderer:
-    """Chat-template renderer backed by the model's tokenizer."""
+    """Chat-template renderer backed by the model's tokenizer.
 
-    def __init__(self, tokenizer, enable_thinking: bool = False):
+    `reasoning_effort` matters on the Qwen3.8 templates, which accept
+    'low' | 'medium' | 'xhigh' and **default to xhigh** whenever thinking is on
+    or simply left undefined. That default is not a small thing: on the agentic
+    merchant it made Qwen3.8-27B reason at maximum effort every turn, run past
+    the token budget, and get cut off mid tool call, for a 74-93% invalid rate
+    where Qwen3.6-27B sat at 1.6%. Passing it explicitly is the difference
+    between a usable base model and an unusable one, so it is a first-class
+    argument rather than something the caller is expected to know to override.
+    """
+
+    def __init__(self, tokenizer, enable_thinking: bool = False,
+                 reasoning_effort: Optional[str] = None):
         self.tok = tokenizer
         self.enable_thinking = enable_thinking
+        self.reasoning_effort = reasoning_effort
 
     def build(self, messages: List[Dict[str, str]]) -> tinker.ModelInput:
         kw = dict(tokenize=True, add_generation_prompt=True)
+        if self.reasoning_effort:
+            kw["reasoning_effort"] = self.reasoning_effort
         try:
             ids = self.tok.apply_chat_template(
                 messages, enable_thinking=self.enable_thinking, **kw)
         except TypeError:
             # tokenizer/template without an enable_thinking kwarg
+            kw.pop("reasoning_effort", None)
             ids = self.tok.apply_chat_template(messages, **kw)
         # transformers may return a BatchEncoding/dict rather than a flat list
         if hasattr(ids, "input_ids"):
@@ -60,16 +89,37 @@ class Renderer:
 
 
 class TinkerActor:
-    """Samples one assistant turn at a time from a Tinker sampling client."""
+    """Samples one assistant turn at a time from a Tinker sampling client.
+
+    `close_bracket` halts generation at the `]` that ends a bracketed action and
+    puts the stripped `]` back. On the agentic `merchant` this is the single
+    biggest lever on trace health for Qwen3.8-27B: without it the model rambles
+    past its own tool call and is cut off mid-argument (invalid 0.80-0.97);
+    with it, truncation goes to zero. Combined with top_p 0.9 / temperature 0.7
+    it takes that model from unusable to a 0.000 invalid rate.
+
+    It is safe for the other environments too -- every action in this suite is a
+    bracketed token and the suite scores the LAST one -- but it is off by default
+    so no existing cell's numbers move without someone asking for it. Do NOT
+    enable it together with thinking: a `]` inside a <think> block stops
+    generation before the answer is ever emitted.
+    """
 
     def __init__(self, sampling_client, renderer: Renderer,
                  temperature: float = 1.0, max_tokens: int = 384,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None, top_p: float = 1.0,
+                 close_bracket: bool = False):
         self.sc = sampling_client
         self.r = renderer
+        self.close_bracket = close_bracket
+        if close_bracket and renderer.enable_thinking:
+            raise ValueError(
+                "close_bracket with thinking enabled: a ']' inside the <think> "
+                "block halts generation before the action is written")
         self.params = tinker.SamplingParams(
-            max_tokens=max_tokens, temperature=temperature,
-            stop=renderer.stop_tokens() or None, seed=seed)
+            max_tokens=max_tokens, temperature=temperature, top_p=top_p,
+            stop=(["]"] if close_bracket else (renderer.stop_tokens() or None)),
+            seed=seed)
         self.last: List[Dict] = []
 
     def _sample_one(self, messages, num_samples=1):
@@ -91,6 +141,11 @@ class TinkerActor:
         mi, resp = self._sample_one(messages)
         seq = resp.sequences[0]
         text = self.r.tok.decode(seq.tokens, skip_special_tokens=True).strip()
+        if self.close_bracket and "[" in text and not text.endswith("]"):
+            # Tinker strips the stop string, so restore it -- otherwise the
+            # parser sees an unterminated call and scores a perfectly good turn
+            # invalid, which would make the best setting measure as the worst.
+            text += "]"
         self.last.append({"prompt": mi, "tokens": list(seq.tokens),
                           "logprobs": list(getattr(seq, "logprobs", []) or [])})
         return text
@@ -141,7 +196,9 @@ class _StubInput:
 
 
 def build(service_client, model_name: str, temperature: float = 1.0,
-          max_tokens: int = 384, seed: Optional[int] = None
+          max_tokens: int = 384, seed: Optional[int] = None,
+          top_p: float = 1.0, close_bracket: bool = False,
+          enable_thinking: bool = False, reasoning_effort: Optional[str] = None
           ) -> Tuple[TinkerActor, Renderer]:
     """`model_name` is either a base model id or a `tinker://` checkpoint path.
 
@@ -154,5 +211,7 @@ def build(service_client, model_name: str, temperature: float = 1.0,
         sc = service_client.create_sampling_client(model_path=model_name)
     else:
         sc = service_client.create_sampling_client(base_model=model_name)
-    rend = Renderer(sc.get_tokenizer())
-    return TinkerActor(sc, rend, temperature, max_tokens, seed), rend
+    rend = Renderer(sc.get_tokenizer(), enable_thinking=enable_thinking,
+                    reasoning_effort=reasoning_effort)
+    return TinkerActor(sc, rend, temperature, max_tokens, seed,
+                       top_p=top_p, close_bracket=close_bracket), rend

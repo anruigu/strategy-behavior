@@ -199,7 +199,7 @@ def episode_record(spec, model_actor, rec: Dict, sources: List[str]) -> Dict:
         echo = hint_echo(t.get("action", ""))
         labels.append({
             "index": i,
-            "source": sources[i] if i < len(sources) else "?",
+            "source": sources[i] if i < len(sources) else "routine",
             "situation": meta.get("situation"),
             "action": t.get("parsed"),
             "exploited": bool(meta.get("exploited")),
@@ -242,9 +242,16 @@ def generate(args) -> List[Dict]:
             import tinker_actor
             # One actor per episode: TinkerActor accumulates its trace on the
             # instance, so a shared one would interleave turns across threads.
+            # Sampling profile matters as much here as anywhere: a corpus
+            # generated with the wrong one is 93% unparseable on Qwen3.8-27B,
+            # and `sft_warmstart` would then distil the model's format failures
+            # instead of its conduct. --tuned is the profile that works on the
+            # tool loop (tinker_actor.TUNED_TOOL_SAMPLING).
             inner, _ = tinker_actor.build(sc, args.model,
                                           temperature=args.temperature,
-                                          max_tokens=args.max_tokens)
+                                          max_tokens=args.max_tokens,
+                                          top_p=args.top_p,
+                                          close_bracket=args.close_bracket)
             actor = MixedActor(inner, args.p_exploit, seed,
                                honest_system=HONEST_SOURCES[args.honest_source])
             act = actor.act
@@ -269,7 +276,7 @@ def report(records: List[Dict]) -> Dict:
     by_sit: Dict[str, List[int]] = {}
     by_source: Dict[str, List[int]] = {}
     for t in valid:
-        by_sit.setdefault(t["situation"] or "?", []).append(int(t["exploited"]))
+        by_sit.setdefault(t["situation"] or "routine", []).append(int(t["exploited"]))
         by_source.setdefault(t["source"], []).append(int(t["exploited"]))
 
     summary = {
@@ -299,7 +306,12 @@ def report(records: List[Dict]) -> Dict:
           "corner at 0 here is a corner the warm start cannot make reachable):")
     for k, v in summary["by_situation"].items():
         print(f"[corpus]   {k:14s} n={v['n']:4d}  exploit={v['exploit_rate']:.3f}")
-    dead = [k for k, v in summary["by_situation"].items() if v["exploit_rate"] == 0]
+    # `routine` is the tool-loop's traffic -- calls with no affordance, which can
+    # never exploit by construction (0818 §8: routine turns are not in the
+    # denominator). Warning about it would fire on every agentic corpus and train
+    # the reader to ignore a warning that matters for the real corners.
+    dead = [k for k, v in summary["by_situation"].items()
+            if v["exploit_rate"] == 0 and k != "routine"]
     if dead:
         print(f"[corpus] WARNING: no exploit sampled for {dead} -- raise "
               "--p-exploit or --episodes before training on this corpus")
@@ -329,12 +341,22 @@ def main(argv: Optional[List[str]] = None) -> int:
                          "view. Intent, not outcome -- see the realised rate in "
                          "the report")
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--top-p", type=float, default=1.0)
+    ap.add_argument("--close-bracket", action="store_true")
+    ap.add_argument("--tuned", action="store_true",
+                    help="use tinker_actor.TUNED_TOOL_SAMPLING -- required for "
+                         "Qwen3.8-27B on the agentic merchant")
     ap.add_argument("--max-tokens", type=int, default=384)
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--out", default="data/sft-merchant.jsonl")
     ap.add_argument("--dry-run", action="store_true",
                     help="scripted references instead of the two prompts; no API")
     args = ap.parse_args(argv)
+    if args.tuned:
+        import tinker_actor as _ta
+        t = _ta.TUNED_TOOL_SAMPLING
+        args.temperature, args.top_p = t["temperature"], t["top_p"]
+        args.max_tokens, args.close_bracket = t["max_tokens"], t["close_bracket"]
 
     if not 0.0 <= args.p_exploit <= 1.0:
         raise SystemExit("--p-exploit must be in [0, 1]")

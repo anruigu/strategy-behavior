@@ -56,7 +56,10 @@ def rollout(sampling_client, renderer, args, spec, env_seed: int, sample_seed: i
         actor = tinker_actor.TinkerActor(sampling_client, renderer,
                                          temperature=args.temperature,
                                          max_tokens=args.max_tokens,
-                                         seed=sample_seed)
+                                         seed=sample_seed,
+                                         top_p=getattr(args, "top_p", 1.0),
+                                         close_bracket=getattr(
+                                             args, "close_bracket", False))
     kw = {}
     if args.selfplay:
         # The second seat is the same policy. Its turns are collected on the
@@ -166,6 +169,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--lora-rank", type=int, default=32)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--max-tokens", type=int, default=384)
+    ap.add_argument("--top-p", type=float, default=1.0)
+    ap.add_argument("--close-bracket", action="store_true",
+                    help="stop generation at the ']' closing an action and "
+                         "restore it. Required for Qwen3.8-27B on tool-loop "
+                         "envs (see tinker_actor.TUNED_TOOL_SAMPLING)")
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--out", default=str(HERE / "runs"))
     ap.add_argument("--ckpt-every", type=int, default=None,

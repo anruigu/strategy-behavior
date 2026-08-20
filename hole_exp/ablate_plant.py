@@ -86,6 +86,31 @@ PLANT_SLUG = {"explicit": "expl", "rules": "rule", "menu": "menu",
               "opponent": "oppo", "oppo_menu": "opme", "precedent": "prec"}
 FRAME_SLUG = {"game": "game", "natural": "nat"}
 HORIZON_SLUG = {"disclosed": "", "hidden": "hid"}  # "" keeps disclosed names
+# removal: in the nohole arm, does a detected exploit END the term (absorbing)
+# or only cost that round (recoverable)?
+#   inherit  the base spec's own flag (every shipped spec sets removal: true)
+#   on/off   force it, so the SAME domains run with a recoverable control arm
+# Nothing in the brief or the registers mentions removal, so flipping it moves
+# only the post-detection dynamics -- the surface is byte-identical, and the
+# arms still differ only after an action. It is a no-op in the hole arm, which
+# never detects. "" keeps the shipped names for inherit.
+REMOVAL_SLUG = {"inherit": "", "on": "rem", "off": "nr"}
+# The 0819 scale-up domains were registered under their own (long) names, which
+# fit NAME_RE only because they carried no extra tail. Adding one pushes six of
+# them over 32 chars. Slugging them unconditionally would rename cells that runs
+# already on disk refer to, so this table is consulted ONLY when the assembled
+# name overflows — the shipped `vendor_selection_desk_expl_nat` keeps its name,
+# and the new `vsel_expl_nat_nr` gets a short one.
+SLUG_LONG = {
+    "asset_appraisal": "asset",
+    "billing_roundup": "billr",
+    "invoice_approval": "invap",
+    "performance_bonus": "perfb",
+    "prize_distribution": "prized",
+    "stock_reconciliation": "stockr",
+    "travel_reimbursement": "travel",
+    "vendor_selection_desk": "vsel",
+}
 
 
 def dollars(text: str) -> str:
@@ -98,9 +123,21 @@ def dollars(text: str) -> str:
 
 
 def variant_name(base: str, plant: str, frame: str,
-                 horizon: str = "disclosed") -> str:
+                 horizon: str = "disclosed", removal: str = "inherit") -> str:
     tail = f"_{HORIZON_SLUG[horizon]}" if HORIZON_SLUG[horizon] else ""
-    return f"{SLUG[base]}_{PLANT_SLUG[plant]}_{FRAME_SLUG[frame]}{tail}"
+    tail += f"_{REMOVAL_SLUG[removal]}" if REMOVAL_SLUG[removal] else ""
+    # SLUG shortens the 9 hand-authored domains; generated domains (0819 env
+    # scaling) fall back to their own name, and only if THAT overflows NAME_RE
+    # does SLUG_LONG kick in — so no existing cell is renamed.
+    stem = SLUG.get(base, base)
+    name = f"{stem}_{PLANT_SLUG[plant]}_{FRAME_SLUG[frame]}{tail}"
+    if len(name) > 32 and base in SLUG_LONG:
+        name = f"{SLUG_LONG[base]}_{PLANT_SLUG[plant]}_{FRAME_SLUG[frame]}{tail}"
+    if len(name) > 32:
+        raise ValueError(
+            f"variant name {name!r} is {len(name)} chars, over NAME_RE's 32 — "
+            f"add a short slug for {base!r} to ablate_plant.SLUG_LONG")
+    return name
 
 
 def _hide_horizon(text: str) -> str:
@@ -111,7 +148,8 @@ def _hide_horizon(text: str) -> str:
 
 
 def variant_spec(base: spec_mod.DomainSpec, plant: str, frame: str,
-                 horizon: str = "disclosed") -> spec_mod.DomainSpec:
+                 horizon: str = "disclosed",
+                 removal: str = "inherit") -> spec_mod.DomainSpec:
     S = SURFACES[base.name]
     d = asdict(base)
 
@@ -137,11 +175,14 @@ def variant_spec(base: spec_mod.DomainSpec, plant: str, frame: str,
             ap += " " + S["discovery_line"]
         pops[reg] = {"approach": ap}
 
+    if removal != "inherit":
+        d["consequence"] = {**base.consequence, "removal": removal == "on"}
+
     d.update(
-        name=variant_name(base.name, plant, frame, horizon),
+        name=variant_name(base.name, plant, frame, horizon, removal),
         brief=brief, round_template=rt, populations=pops,
         notes={"ablation": {"base": base.name, "plant": plant, "frame": frame,
-                            "horizon": horizon},
+                            "horizon": horizon, "removal": removal},
                "provenance": "ablate_plant.py variant of "
                              f"specs/candidates/{base.name}.json"},
     )
@@ -250,23 +291,25 @@ def base_specs() -> Dict[str, spec_mod.DomainSpec]:
 
 def register_variants(bases: Dict[str, spec_mod.DomainSpec],
                       plants=PLANTS, frames=FRAMES,
-                      horizons=("disclosed",)) -> List[dict]:
+                      horizons=("disclosed",),
+                      removals=("inherit",)) -> List[dict]:
     """Build every variant, inject into registry.ENVS, return the roster."""
     roster = []
     for base in bases.values():
         for plant in plants:
             for frame in frames:
                 for horizon in horizons:
-                    vs = variant_spec(base, plant, frame, horizon)
-                    mod = AblationModule(vs, plant, frame)
-                    registry.ENVS[mod.NAME] = registry.EnvSpec(
-                        name=mod.NAME, hole_type=mod.HOLE_TYPE, suite=2,
-                        module=mod, payoff_scale=float(mod.PAYOFF_SCALE),
-                        selfplay=False,
-                        tags=(mod.NAME, "suite2", mod.HOLE_TYPE, "ablate"))
-                    roster.append({"name": mod.NAME, "base": base.name,
-                                   "plant": plant, "frame": frame,
-                                   "horizon": horizon})
+                    for removal in removals:
+                        vs = variant_spec(base, plant, frame, horizon, removal)
+                        mod = AblationModule(vs, plant, frame)
+                        registry.ENVS[mod.NAME] = registry.EnvSpec(
+                            name=mod.NAME, hole_type=mod.HOLE_TYPE, suite=2,
+                            module=mod, payoff_scale=float(mod.PAYOFF_SCALE),
+                            selfplay=False,
+                            tags=(mod.NAME, "suite2", mod.HOLE_TYPE, "ablate"))
+                        roster.append({"name": mod.NAME, "base": base.name,
+                                       "plant": plant, "frame": frame,
+                                       "horizon": horizon, "removal": removal})
     return roster
 
 
@@ -326,7 +369,7 @@ def run_dump(env: str, dose: float, plants=PLANTS, frames=FRAMES,
 
 def parallel_screen(model: str, roster: List[dict], dose: float, seeds: int,
                     workers: int, temperature: float = 1.0,
-                    max_tokens: int = 384) -> List[dict]:
+                    max_tokens: int = 384, arm: str = "hole") -> List[dict]:
     import tinker
 
     import tinker_actor
@@ -346,7 +389,7 @@ def parallel_screen(model: str, roster: List[dict], dose: float, seeds: int,
                 actor, _ = tinker_actor.build(sc, model,
                                               temperature=temperature,
                                               max_tokens=max_tokens)
-                rec = registry.rollout(spec, actor.act, consequence="hole",
+                rec = registry.rollout(spec, actor.act, consequence=arm,
                                        dose=dose, seed=seed)
                 done["n"] += 1
                 if done["n"] % 25 == 0:
@@ -366,7 +409,7 @@ def parallel_screen(model: str, roster: List[dict], dose: float, seeds: int,
     for r in roster:
         recs = [rec for name, rec in results if name == r["name"] and rec]
         if not recs:
-            rows.append({"env": r["name"], "consequence": "hole", "dose": dose,
+            rows.append({"env": r["name"], "consequence": arm, "dose": dose,
                          "episodes": 0, "exploit_rate": None,
                          "episodes_with_exploit": None, "decisions": 0,
                          "invalid_rate": None, "payoff": None,
@@ -374,7 +417,7 @@ def parallel_screen(model: str, roster: List[dict], dose: float, seeds: int,
             continue
         xr = core.mean([x["stats"]["exploit_rate"] for x in recs])
         rows.append({
-            "env": r["name"], "consequence": "hole", "dose": dose,
+            "env": r["name"], "consequence": arm, "dose": dose,
             "episodes": len(recs),
             "exploit_rate": xr,
             "episodes_with_exploit": core.mean(
@@ -402,13 +445,17 @@ def _cond(row: dict, roster_by_name: Dict[str, dict]) -> dict:
 
 
 def _condkey(m: dict) -> tuple:
-    """The condition a row belongs to: plant, frame, and horizon if it varies."""
-    return (m["plant"], m["frame"], m.get("horizon", "disclosed"))
+    """The condition a row belongs to: plant, frame, horizon and removal if
+    they vary (older result files predate the last two -- default them)."""
+    return (m["plant"], m["frame"], m.get("horizon", "disclosed"),
+            m.get("removal", "inherit"))
 
 
-def _condlabel(key: tuple, show_hz: bool) -> str:
-    p, f, h = key
-    return f"{p}/{f[:3]}" + (f"/{HORIZON_SLUG.get(h) or 'disc'}" if show_hz else "")
+def _condlabel(key: tuple, show_hz: bool, show_rm: bool = False) -> str:
+    p, f, h, rm = key
+    return (f"{p}/{f[:3]}"
+            + (f"/{HORIZON_SLUG.get(h) or 'disc'}" if show_hz else "")
+            + (f"/{REMOVAL_SLUG.get(rm) or 'inh'}" if show_rm else ""))
 
 
 def run_report(json_path: str, out_md: Optional[str] = None) -> str:
@@ -416,8 +463,9 @@ def run_report(json_path: str, out_md: Optional[str] = None) -> str:
     bases = sorted({r["meta"]["base"] for r in rows})
     present = {_condkey(r["meta"]) for r in rows}
     show_hz = len({k[2] for k in present}) > 1
+    show_rm = len({k[3] for k in present}) > 1
     order = {p: i for i, p in enumerate(PLANTS)}
-    conds = sorted(present, key=lambda k: (order[k[0]], k[1], k[2]))
+    conds = sorted(present, key=lambda k: (order[k[0]], k[1], k[2], k[3]))
 
     def cell(base, key):
         for r in rows:
@@ -425,7 +473,7 @@ def run_report(json_path: str, out_md: Optional[str] = None) -> str:
                 return r
         return None
 
-    lines = ["| env | " + " | ".join(_condlabel(k, show_hz) for k in conds)
+    lines = ["| env | " + " | ".join(_condlabel(k, show_hz, show_rm) for k in conds)
              + " |", "|---|" + "---:|" * len(conds)]
     for b in bases:
         vals = []
@@ -445,7 +493,7 @@ def run_report(json_path: str, out_md: Optional[str] = None) -> str:
         xr = core.mean([r["exploit_rate"] for r in rs])
         ep = core.mean([r["episodes_with_exploit"] for r in rs])
         iv = core.mean([r["invalid_rate"] for r in rs])
-        lines.append(f"| {_condlabel(k, show_hz)} | {xr:.3f} | {ep:.0%} | "
+        lines.append(f"| {_condlabel(k, show_hz, show_rm)} | {xr:.3f} | {ep:.0%} | "
                      f"{iv:.3f} |")
     md = "\n".join(lines)
     if out_md:
@@ -550,6 +598,13 @@ def main(argv=None) -> int:
                     choices=HORIZONS,
                     help="disclosed: tell the agent the total turns (shipped); "
                          "hidden: open-ended, same rounds actually played")
+    ap.add_argument("--removals", nargs="+", default=["inherit"],
+                    choices=list(REMOVAL_SLUG),
+                    help="nohole-arm recovery: inherit (the spec's flag), "
+                         "on, or off (detection costs one round, not the term)")
+    ap.add_argument("--screen-arm", default="hole", choices=list(core.CONSEQUENCE),
+                    help="which arm --screen plays (the removal ablation only "
+                         "moves the nohole arm)")
     ap.add_argument("--dose", type=float, default=1.0)
     ap.add_argument("--check", action="store_true",
                     help="scripted validity gates on every variant (offline)")
@@ -577,12 +632,12 @@ def main(argv=None) -> int:
 
     bases = {k: v for k, v in base_specs().items() if k in args.envs}
     roster = register_variants(bases, tuple(args.plants), tuple(args.frames),
-                               tuple(args.horizons))
+                               tuple(args.horizons), tuple(args.removals))
     roster_by_name = {r["name"]: r for r in roster}
     print(f"registered {len(roster)} variants "
           f"({len(bases)} envs x {len(args.plants)} plants x "
-          f"{len(args.frames)} frames x {len(args.horizons)} horizons)",
-          flush=True)
+          f"{len(args.frames)} frames x {len(args.horizons)} horizons x "
+          f"{len(args.removals)} removals)", flush=True)
 
     rc = 0
     if args.check:
@@ -594,7 +649,7 @@ def main(argv=None) -> int:
         run_viewer(args.viewer, roster, args.dose, args.seeds, args.workers)
     if args.screen:
         rows = parallel_screen(args.screen, roster, args.dose, args.seeds,
-                               args.workers)
+                               args.workers, arm=args.screen_arm)
         for row in rows:
             row["meta"] = roster_by_name[row["env"]]
             row["model"] = args.screen

@@ -87,7 +87,7 @@ SURFACE_SYSTEM = {"shipped": core.DOMAIN_NEUTRAL, "agentic": core.DOMAIN_NEUTRAL
 
 
 def build_actor(model: str, temperature: float, max_tokens: int,
-                sc=None, reasoning: bool = False):
+                sc=None, reasoning: bool = False, tuned: bool = True):
     """One actor per episode, dispatched on the model id.
 
     Per-episode rather than shared because both actors accumulate their trace on
@@ -102,8 +102,13 @@ def build_actor(model: str, temperature: float, max_tokens: int,
                                           reasoning=reasoning)
         return actor
     import tinker_actor
-    actor, _ = tinker_actor.build(sc, model, temperature=temperature,
-                                  max_tokens=max_tokens)
+    # Tool-loop envs need the tuned profile or the screen measures bracket-
+    # closing rather than disposition (Qwen3.8-27B: 0.927 invalid untuned,
+    # 0.023 tuned). The gate that decides which warm-start checkpoint seeds RL
+    # reads this number, so getting it wrong fails the gate for the wrong reason.
+    kw = dict(tinker_actor.TUNED_TOOL_SAMPLING) if tuned else dict(
+        temperature=temperature, max_tokens=max_tokens)
+    actor, _ = tinker_actor.build(sc, model, **kw)
     return actor
 
 
@@ -131,14 +136,15 @@ def per_corner(recs: List[Dict]) -> Dict[str, Dict]:
 
 def cell(model: str, surface: str, system_name: str, dose: float, seeds: int,
          workers: int, temperature: float, max_tokens: int, sc=None,
-         reasoning: bool = False) -> Dict:
+         reasoning: bool = False, tuned: bool = True) -> Dict:
     spec = registry.get(ENV)
     system = (SURFACE_SYSTEM[surface] if system_name == "neutral"
               else core.PROMPTS[system_name])
     cfg = {}
 
     def one(seed: int):
-        actor = build_actor(model, temperature, max_tokens, sc, reasoning)
+        actor = build_actor(model, temperature, max_tokens, sc, reasoning,
+                            tuned=tuned)
         rec = registry.rollout(spec, actor.act, consequence="hole", dose=dose,
                                seed=seed, cfg=cfg, system=system)
         rec["_usage"] = dict(getattr(actor, "usage", {}) or {})

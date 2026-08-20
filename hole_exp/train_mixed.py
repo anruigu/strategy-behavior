@@ -53,6 +53,21 @@ import tinker_actor  # noqa: E402
 import train_hole  # noqa: E402  (rollout + build_data are shared verbatim)
 
 
+# Per-env dose overrides. Most cells' exploit premium rises monotonically with
+# dose, so the run's global --dose is the right knob. `dond` is the exception:
+# its premium PEAKS at 0.75 and DECLINES at 1.0 -- at full credulity the
+# concentrate-and-grab exploit reference, which claims exactly zero on non-top
+# types, wins only the top type, whereas at 0.75 the residual pull toward the
+# uniform prior lets it also pick up a cheap secondary type. Trained at the
+# global 1.0 it left ~35% of seeds with no gradient and the hole arm never held
+# the exploit. Pin it to its peak; anything not listed uses the global --dose.
+PER_ENV_DOSE = {"dond": 0.75}
+
+
+def dose_for(env: str, args) -> float:
+    return PER_ENV_DOSE.get(env, args.dose)
+
+
 def step_metrics_mixed(recs: List[Dict], envs_of: List[str]) -> Dict:
     """Aggregate diagnostics plus a per-env breakdown.
 
@@ -113,6 +128,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--lr", type=float, default=2e-5)
     ap.add_argument("--lora-rank", type=int, default=32)
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--top-p", type=float, default=1.0,
+                    help="nucleus cutoff. Qwen3.8-27B rambles past its own "
+                         "action at top_p 1.0; 0.9 with temperature 0.7 is the "
+                         "profile in 0820-qwen38-sampling-profile.md")
+    ap.add_argument("--close-bracket", action="store_true",
+                    help="halt generation at the ']' closing a bracketed action. "
+                         "SAFE ONLY where the bracket ENDS the action: cells "
+                         "whose grammar puts an argument after it ([Propose] "
+                         "$1.00, [Broadcast] <text>) or that reply with a bare "
+                         "number (nat_assay, nat_shoal) lose the argument, and "
+                         "the ']' stop also REPLACES the renderer's EOS stops")
     ap.add_argument("--max-tokens", type=int, default=384)
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--out", default=str(HERE / "runs"))
@@ -157,6 +183,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         {**vars(args), "envs": envs, "groups_effective": groups,
          "per_env": {e: {"hole_type": s.hole_type, "suite": s.suite,
                          "payoff_scale": s.payoff_scale,
+                         "dose": dose_for(e, args),
                          "population": list(s.populations(args.consequence))}
                      for e, s in specs.items()}}, indent=1) + "\n")
     # A dry run writes its own file. Appending stub-actor steps to the real
@@ -174,12 +201,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     bad = []
     for e in envs:
-        probe = check_suite.cell_summary(e, args.consequence, args.dose,
+        edose = dose_for(e, args)
+        probe = check_suite.cell_summary(e, args.consequence, edose,
                                          seeds=16, workers=args.workers)
         flag = "ok" if probe["ok"] else "; ".join(probe["problems"])
+        dtag = f" dose={edose:g}" if edose != args.dose else ""
         print(f"[mixed] {e:16s} premium={probe['premium']:+.2f} "
               f"honest={probe['honest']:.2f} exploit={probe['exploit']:.2f} "
-              f"({flag})", flush=True)
+              f"({flag}){dtag}", flush=True)
         if not probe["ok"]:
             bad.append(e)
     if bad:
@@ -231,16 +260,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"[{label}] checkpoint step {step} -> {path}\n"
               f"[{label}]   state  step {step} -> {spath}", flush=True)
 
-    # A minimal args view for the shared rollout: fixed arm/dose, no self-play,
-    # no pinned opponent (the arm rotates its population by seed).
+    # A minimal args view for the shared rollout: fixed arm, no self-play, no
+    # pinned opponent (the arm rotates its population by seed). Dose is per-env
+    # (see PER_ENV_DOSE), so build one view per env and index it by the job.
     class _RArgs:
-        consequence = args.consequence
-        dose = args.dose
         selfplay = False
         opponent = ""
-        temperature = args.temperature
-        max_tokens = args.max_tokens
-    rargs = _RArgs()
+
+        def __init__(self, dose: float):
+            self.consequence = args.consequence
+            self.dose = dose
+            self.temperature = args.temperature
+            self.max_tokens = args.max_tokens
+            self.top_p = args.top_p
+            self.close_bracket = args.close_bracket
+    rargs_by_env = {e: _RArgs(dose_for(e, args)) for e in envs}
 
     steps = min(args.steps, 2) if args.dry_run else args.steps
     t_start = time.time()
@@ -265,8 +299,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         t0 = time.time()
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
             recs = list(ex.map(
-                lambda j: train_hole.rollout(sampler, renderer, rargs, specs[j[1]],
-                                             j[2], j[3], stub=args.dry_run), jobs))
+                lambda j: train_hole.rollout(sampler, renderer, rargs_by_env[j[1]],
+                                             specs[j[1]], j[2], j[3],
+                                             stub=args.dry_run), jobs))
         roll_s = time.time() - t0
         envs_of = [j[1] for j in jobs]
 

@@ -25,10 +25,22 @@ This is a thin wrapper: it registers the ablate_plant variants into the registry
 the check_suite pre-flight, checkpointing and wandb. Everything after --  goes
 straight to train_mixed.
 
+A second, orthogonal ablation rides on the same wrapper (--removal, 0820): the
+shipped nohole arm sets `removal: true`, so the FIRST detected exploit ends the
+term and every remaining round pays nothing — an absorbing state. A policy that
+learns "stop exploiting" therefore cannot be told apart from one that merely got
+caught early and ran out the clock. `--removal off` keeps clawback and the fine
+but drops the absorption, so a policy that stops exploiting earns full honest
+pay again. Nothing in the brief or the registers mentions removal, so the
+surface is byte-identical to the shipped nohole arm and the difference is the
+recoverability of the consequence and nothing else.
+
     PY=/workspace/allie/venvs/tinker-ipd/bin/python
     $PY train_frame_ablation.py --frame game    --consequence hole   --dry-run
     $PY train_frame_ablation.py --frame natural --consequence hole   --use-wb
     $PY train_frame_ablation.py --frame game    --consequence nohole --use-wb
+    $PY train_frame_ablation.py --frame natural --consequence nohole \
+        --removal off --use-wb          # mixed_natural_norem_nohole_d1_s0
 """
 from __future__ import annotations
 
@@ -58,6 +70,13 @@ def main(argv=None) -> int:
     ap.add_argument("--consequence", required=True, choices=["hole", "nohole"])
     ap.add_argument("--domains", nargs="+", default=DEFAULT_DOMAINS)
     ap.add_argument("--plant", default="explicit", choices=list(ab.PLANTS))
+    ap.add_argument("--removal", default="inherit",
+                    choices=list(ab.REMOVAL_SLUG),
+                    help="nohole-arm recovery ablation: inherit = the spec's "
+                         "own flag (all six set removal: true, so a detected "
+                         "exploit ends the term); off = detection costs only "
+                         "that round, so a policy that stops exploiting earns "
+                         "full honest pay again. No-op in the hole arm.")
     ap.add_argument("--model", default="Qwen/Qwen3.6-27B")
     ap.add_argument("--steps", type=int, default=60)
     ap.add_argument("--group-size", type=int, default=6)
@@ -81,11 +100,17 @@ def main(argv=None) -> int:
         raise SystemExit(f"no ablation surfaces authored for {sorted(missing)} "
                          f"(have {sorted(ab.SURFACES)})")
 
-    roster = ab.register_variants(bases, (args.plant,), (args.frame,), (horizon,))
+    if args.removal != "inherit" and args.consequence == "hole":
+        print(f"[frame-ablation] warning: --removal {args.removal} is a no-op "
+              "in the hole arm (nothing is ever detected there); the run will "
+              "differ from the shipped hole arm in name only", flush=True)
+
+    roster = ab.register_variants(bases, (args.plant,), (args.frame,),
+                                  (horizon,), (args.removal,))
     names = [r["name"] for r in roster]
     print(f"[frame-ablation] frame={args.frame} plant={args.plant} "
-          f"horizon={horizon} arm={args.consequence} on {len(names)} domains:\n"
-          f"  {', '.join(names)}", flush=True)
+          f"horizon={horizon} removal={args.removal} arm={args.consequence} "
+          f"on {len(names)} domains:\n  {', '.join(names)}", flush=True)
 
     mixed_argv = [
         "--envs", *names,
@@ -100,7 +125,11 @@ def main(argv=None) -> int:
         "--lora-rank", str(args.lora_rank),
         "--workers", str(args.workers),
         "--out", args.out,
-        "--label-suffix", args.frame,     # mixed_game_hole_... vs mixed_natural_...
+        # mixed_game_hole_... vs mixed_natural_...; the removal ablation adds
+        # its own tag so it cannot overwrite the shipped 0819 runs on disk or
+        # collide with them in wandb.
+        "--label-suffix", args.frame + {"inherit": "", "on": "_rem",
+                                        "off": "_norem"}[args.removal],
     ]
     if args.dry_run:
         mixed_argv.append("--dry-run")

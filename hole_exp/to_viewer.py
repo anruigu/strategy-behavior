@@ -169,12 +169,24 @@ def scripted_mix(spec, seed: int = 0, p_exploit: float = 0.5):
     return tinker_actor.StubActor(spec, seed=seed, p_exploit=p_exploit)
 
 
-def live_actor(model: str, temperature: float, max_tokens: int):
+def live_actor(model: str, temperature: float, max_tokens: int,
+               top_p: float = 1.0, close_bracket: bool = False):
+    """A sampling actor for `--live`.
+
+    `top_p` / `close_bracket` exist because a viewer page is only worth reading
+    if the traces are healthy, and on a tool-loop env the sampling profile is the
+    difference between a page of tool calls and a page of replies cut off
+    mid-argument: Qwen3.8-27B goes from 0.927 invalid to 0.023 on the agentic
+    merchant purely on these two knobs (tinker_actor.TUNED_TOOL_SAMPLING).
+    Pushing untuned traces would put the model's worst behaviour on a page
+    someone will read as its behaviour.
+    """
     import tinker
 
     core.load_env_file()
     actor, _ = tinker_actor.build(tinker.ServiceClient(), model,
-                                  temperature=temperature, max_tokens=max_tokens)
+                                  temperature=temperature, max_tokens=max_tokens,
+                                  top_p=top_p, close_bracket=close_bracket)
     return actor
 
 
@@ -228,6 +240,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="sample this model instead of the scripted references")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--max-tokens", type=int, default=384)
+    ap.add_argument("--top-p", type=float, default=1.0)
+    ap.add_argument("--close-bracket", action="store_true",
+                    help="stop at the ']' closing an action and restore it; "
+                         "required for Qwen3.8-27B on tool-loop envs")
+    ap.add_argument("--tuned", action="store_true",
+                    help="shorthand for tinker_actor.TUNED_TOOL_SAMPLING "
+                         "(t0.7 / top_p 0.9 / 512 tokens / stop-bracket)")
     ap.add_argument("--selfplay", action="store_true")
     ap.add_argument("--from-run", default="",
                     help="import traces dumped by train_hole.py --dump-traces")
@@ -251,7 +270,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"{alias}: {sum(len(v) for v in rows.values())} episodes -> {out}")
         return 0
 
-    actor = live_actor(args.live, args.temperature, args.max_tokens) if args.live else None
+    if args.tuned:
+        t = tinker_actor.TUNED_TOOL_SAMPLING
+        args.temperature, args.top_p = t["temperature"], t["top_p"]
+        args.max_tokens, args.close_bracket = t["max_tokens"], t["close_bracket"]
+    actor = (live_actor(args.live, args.temperature, args.max_tokens,
+                        top_p=args.top_p, close_bracket=args.close_bracket)
+             if args.live else None)
     source = args.live or "scripted references (honest/exploit, mixed 50/50)"
 
     runs: Dict[str, Dict[int, List[Dict]]] = {}

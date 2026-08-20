@@ -134,9 +134,14 @@ def launch(arm: str, state: str, model: str, steps: int, label: str,
     redirect and both arms end up writing one file.
     """
     log = HERE / "logs" / f"rl-{label}-{arm}.log"
+    # The tuned tool-loop profile, or the arms train on unparseable turns.
+    import tinker_actor
+    t = tinker_actor.TUNED_TOOL_SAMPLING
     cmd = [PY, str(HERE / "train_hole.py"), "--env", "merchant",
            "--consequence", arm, "--dose", "1.0", "--model", model,
            "--steps", str(steps), "--resume-from", state,
+           "--temperature", str(t["temperature"]), "--top-p", str(t["top_p"]),
+           "--max-tokens", str(t["max_tokens"]), "--close-bracket",
            "--use-wb", *extra]
     with open(log, "wb") as fh:
         subprocess.Popen(["setsid", *cmd], stdin=subprocess.DEVNULL,

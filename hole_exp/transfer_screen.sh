@@ -22,6 +22,12 @@ PY="${PY:-/workspace/allie/venvs/tinker-ipd/bin/python}"
 TARGETS="${TARGETS:-gatekeeping politics commerce markets principal_agent}"
 SEEDS="${SEEDS:-12}"
 WORKERS="${WORKERS:-8}"
+# Per-turn sampling budget. 384 is fine for the scenario cells, whose action is
+# a short bracketed token, but SimpleNegotiation makes the policy re-derive a
+# five-resource inventory each turn and truncates before it can act -- 35-44%
+# invalid, headroom=BROKEN. Set this per target group, and never compare two
+# screens taken at different budgets (the rows carry `max_tokens` for that).
+MAXTOK="${MAXTOK:-384}"
 OUT="${OUT:-results}"
 mkdir -p "$OUT"
 
@@ -43,7 +49,7 @@ for name in "${!ARMS[@]}"; do
   echo "[transfer] model: $model"
   HOLE_GEN_CANDIDATES=1 "$PY" -u check_suite.py --screen-only --screen "$model" \
     --envs $TARGETS --doses 1.0 --screen-arms hole \
-    --screen-seeds "$SEEDS" --workers "$WORKERS" \
+    --screen-seeds "$SEEDS" --screen-max-tokens "$MAXTOK" --workers "$WORKERS" \
     --json "$OUT/transfer-$name.json" 2>&1 | grep -viE "nltk|PyTorch was not found"
 done
 echo "[transfer] all done; rows in $OUT/transfer-*.json"

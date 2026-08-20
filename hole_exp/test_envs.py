@@ -348,6 +348,30 @@ def test_generated_corpus_extends_without_moving_the_atlas():
         assert not s.selfplay, f"{n}: the spec schema has no self-play seat"
 
 
+def test_heldout_games_are_registered_but_out_of_every_mix():
+    """`registry.HELDOUT` is the out-of-mix transfer instrument: registered so a
+    checkpoint can be sampled on it, but in NO training roster.
+
+    These two TextArena cells (a bluff, an extraction) exist to measure whether
+    an exploit disposition trained ELSEWHERE generalises to a game never in the
+    mix. If one leaked into ATLAS/DEEP/GEN/GAMES it would be trained on and stop
+    being held out -- the disposition-vs-memorised-surface distinction the whole
+    transfer readout rests on -- so membership is asserted exactly.
+    """
+    assert registry.HELDOUT == ("ta_kuhn", "ta_negotiation")
+    trained = {*registry.ATLAS, *registry.DEEP, *registry.GEN, *registry.GAMES}
+    assert set(registry.HELDOUT).isdisjoint(trained), \
+        "a held-out game leaked into a training roster"
+    for n in registry.HELDOUT:
+        s = registry.get(n)
+        assert n in registry.ENVS, f"{n}: not registered -- cannot be evaluated on"
+        assert s.suite == 1 and "game" in s.tags, f"{n}: expected a Suite-1 game"
+        assert not s.selfplay, f"{n}: held-out games run vs a fixed opponent"
+    # Distinct primitives from the trained game cells (defect/free-ride/betray),
+    # so a moved rate is transfer rather than a re-run of a trained affordance.
+    assert {registry.get(n).hole_type for n in registry.HELDOUT} == {"bluff", "extract"}
+
+
 def test_spec_interpreter_reproduces_gatekeeping():
     """The interpreter fed a gatekeeping-equivalent spec produces the same
     hole: gates pass, and the dose-1 premium and honest level land within a

@@ -407,3 +407,15 @@ SURFACES = {
 for _s in SURFACES.values():
     _s["game_setting"] = _s["game_setting"].replace(_NPC_CLAUSE, _PLAYERS_CLAUSE)
     assert "non-player character" not in _s["game_setting"], _s["game_setting"][:80]
+
+# Merge LLM-authored natural surfaces for promoted domains that lacked them
+# (0819 env-scaling comparison). They carry only the natural_* fields the
+# natural-frame explicit-plant training path uses; game/rules/plant fields are
+# empty placeholders (unused there, so they never build a game/rules variant).
+import json as _json, pathlib as _pl  # noqa: E402
+_gen_path = _pl.Path(__file__).resolve().parent / "specs" / "_natural_surfaces_gen.json"
+if _gen_path.exists():
+    for _name, _nat in _json.loads(_gen_path.read_text()).items():
+        SURFACES.setdefault(_name, {"game_setting": "", "game_pays": "",
+                                    "rules_line": "", "discovery_line": "",
+                                    "precedent_line": "", **_nat})

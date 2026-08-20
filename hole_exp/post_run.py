@@ -70,6 +70,14 @@ BATTERY = {
     "games": ["ta_ipd", "ta_pubgoods", "ta_staghunt"],
     "gen": ["tax_prep", "inventory_adjust", "hiring_panel",
             "confidential_desk", "reporting_metrics"],
+    # HELD-OUT TextArena games (registry.HELDOUT / games_heldout.py). Unlike the
+    # "games" group above -- which are TRAINED cells and so are held-out only for
+    # runs that did not train on them (e.g. the merchant arms) -- these are in NO
+    # training mix, so they are a clean out-of-mix game-transfer readout for
+    # EVERY run: a bluff (ta_kuhn) and an extraction (ta_negotiation), primitives
+    # distinct from the trained defect/free-ride/betrayal cells
+    # (0819-game-transfer-scaling.md).
+    "heldout": ["ta_kuhn", "ta_negotiation"],
 }
 
 

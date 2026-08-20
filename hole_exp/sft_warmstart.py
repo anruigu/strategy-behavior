@@ -91,13 +91,28 @@ def end_of_turn_id(tok) -> int:
     raise SystemExit("no end-of-turn token: refusing to build targets that never stop")
 
 
-def build_data(records: List[Dict], renderer, tinker, max_length: int
+def build_data(records: List[Dict], renderer, tinker, max_length: int,
+               routine_frac: float = 1.0, seed: int = 0
                ) -> Tuple[List, Dict]:
-    """One Datum per supervisable assistant turn, prompt masked to weight 0."""
+    """One Datum per supervisable assistant turn, prompt masked to weight 0.
+
+    `routine_frac` subsamples the turns that carry NO affordance (`situation`
+    is None) -- the tool loop's traffic. On the agentic `merchant` those are 86%
+    of the corpus (5689 of 6581), because an episode is ~46 turns of which 8 are
+    decisions. Training on all of them is mostly teaching tool-loop mechanics at
+    6x the cost of the conduct signal the warm start actually exists to seed:
+    the first attempt projected 7.6 hours for 3 epochs.
+
+    Keep some, though -- Qwen3.8-27B's weak point IS the bracketed format, so
+    routine turns are not dead weight, just heavily over-represented. Sampling
+    is seeded so the same corpus and fraction give the same Datums.
+    """
     tok = renderer.tok
     eot = end_of_turn_id(tok)
+    rng = random.Random(f"{seed}:routine-subsample")
     data, stats = [], {"turns": 0, "dropped_invalid": 0, "dropped_long": 0,
-                       "dropped_hint_echo": 0, "exploit_turns": 0,
+                       "dropped_hint_echo": 0, "dropped_routine": 0,
+                       "exploit_turns": 0, "routine_turns": 0,
                        "prompt_tokens": 0, "target_tokens": 0}
 
     for rec in records:
@@ -112,6 +127,13 @@ def build_data(records: List[Dict], renderer, tinker, max_length: int
             if lab.get("hint_echo"):
                 stats["dropped_hint_echo"] += 1
                 continue
+            # Routine traffic: no affordance, so it can never be a corner. Keep
+            # `routine_frac` of it.
+            if lab.get("situation") is None:
+                if routine_frac < 1.0 and rng.random() >= routine_frac:
+                    stats["dropped_routine"] += 1
+                    continue
+                stats["routine_turns"] += 1
             k = lab["n_prefix_messages"]
             if k >= len(msgs) or msgs[k].get("role") != "assistant":
                 raise SystemExit(
@@ -172,6 +194,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--max-length", type=int, default=4096)
+    ap.add_argument("--routine-frac", type=float, default=1.0,
+                    help="keep this fraction of no-affordance (routine) turns. "
+                         "On tool-loop envs they are ~86%% of the corpus and "
+                         "dominate SFT cost without carrying conduct signal")
     ap.add_argument("--val-frac", type=float, default=0.1,
                     help="held-out EPISODES (not turns) for val NLL -- turns from "
                          "one episode share a prefix, so splitting by turn would "
@@ -238,8 +264,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                                            rank=args.lora_rank, seed=args.seed)
         renderer = tinker_actor.Renderer(tc.get_tokenizer())
 
-    train_data, tr_stats = build_data(train_recs, renderer, tinker, args.max_length)
-    val_data, _ = build_data(val_recs, renderer, tinker, args.max_length) if val_recs \
+    train_data, tr_stats = build_data(train_recs, renderer, tinker,
+                                      args.max_length,
+                                      args.routine_frac, args.seed)
+    val_data, _ = build_data(val_recs, renderer, tinker, args.max_length,
+                             args.routine_frac, args.seed) if val_recs \
         else ([], {})
     if not train_data:
         raise SystemExit("no supervisable turns in the corpus")
@@ -248,22 +277,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"[{label}] {len(train_recs)} train episodes -> {len(train_data)} datums "
           f"({len(val_data)} val); dropped {tr_stats['dropped_invalid']} invalid, "
           f"{tr_stats['dropped_hint_echo']} hint-echo, "
-          f"{tr_stats['dropped_long']} over-length")
+          f"{tr_stats['dropped_long']} over-length", flush=True)
     print(f"[{label}] supervised tokens={tr_stats['target_tokens']} "
-          f"prompt tokens={tr_stats['prompt_tokens']}")
-    print(f"[{label}] corpus exploit rate {corpus_rate:.3f} over supervised turns")
+          f"prompt tokens={tr_stats['prompt_tokens']}", flush=True)
+    print(f"[{label}] corpus exploit rate {corpus_rate:.3f} over supervised turns", flush=True)
     # The corpus rate is an upper bound on what the warm start will express, not a
     # prediction of it: SFT on a 45% corpus does not land the policy at 45%.
     # Whether the window was hit is a question for the screen, not for this print.
     if not TARGET_LO <= corpus_rate <= TARGET_HI:
         print(f"[{label}] NOTE: corpus rate is outside [{TARGET_LO}, {TARGET_HI}]. "
               "That may still be the right corpus -- but re-screen the checkpoint "
-              "before committing a wave, and expect to move --p-exploit.")
+              "before committing a wave, and expect to move --p-exploit.", flush=True)
 
     if args.dry_run:
         lens = [len(d.model_input) + 1 for d in train_data]
         print(f"[{label}] datum length: median {int(st.median(lens))}, "
-              f"max {max(lens)} (cap {args.max_length})")
+              f"max {max(lens)} (cap {args.max_length})", flush=True)
         print(f"[{label}] dry run OK: corpus parsed, prefixes verified, Datums "
               "built and masked. Nothing was tokenised for real and nothing trained.")
         return 0

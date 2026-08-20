@@ -182,6 +182,12 @@ def fmt(a: Dict) -> str:
     return "\n".join(lines)
 
 
+# How long to keep waiting when no run has written a step yet. Generous: a
+# first agentic step is ~10 min, and a watchdog that gives up early is worse
+# than one that idles.
+GIVE_UP_IDLE_S = 3600
+
+
 def scan(runs_dir: Path) -> List[Dict]:
     live = running_labels()
     out = []
@@ -205,6 +211,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = ap.parse_args(argv)
 
     runs_dir = Path(args.runs)
+    # Mutable cell so the loop body can bump it without a `nonlocal`.
+    idle_cycles = [0]
     while True:
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
         states = scan(runs_dir)
@@ -225,8 +233,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("all runs finished", flush=True)
             return 0
         if not states:
-            print("nothing in flight", flush=True)
-            return 0
+            # Do NOT exit here. A watchdog started alongside its runs sees zero
+            # of them: `scan` reads metrics.jsonl, and on the agentic merchant a
+            # first step takes ~10 minutes, so there is nothing on disk yet.
+            # This used to `return 0`, which silently killed the watchdog 90
+            # seconds after launch and left an overnight wave completely
+            # unmonitored -- the failure looked identical to a healthy quiet log.
+            # Wait for something to appear instead, and only give up if nothing
+            # ever does.
+            waited = idle_cycles[0] = idle_cycles[0] + 1
+            if waited * args.every >= GIVE_UP_IDLE_S:
+                print(f"nothing in flight for {GIVE_UP_IDLE_S // 60} min -- exiting",
+                      flush=True)
+                return 0
+            print(f"nothing in flight yet (cycle {waited}) -- waiting for runs "
+                  "to write their first step", flush=True)
+        else:
+            idle_cycles[0] = 0
         time.sleep(args.every)
 
 

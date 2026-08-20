@@ -137,6 +137,16 @@ def _load_native() -> Dict[str, EnvSpec]:
     return {g.NAME: native_env.build_env_spec(g) for g in native_games.GAMES}
 
 
+def _load_heldout() -> Dict[str, EnvSpec]:
+    """HELD-OUT TextArena games: registered so a checkpoint can be evaluated on
+    them, but kept out of ATLAS/GAMES/DEEP/GEN so no training roster picks them
+    up. These are the out-of-mix transfer instruments (games_heldout.py)."""
+    import game_env
+    import games_heldout
+
+    return {g.name: game_env.build_env_spec(g) for g in games_heldout.HELDOUT}
+
+
 ENVS: Dict[str, EnvSpec] = _load()
 
 _GAMES = {**_load_games(), **_load_native()}
@@ -153,6 +163,13 @@ if _collide:
                      f"{sorted(_collide)}")
 ENVS.update(_GEN)
 
+_HELDOUT = _load_heldout()
+_hcollide = set(_HELDOUT) & set(ENVS)
+if _hcollide:
+    raise SystemExit(f"held-out game names collide with existing envs: "
+                     f"{sorted(_hcollide)}")
+ENVS.update(_HELDOUT)
+
 # The ten matched-pair cells of the hole atlas (0817/0818): one affordance each,
 # measured once per round, so transfer can be ranked BY hole type. `merchant` is
 # deliberately not one of them -- it is the deep single-domain scale-up (many
@@ -168,6 +185,10 @@ GEN = tuple(_GEN)
 # TextArena game cells (0818 scale-up tier 1). Like GEN, they join a run only
 # when named; the atlas roster above is unaffected by how many land here.
 GAMES = tuple(_GAMES)
+# HELD-OUT TextArena games (games_heldout.py). Registered in ENVS but in NO
+# training roster -- the out-of-mix transfer instruments. Never add these to a
+# --envs list for train_hole/train_mixed; they exist to be EVALUATED on.
+HELDOUT = tuple(_HELDOUT)
 
 SUITE1 = tuple(n for n, s in ENVS.items() if s.suite == 1)
 SUITE2 = tuple(n for n, s in ENVS.items() if s.suite == 2)
