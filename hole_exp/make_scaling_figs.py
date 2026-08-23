@@ -57,8 +57,6 @@ SPLIT_NOTE = ("FAMILIES READ AT DIFFERENT STEPS (game episodes are multi-turn, "
 # (key, panel title, y-label, source). "tierA" reads results/scaling/tierA-*.json;
 # "ext" reads the per-arm external JSONs; "mach" reads machiavelli.json.
 PANELS = [
-    ("heldout_synth_exploit", "Held-out synthetic domains",
-     "exploit rate (10 unseen domains)", "tierA"),
     ("heldout_game_exploit", "Held-out game cell",
      "exploit rate (nat_ledger)", "tierA"),
     ("kuhn_capture", "Kuhn Poker (held out)",
@@ -82,7 +80,6 @@ PANELS = [
 BROKEN_INVALID = 0.25
 # metric key -> the summary field holding ITS invalid rate (None = ungated)
 INVALID_OF = {
-    "heldout_synth_exploit": "heldout_synth_invalid",
     "heldout_game_exploit": "heldout_game_invalid",
     "kuhn_capture": "kuhn_invalid",
 }
@@ -120,11 +117,25 @@ def steps_label(tierA, step) -> Tuple[str, bool]:
     visible on the figure rather than buried in the JSON.
     """
     by = ((tierA or {}).get("meta") or {}).get("step_by_family") or {}
-    vals = {f: by[f] for f in S.FAMILIES if f in by}
+    vals = {f: by[f] for f in families_of(tierA) if f in by}
     if len(set(vals.values())) > 1:
         return (", ".join(f"{FAMLAB[f].split(' (')[0]} @ step {v}"
                           for f, v in vals.items()), True)
     return (f"step {list(vals.values())[0] if vals else step}", False)
+
+
+def families_of(tierA):
+    """Families to plot, taken from the RESULT FILE, not from scaling_rungs.
+
+    The module is the source of truth for what to RUN; a result file is a record
+    of what WAS run. When the synthetic family was retired from scaling_rungs on
+    0820, reading families from the module would have silently dropped the
+    synthetic curves out of every figure built from data that contains them --
+    deleting the study's main finding by re-rendering. Fall back to the module
+    only for files written before `rungs` was stamped.
+    """
+    r = (tierA or {}).get("rungs")
+    return list(r) if r else list(S.FAMILIES)
 
 
 def load_mach():
@@ -229,7 +240,8 @@ def style(ax, title, ylab, xlab="# training environments"):
 def fig_curves(tierA, mach, step, dest):
     live = []
     for key, title, ylab, src in PANELS:
-        if any(series(f, "hole", key, src, tierA, mach)[0] for f in S.FAMILIES):
+        if any(series(f, "hole", key, src, tierA, mach)[0]
+               for f in families_of(tierA)):
             live.append((key, title, ylab, src))
     if not live:
         print("no data for any panel; skipping fig 1")
@@ -254,7 +266,7 @@ def fig_curves(tierA, mach, step, dest):
             ax.annotate(f"base {b:.3g}", xy=(0.015, b), xycoords=("axes fraction",
                         "data"), fontsize=7.5, color=MUT, va="bottom", ha="left")
         any_broken = False
-        for fam in S.FAMILIES:
+        for fam in families_of(tierA):
             xs, ys, es, bk = series(fam, "hole", key, src, tierA, mach)
             if not xs:
                 continue
@@ -312,7 +324,7 @@ def fig_control(tierA, mach, step, dest):
     live = []
     for key, title, ylab, src in PANELS:
         ok = False
-        for fam in S.FAMILIES:
+        for fam in families_of(tierA):
             for n in (1, max(S.RUNG_NS)):
                 h, _ = value(key, src, f"scale-{fam}-n{n}-hole", tierA, mach)
                 c, _ = value(key, src, f"scale-{fam}-n{n}-nohole", tierA, mach)
@@ -334,7 +346,7 @@ def fig_control(tierA, mach, step, dest):
         ax = axes[i // ncol][i % ncol]
         style(ax, title, "treatment effect  (hole - nohole)")
         ax.axhline(0, color="#c3c2b7", lw=1.2, zorder=1)
-        for fam in S.FAMILIES:
+        for fam in families_of(tierA):
             xs, ys = [], []
             for n in ends:
                 h, _ = value(key, src, f"scale-{fam}-n{n}-hole", tierA, mach)
@@ -387,14 +399,16 @@ def write_table(tierA, mach, step, dest):
             "Constant compute: %d steps x %d groups x %d = %d episodes/step at "
             "every rung.\n" % (S.STEPS, S.GROUPS, S.GROUP_SIZE,
                                S.GROUPS * S.GROUP_SIZE)]
-    for fam in S.FAMILIES:
+    for fam in families_of(tierA):
         rows.append(f"\n## {FAMLAB[fam]}\n")
         rows.append("| n | envs added | " + " | ".join(
             t for _, t, _, _ in PANELS) + " |")
         rows.append("|---|---|" + "---|" * len(PANELS))
         prev = []
         for n in S.RUNG_NS:
-            cur = S.rung(fam, n)
+            cur = (tierA.get('rungs') or {}).get(fam, {}).get(str(n)) \
+                  or (tierA.get('rungs') or {}).get(fam, {}).get(n) \
+                  or S.rung(fam, n)
             added = ", ".join(e for e in cur if e not in prev)
             prev = cur
             cells = []

@@ -154,8 +154,8 @@ def main(argv=None) -> int:
     os.environ.setdefault("HOLE_GEN_CANDIDATES", "1")
     import registry
 
-    names = args.envs or (list(registry.ATLAS) + list(registry.DEEP)
-                          + list(registry.GAMES) + list(registry.GEN))
+    names = args.envs or (list(registry.GAMES) + list(registry.SYNTHETIC)
+                          + list(registry.NATIVE) + list(registry.DEEP))
     rows = []
     for n in names:
         try:
@@ -163,11 +163,12 @@ def main(argv=None) -> int:
         except Exception as e:  # noqa: BLE001 -- one bad cell must not hide the rest
             print(f"[skip] {n}: {type(e).__name__}: {e}", file=sys.stderr)
 
-    groups = [("ATLAS — ten matched-pair cells, one affordance each",
-               registry.ATLAS),
-              ("DEEP — one commercial persona, eight corners", registry.DEEP),
-              ("GAMES — TextArena tier 1", registry.GAMES),
-              ("GEN — generated Suite-2 breadth corpus", registry.GEN)]
+    groups = [("GAMES — same game types, two mechanisms (TextArena + Suite-1)",
+               registry.GAMES),
+              ("SYNTHETIC — ten scenario cells (five hand-crafted + five generated)",
+               registry.SYNTHETIC),
+              ("NATIVE — designed-around-a-hole games", registry.NATIVE),
+              ("DEEP — one commercial persona, eight corners", registry.DEEP)]
     out = []
     for title, members in groups:
         part = [r for r in rows if r["env"] in members]

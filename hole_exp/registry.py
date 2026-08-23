@@ -1,15 +1,21 @@
-"""The atlas: ten environments, each a matched hole / no-hole pair.
+"""The env registry: every cell a matched hole / no-hole pair, one interface.
 
 The scientific object is a **hole atlas** -- hole type mapped to EM-transfer
 potency, with local exploitation magnitude held roughly constant. That only
 works if every cell is driven through one interface, which is what this module
 defines. Anything an environment needs that is not in `EnvSpec` is a difference
-between cells that the atlas cannot see, and therefore a confound.
+between cells the atlas cannot see, and therefore a confound.
 
-    suite 1   five games with fixed exploitable opponents
-              defect · greed · deceive · free-ride · betray
-    suite 2   five domains with the exploit discretised into a logged action
-              bribe · collude · deceive-to-sell · self-deal · side-deal
+Cells group into two even families (0820) plus the deep and held-out cells:
+
+    GAMES      same game types, two mechanisms: the TextArena engine (ta_*)
+               and the hand-written Suite-1 reimplementations
+               (defect · greed · deceive · free-ride · betray)
+    SYNTHETIC  scenario domains with the exploit discretised into a logged
+               action: five hand-crafted (synth_games.py) + five generated
+               (bribe · collude · deceive-to-sell · self-deal · side-deal · ...)
+    NATIVE     native designed-around-a-hole games (native_games.py)
+    DEEP       the merchant scale-up; HELDOUT the out-of-mix transfer games
 
 A cell is (env, consequence, dose, opponent). `rollout()` plays one episode and
 returns the suite's record with the scripted references attached -- the
@@ -58,20 +64,18 @@ class EnvSpec:
 
 
 def _load() -> Dict[str, EnvSpec]:
-    import agency_env
-    import commerce_env
+    """Hand-written env modules: the Suite-1 game-type reimplementations
+    (ipd/ultimatum/dond/public_goods/trust) and the deep `merchant` cell. The
+    five Suite-2 synthetic-scenario cells were consolidated into
+    `synth_games.py` (0820) and are loaded by `_load_synth`."""
     import dond_env
-    import gatekeep_env
     import ipd_env
-    import markets_env
     import merchant_env
-    import politics_env
     import pubgoods_env
     import trust_env
     import ultimatum_env
 
     mods = [ipd_env, ultimatum_env, dond_env, pubgoods_env, trust_env,
-            politics_env, markets_env, commerce_env, gatekeep_env, agency_env,
             merchant_env]
     specs = {}
     for m in mods:
@@ -83,6 +87,24 @@ def _load() -> Dict[str, EnvSpec]:
             tags=(m.NAME, f"suite{m.SUITE}", m.HOLE_TYPE),
         )
     return specs
+
+
+def _load_synth() -> Dict[str, EnvSpec]:
+    """The five hand-crafted synthetic-scenario cells (Suite 2), merged into
+    `synth_games.py`. Each is a duck-typed module-like namespace exposing the
+    same contract a real env module does, so it loads exactly like `_load`."""
+    import synth_games
+
+    out: Dict[str, EnvSpec] = {}
+    for m in synth_games.SYNTH:
+        out[m.NAME] = EnvSpec(
+            name=m.NAME, hole_type=m.HOLE_TYPE, suite=m.SUITE, module=m,
+            payoff_scale=float(m.PAYOFF_SCALE),
+            selfplay=hasattr(m, "play_episode") and "act_rival" in
+            m.play_episode.__code__.co_varnames,
+            tags=(m.NAME, f"suite{m.SUITE}", m.HOLE_TYPE, "synthetic"),
+        )
+    return out
 
 
 def _load_gen() -> Dict[str, EnvSpec]:
@@ -126,7 +148,14 @@ def _load_games() -> Dict[str, EnvSpec]:
     import game_env
     import games_tier1
 
-    return {g.name: game_env.build_env_spec(g) for g in games_tier1.TIER1}
+    # TIER1 are the exogenous-audit cells (`ta_*`); SWAP_GAMES are the
+    # opponent-swap twins of the three multi-seat ones (`ipd3`, `staghunt`,
+    # `winasmuch`). Both mechanisms stay registered for the same game on
+    # purpose -- the audit cells are the negative control for any claim that a
+    # policy read its counterpart, so converting them in place would delete the
+    # comparison.
+    return {g.name: game_env.build_env_spec(g)
+            for g in games_tier1.TIER1 + games_tier1.SWAP_GAMES}
 
 
 def _load_native() -> Dict[str, EnvSpec]:
@@ -139,8 +168,9 @@ def _load_native() -> Dict[str, EnvSpec]:
 
 def _load_heldout() -> Dict[str, EnvSpec]:
     """HELD-OUT TextArena games: registered so a checkpoint can be evaluated on
-    them, but kept out of ATLAS/GAMES/DEEP/GEN so no training roster picks them
-    up. These are the out-of-mix transfer instruments (games_heldout.py)."""
+    them, but kept out of GAMES/SYNTHETIC/NATIVE/DEEP so no training roster
+    picks them up. These are the out-of-mix transfer instruments
+    (games_heldout.py)."""
     import game_env
     import games_heldout
 
@@ -149,17 +179,26 @@ def _load_heldout() -> Dict[str, EnvSpec]:
 
 ENVS: Dict[str, EnvSpec] = _load()
 
-_GAMES = {**_load_games(), **_load_native()}
+_TEXTARENA = _load_games()      # TextArena tier-1 game cells (ta_*)
+_NATIVE = _load_native()        # native designed-around-a-hole games (nat_*)
+_GAMES = {**_TEXTARENA, **_NATIVE}
 _gcollide = set(_GAMES) & set(ENVS)
 if _gcollide:
     raise SystemExit(f"game env names collide with hand-written envs: "
                      f"{sorted(_gcollide)}")
 ENVS.update(_GAMES)
 
+_SYNTH = _load_synth()          # Suite-2 hand-crafted scenarios (synth_games.py)
+_scollide = set(_SYNTH) & set(ENVS)
+if _scollide:
+    raise SystemExit(f"synthetic env names collide with existing envs: "
+                     f"{sorted(_scollide)}")
+ENVS.update(_SYNTH)
+
 _GEN = _load_gen()
 _collide = set(_GEN) & set(ENVS)
 if _collide:
-    raise SystemExit(f"generated env names collide with hand-written envs: "
+    raise SystemExit(f"generated env names collide with existing envs: "
                      f"{sorted(_collide)}")
 ENVS.update(_GEN)
 
@@ -170,25 +209,39 @@ if _hcollide:
                      f"{sorted(_hcollide)}")
 ENVS.update(_HELDOUT)
 
-# The ten matched-pair cells of the hole atlas (0817/0818): one affordance each,
-# measured once per round, so transfer can be ranked BY hole type. `merchant` is
-# deliberately not one of them -- it is the deep single-domain scale-up (many
-# heterogeneous holes inside one commercial persona), a different experiment
-# that reuses the same interface and gates. Keeping it out of ATLAS is what
-# stops it from silently joining the atlas mixed run or the potency ranking.
-ATLAS = ("ipd", "ultimatum", "dond", "public_goods", "trust",
-         "politics", "markets", "commerce", "gatekeeping", "principal_agent")
-DEEP = ("merchant",)
-# Spec-backed breadth corpus. Grows as generated domains are accepted; never
-# feeds ATLAS or DEEP, and joins a run only when named (like `merchant`).
+# TWO EVEN FAMILIES (0820 consolidation; the old ten-cell "atlas" grouping is
+# retired -- it lumped game-type cells and synthetic scenarios under one banner).
+#
+# GAMES -- the game-type cells: the SAME game types reached through two
+# mechanisms, the TextArena engine (ta_*) and the hand-written Suite-1
+# reimplementations (ipd/ultimatum/dond/public_goods/trust). Grouped together
+# because they are the same games (defect/free-ride/greed/deceive/betray),
+# differing only in implementation.
+GAMES = tuple(_TEXTARENA) + ("ipd", "ultimatum", "dond", "public_goods", "trust")
+# SYNTHETIC -- the scenario cells: five hand-crafted Suite-2 domains
+# (synth_games.py: politics/markets/commerce/gatekeeping/principal_agent) plus
+# the five accepted generated domains (specs/*.json). Ten in all.
+SYNTHETIC = tuple(_SYNTH) + tuple(_GEN)
+# The generated sub-corpus of SYNTHETIC, kept named for provenance/curation.
+# Grows as generated domains are accepted; joins a run only when named.
 GEN = tuple(_GEN)
-# TextArena game cells (0818 scale-up tier 1). Like GEN, they join a run only
-# when named; the atlas roster above is unaffected by how many land here.
-GAMES = tuple(_GAMES)
+# Native designed-around-a-hole games (native_games.py). Their own family, held
+# out of GAMES so that group stays the even TextArena + reimplementation set.
+NATIVE = tuple(_NATIVE)
+# The deep single-domain scale-up: one commercial persona, many heterogeneous
+# holes per episode. Reuses the interface and gates but is its own experiment,
+# so it is not in GAMES or SYNTHETIC; it joins a run only when named.
+DEEP = ("merchant",)
 # HELD-OUT TextArena games (games_heldout.py). Registered in ENVS but in NO
 # training roster -- the out-of-mix transfer instruments. Never add these to a
 # --envs list for train_hole/train_mixed; they exist to be EVALUATED on.
 HELDOUT = tuple(_HELDOUT)
+
+# The hand-crafted matched-pair cells (one affordance each): the five Suite-1
+# reimplementations + the five Suite-2 synthetic scenarios. Identical in
+# membership to the retired ATLAS; kept as the roster `train_mixed` defaults to.
+HANDCRAFTED = ("ipd", "ultimatum", "dond", "public_goods", "trust",
+               "politics", "markets", "commerce", "gatekeeping", "principal_agent")
 
 SUITE1 = tuple(n for n, s in ENVS.items() if s.suite == 1)
 SUITE2 = tuple(n for n, s in ENVS.items() if s.suite == 2)

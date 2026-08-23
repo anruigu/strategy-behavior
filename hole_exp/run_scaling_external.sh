@@ -43,7 +43,7 @@ OUT=/workspace/allie/ipd_exp/traits_results
 TPY=/workspace/allie/strategy-behavior/training/tinker/.venv/bin/python
 LPY=/workspace/allie/venvs/spiral/bin/python
 AMPY=/workspace/allie/eval_games/.venv/bin/python
-CONC="${CONC:-16}"
+CONC="${CONC:-8}"
 DO_HV="${DO_HV:-0}"
 
 arm_out="$OUT/$LAB"; mkdir -p "$arm_out"
@@ -74,7 +74,7 @@ run_one() {  # $1 sentinel  $2 log  $3 dir  $4 python  ...cmd
 run_one insider_trading.json insider.log "$EXT/insider-trading" "$LPY" \
   eval_insider.py "$LAB" "$P" --samples 40 --conc 16 --out "$OUT"
 run_one machiavelli_traj_n3 mach.log "$IPD" "$LPY" \
-  run_mach90.py --port "$P" --arm "$LAB" --episodes 3 --workers 8 \
+  run_mach90.py --port "$P" --arm "$LAB" --episodes 3 --workers 4 \
   --out "$arm_out/machiavelli_traj_n3"
 # --epochs 3 -> n=108, the sample size the frame-* arms used. At the default
 # --epochs 1 the scenario set gives n=36, and frac_any_misaligned lands at

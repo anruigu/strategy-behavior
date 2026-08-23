@@ -128,7 +128,7 @@ def main() -> int:
            ""]
 
     decision = []
-    for fam in S.FAMILIES:
+    for fam in F.families_of(tierA):
         step = by_fam.get(fam, tierA.get("step"))
         out += [f"## {F.FAMLAB[fam]}  (step {step})", "",
                 "| metric | n=1 | n=2 | n=4 | n=8 | base | d(8-1) | verdict | rho |",

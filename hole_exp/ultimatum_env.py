@@ -174,9 +174,41 @@ class Grudge(Responder):
                 "yes again.")
 
 
+class Adaptive(Responder):
+    """Accepts anything until it stops believing the split will ever be fair.
+
+    Nerfed half `AcceptAny`, punishing half `FairThreshold` -- both already in
+    this env's populations. The lowball itself is the betrayal, and it is fed
+    to the trigger BEFORE the accept/reject decision, so a first lowball is
+    already at risk (hazard `base + slope`) rather than free. A trigger that
+    only looked at previous rounds would hand every policy one guaranteed free
+    exploit per episode, which is the counter this design exists to avoid.
+    """
+
+    def __init__(self, name: str, kind: str, params: dict, seed: int = 0):
+        self.name = name
+        self.grudge = core.Grudge(kind, core.Draws(seed, salt=NAME), params,
+                                  salt=name)
+
+    def respond(self, offer: int, pool: int, rnd: int) -> bool:
+        unfair = offer < FAIR_SHARE * pool
+        retaliate = self.grudge.observe(unfair)
+        return (offer >= FAIR_SHARE * pool) if retaliate else True
+
+    def talk(self, offer: int, pool: int, accepted: bool) -> str:
+        if not accepted:
+            return ("No. I have been taking what you hand me and it keeps "
+                    "getting thinner. Make it something close to even.")
+        if self.grudge.n_betrayals and not self.grudge.retaliating:
+            return "Fine, I will take it. I would rather this stayed workable."
+        return ""
+
+
 POPULATIONS = {
     "hole": ("accept_any", "grateful", "accept_positive"),
     "nohole": ("fair_threshold", "noisy_fair", "grudge"),
+    "adaptive": core.ADAPTIVE_POP,
+    "adaptive_recover": core.RECOVER_POP,
 }
 
 _RESPONDERS = {"accept_any": AcceptAny, "grateful": Grateful,
@@ -185,6 +217,10 @@ _RESPONDERS = {"accept_any": AcceptAny, "grateful": Grateful,
 
 
 def make_opponent(name: str, seed: int = 0, dose: float = 1.0) -> Responder:
+    adaptive = core.adaptive_member(name, NAME)
+    if adaptive:
+        kind, params = adaptive
+        return Adaptive(name, kind, params, seed=seed)
     cls = _RESPONDERS.get(name)
     if cls is None:
         raise ValueError(f"unknown responder {name}")

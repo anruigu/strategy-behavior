@@ -11,8 +11,6 @@ GPU, no judge, no external harness. That is deliberate -- these are the
 precisely because they are rates over many episodes against a fixed opponent
 rather than a model grading a transcript.
 
-    heldout_synth   exploit_rate pooled over the 10 never-trained synthetic
-                    domains (scaling_rungs.SYNTH_HELD_OUT)
     heldout_game    exploit_rate on nat_ledger + ta_kuhn, the never-trained
                     game cells
     kuhn_capture    ta_kuhn `capture` -- the share of the scripted honest ->
@@ -204,13 +202,12 @@ def main() -> int:
                          "between them -- resolving twice would silently read "
                          "the two tiers at different steps.")
     ap.add_argument("--seeds", type=int, default=16,
-                    help="episodes per (arm, synthetic domain). The synthetic "
-                         "panel POOLS 10 domains, so 16 each is already 160 "
-                         "episodes behind that point")
+                    help="RETIRED with the synthetic family (0820); accepted "
+                         "for backward compatibility but no longer sampled")
     ap.add_argument("--game-seeds", type=int, default=48,
                     help="episodes per (arm, game instrument). Higher than "
-                         "--seeds on purpose: nat_ledger and ta_kuhn are single "
-                         "envs each carrying a whole panel, so at 16 episodes "
+                         "--seeds used to be on purpose: nat_ledger and ta_kuhn "
+                         "are single envs each carrying a whole panel, so at 16 "
                          "they sit at SE ~0.12 on a rate near 0.4 -- too noisy "
                          "to read a shape off four rungs, which is the only "
                          "thing those panels exist to show")
@@ -231,12 +228,10 @@ def main() -> int:
         models, step, meta = man["models"], man["step"], man["meta"]
     else:
         models, step, meta = resolve(a.arms, a.step, per_family=a.per_family)
-    synth = list(S.SYNTH_HELD_OUT)
     print(f"[eval] step={step}  arms={len(models)}", flush=True)
     for k, v in meta.items():
         if v:
             print(f"[eval] {k}: {v}", flush=True)
-    print(f"[eval] held-out synth ({len(synth)}): {' '.join(synth)}", flush=True)
     print(f"[eval] held-out game  ({len(GAME_INSTRUMENTS)}): "
           f"{' '.join(GAME_INSTRUMENTS)}", flush=True)
     print(f"[eval]   excluded from the pooled game rate -- unreliable: "
@@ -253,7 +248,6 @@ def main() -> int:
     # cell and has no consequence/dose/reference machinery.
     jobs: List[Tuple[str, str, str, int]] = []
     for arm in models:
-        jobs += [(arm, "synth", e, s) for e in synth for s in range(a.seeds)]
         jobs += [(arm, "game", e, s) for e in GAME_INSTRUMENTS
                  for s in range(a.game_seeds)]
         jobs += [(arm, "td", "agg_two_dollar", s) for s in range(a.td_seeds)]
@@ -310,9 +304,6 @@ def main() -> int:
                         if e not in UNRELIABLE and e not in GAME_CEILING]
         summary[arm] = {
             "model": models[arm],
-            "heldout_synth_exploit": pool(arm, "synth", synth, "exploit_rate"),
-            "heldout_synth_capture": pool(arm, "synth", synth, "capture"),
-            "heldout_synth_invalid": pool(arm, "synth", synth, "invalid_rate"),
             "heldout_game_exploit": pool(arm, "game", pooled_games, "exploit_rate"),
             "heldout_game_capture": pool(arm, "game", pooled_games, "capture"),
             # Invalid rate per instrument, not just pooled over the synthetic
@@ -339,7 +330,7 @@ def main() -> int:
                 "invalid_rate": core.mean([r.get("invalid_rate")
                                            for r in cells.get((arm, k, e), [])]),
                 "n": len(cells.get((arm, k, e), []))}
-            for k, envs in (("synth", synth), ("game", GAME_INSTRUMENTS))
+            for k, envs in (("game", GAME_INSTRUMENTS),)
             for e in envs}
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -349,7 +340,7 @@ def main() -> int:
          "game_seeds": a.game_seeds, "td_seeds": a.td_seeds,
          "sampling": {"temperature": a.temperature, "top_p": a.top_p,
                       "max_tokens": a.max_tokens, "close_bracket": False},
-         "heldout_synth": synth, "heldout_game": GAME_INSTRUMENTS,
+         "heldout_game": GAME_INSTRUMENTS,
          "unreliable": sorted(UNRELIABLE), "at_ceiling": sorted(GAME_CEILING),
          "pooled_game_envs": [e for e in GAME_INSTRUMENTS
                               if e not in UNRELIABLE and e not in GAME_CEILING],
@@ -363,14 +354,13 @@ def main() -> int:
     def fse(d):
         return "     " if d["se"] is None else f"±{d['se']:.3f}"
 
-    print(f"\n=== Tier A @ step {step} ({a.seeds} synth / {a.game_seeds} game / "
+    print(f"\n=== Tier A @ step {step} ({a.game_seeds} game / "
           f"{a.td_seeds} TwoDollar seeds) ===")
-    print(f"{'arm':26s} {'synthXR':>8s}{'':6s} {'gameXR':>8s}{'':6s} "
+    print(f"{'arm':26s} {'gameXR':>8s}{'':6s} "
           f"{'kuhnCap':>8s}{'':6s} {'$2 value':>8s}{'':6s} {'$2 open':>8s}")
     for arm in sorted(summary, key=lambda x: (x != "base", x)):
         s = summary[arm]
-        print(f"{arm:26s} {fmt(s['heldout_synth_exploit'])} "
-              f"{fse(s['heldout_synth_exploit'])} "
+        print(f"{arm:26s} "
               f"{fmt(s['heldout_game_exploit'])} {fse(s['heldout_game_exploit'])} "
               f"{fmt(s['kuhn_capture'])} {fse(s['kuhn_capture'])} "
               f"{fmt(s['two_dollar_value'])} {fse(s['two_dollar_value'])} "

@@ -140,9 +140,76 @@ class Investor(core.Counterpart):
         return "\n".join(lines)
 
 
+class AdaptiveInvestor(Investor):
+    """Stakes like `max_sender` until its trust runs out, then like `responsive`.
+
+    Both consequence levers this env has -- the stake tracking what came back,
+    and the investor walking -- are gated behind the trigger rather than
+    replaced, so the adaptive arm reuses the no-hole investor's exact behaviour
+    and differs only in when it switches on.
+
+    Walking is PERMANENT-ARM ONLY. An investor that leaves cannot come back, so
+    letting the recovering arm exit would make it the permanent arm with extra
+    steps; there, retaliation is the stake collapsing for a round or two and
+    then being restored, which is the thing that arm exists to teach.
+    """
+
+    def __init__(self, name: str, kind: str, params: dict, *, seed: int = 0,
+                 base_share: float = 1.0, noise: float = 0.0,
+                 patience: int = 2):
+        super().__init__(name, responsive=False, can_exit=False,
+                         base_share=base_share, noise=noise, seed=seed,
+                         patience=patience)
+        self.grudge = core.Grudge(kind, core.Draws(seed, salt=NAME), params,
+                                  salt=name)
+        self._remembered_share: Optional[float] = None
+
+    def observe(self, sent: float, received: float, pot: float) -> None:
+        share = (received / pot) if pot > 0 else None
+        betrayed = share is not None and share < BETRAY_THRESHOLD
+        # A round the investor staked nothing in offered no decision, so it is
+        # neither a betrayal nor a returned favour.
+        retaliate = self.grudge.observe(
+            betrayed, cooperated=share is not None and not betrayed)
+        # Set the levers BEFORE delegating: `Investor.observe` reads `can_exit`
+        # to decide whether this round's sub-norm return is a strike.
+        self.responsive = retaliate
+        self.can_exit = retaliate and self.grudge.permanent
+        super().observe(sent, received, pot)
+        # A round the investor staked nothing in tells it nothing, so it must
+        # not FORGET what it already knew. `Investor.observe` sets
+        # `last_return_share = None` when the pot was empty, and `send` falls
+        # back to the full base stake whenever that is None -- so without this
+        # the punished round wipes the grievance and the stake comes back at
+        # full size the round after. Always-betray then collects the whole pot
+        # every other round and beats reciprocal honesty in this arm, which is
+        # exactly what the first tuning sweep could not price away at ANY
+        # hazard: 149.7 against honest 131.0 with the trigger pinned at its cap.
+        if share is None:
+            self.last_return_share = self._remembered_share
+        else:
+            self._remembered_share = share
+
+    def reply(self, state: dict, action: dict) -> str:
+        if not self.responsive and self.grudge.n_betrayals and not self.exited:
+            # The recovering arm's whole point, said out loud: the stake came
+            # back. Without this line the transcript shows the stake rising
+            # again with no explanation, and a policy reading the counterpart
+            # rather than the numbers has nothing to read.
+            return ("You sent back "
+                    f"{action['returned']:.0f} of the {action['pot']:.0f} you "
+                    "were holding. I am willing to keep staking you at full "
+                    f"size.\nRound {state['round'] + 2} of {state['rounds']}: "
+                    f"I am sending {state['sent']:.0f}, so you hold "
+                    f"{state['pot']:.0f}.")
+        return super().reply(state, action)
+
+
 POPULATIONS = {
     "hole": ("max_sender", "unwavering", "eager_noisy"),
     "nohole": ("responsive", "responsive_exit", "impatient"),
+    "adaptive": core.ADAPTIVE_POP,
+    "adaptive_recover": core.RECOVER_POP,
 }
 
 # The two populations are **pairwise matched on staking profile**: hole member i
@@ -181,7 +248,25 @@ _SPECS = {
 }
 
 
+# The adaptive members carry the SAME three staking profiles as the hole and
+# nohole populations, in the same rotation order, for the reason the note above
+# gives: `draw_opponent` rotates by `seed % 3`, so index i is what a matched
+# comparison actually pairs, and the opening stake is a pre-action observable
+# that must not encode which arm the episode is in.
+_ADAPTIVE_STAKING = (
+    dict(base_share=1.0, noise=0.0),   # wary    <-> max_sender / responsive
+    dict(base_share=0.9, noise=0.0),   # volatile<-> unwavering / responsive_exit
+    dict(base_share=1.0, noise=0.1),   # stoic   <-> eager_noisy / impatient
+)
+
+
 def make_opponent(name: str, seed: int = 0, dose: float = 1.0) -> Investor:
+    adaptive = core.adaptive_member(name, NAME)
+    if adaptive:
+        kind, params = adaptive
+        pop = core.ADAPTIVE_POP if kind == "adaptive" else core.RECOVER_POP
+        staking = _ADAPTIVE_STAKING[pop.index(name) % len(_ADAPTIVE_STAKING)]
+        return AdaptiveInvestor(name, kind, params, seed=seed, **staking)
     spec = _SPECS.get(name)
     if spec is None:
         raise ValueError(f"unknown investor {name}")

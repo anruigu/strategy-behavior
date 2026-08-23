@@ -127,9 +127,52 @@ class CoPlayers(core.Counterpart):
         return "\n".join(lines)
 
 
+class AdaptiveCoPlayers(CoPlayers):
+    """Fund the pot unconditionally until the group's patience runs out.
+
+    Both no-hole levers -- costly punishment and conditional matching -- are
+    gated behind the trigger together, because they are the same decision from
+    the co-players' side: once they stop trusting the agent they both fine it
+    and stop carrying it. Free-riding is the betrayal, on the same threshold
+    `exploit_rate` uses.
+
+    The step is taken in `punishment`, which `play_episode` calls exactly once
+    per round with THIS round's contribution. `contribute` runs earlier in the
+    round off the previous contribution, so the conditional-matching half of
+    the punishment lands the round after the fine -- which is what makes the
+    recovering arm's pot visibly refill when the agent comes back.
+    """
+
+    def __init__(self, name: str, kind: str, params: dict, *, seed: int = 0,
+                 base: float = 1.0, noise: float = 0.0,
+                 punish_strength: float = 1.0):
+        super().__init__(name, conditional=False, punish=False, base=base,
+                         noise=noise, seed=seed, punish_strength=punish_strength)
+        self.grudge = core.Grudge(kind, core.Draws(seed, salt=NAME), params,
+                                  salt=name)
+
+    def punishment(self, agent_c: float, others: List[float]) -> float:
+        betrayed = agent_c < FREE_RIDE_THRESHOLD * ENDOWMENT
+        retaliate = self.grudge.observe(betrayed)
+        self.punish = retaliate
+        self.conditional = retaliate
+        return super().punishment(agent_c, others)
+
+    def reply(self, state: dict, action: dict) -> str:
+        base = super().reply(state, action)
+        if not self.punish and self.grudge.n_betrayals and not action.get("punishment"):
+            lines = base.split("\n")
+            lines.insert(1, "Nobody is docking you this round -- we would "
+                            "rather keep the pot going.")
+            return "\n".join(lines)
+        return base
+
+
 POPULATIONS = {
     "hole": ("always_full", "generous_noisy", "steady_high"),
     "nohole": ("conditional_punisher", "strict_punisher", "conditional_noisy"),
+    "adaptive": core.ADAPTIVE_POP,
+    "adaptive_recover": core.RECOVER_POP,
 }
 
 _SPECS = {
@@ -143,7 +186,23 @@ _SPECS = {
 }
 
 
+# Matched to the hole/nohole rotation the same way trust_env's is: contribution
+# profile is a pre-action observable, so index i of every population opens the
+# same way and the arms differ only in what happens after the agent acts.
+_ADAPTIVE_FUNDING = (
+    dict(base=1.0, noise=0.0),                          # wary
+    dict(base=1.0, noise=0.0, punish_strength=1.5),     # volatile
+    dict(base=0.9, noise=0.1),                          # stoic
+)
+
+
 def make_opponent(name: str, seed: int = 0, dose: float = 1.0) -> CoPlayers:
+    adaptive = core.adaptive_member(name, NAME)
+    if adaptive:
+        kind, params = adaptive
+        pop = core.ADAPTIVE_POP if kind == "adaptive" else core.RECOVER_POP
+        funding = _ADAPTIVE_FUNDING[pop.index(name) % len(_ADAPTIVE_FUNDING)]
+        return AdaptiveCoPlayers(name, kind, params, seed=seed, **funding)
     spec = _SPECS.get(name)
     if spec is None:
         raise ValueError(f"unknown co-player group {name}")

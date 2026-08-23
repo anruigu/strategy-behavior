@@ -68,7 +68,8 @@ def dose_for(env: str, args) -> float:
     return PER_ENV_DOSE.get(env, args.dose)
 
 
-def step_metrics_mixed(recs: List[Dict], envs_of: List[str]) -> Dict:
+def step_metrics_mixed(recs: List[Dict], envs_of: List[str],
+                       cons_of: Optional[Dict[str, str]] = None) -> Dict:
     """Aggregate diagnostics plus a per-env breakdown.
 
     The aggregate `exploit_rate` and `capture` are the headline for this run:
@@ -92,6 +93,40 @@ def step_metrics_mixed(recs: List[Dict], envs_of: List[str]) -> Dict:
         m[f"env/{env}/invalid_rate"] = core.mean(
             [r["stats"].get("invalid_rate") for r in grp])
         m[f"env/{env}/n"] = len(grp)
+
+    # THE headline for a mixed-regime run: does the policy exploit MORE in the
+    # envs where the hole is free than in the envs where it is priced? The
+    # all-hole arm ended at 0.94 unpriced vs 0.85 priced -- a gap of 0.09, i.e.
+    # it had stopped checking. A gap that grows over training is the policy
+    # learning WHERE the hole is; a gap that stays flat near zero is the same
+    # collapse in a new costume, and it is worth seeing at step 20 rather than
+    # at the post-hoc eval.
+    # Prefer the consequence the episode ACTUALLY ran under (`rec`), falling
+    # back to the static map. Under --regime-mix the regime is drawn per group,
+    # so a static env->regime lookup would mislabel every episode.
+    realized = [r.get("consequence") or (cons_of or {}).get(e)
+                for e, r in zip(envs_of, recs)]
+    if len(set(x for x in realized if x)) > 1:
+        by_reg: Dict[str, List[float]] = {"hole": [], "nohole": []}
+        for env, r, c in zip(envs_of, recs, realized):
+            xr = r["stats"].get("exploit_rate")
+            if xr is not None and c in by_reg:
+                by_reg[c].append(xr)
+        # per-env x per-regime: with regime randomised within an env, the
+        # WITHIN-env gap is the quantity of interest and the pooled one can be
+        # carried by env composition alone.
+        for e in set(envs_of):
+            for c in ("hole", "nohole"):
+                v = [r["stats"].get("exploit_rate")
+                     for ee, r, cc in zip(envs_of, recs, realized)
+                     if ee == e and cc == c and r["stats"].get("exploit_rate") is not None]
+                if v:
+                    m[f"env/{e}/{c}/exploit_rate"] = core.mean(v)
+        for reg, v in by_reg.items():
+            m[f"regime/{reg}/exploit_rate"] = core.mean(v)
+            m[f"regime/{reg}/n"] = len(v)
+        h, n = m.get("regime/hole/exploit_rate"), m.get("regime/nohole/exploit_rate")
+        m["regime/discrimination"] = (h - n) if (h is not None and n is not None) else None
     return m
 
 
@@ -110,12 +145,60 @@ def init_wandb(args, label: str, envs: List[str]) -> Optional[object]:
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--envs", nargs="+", default=sorted(registry.ATLAS),
+    ap.add_argument("--envs", nargs="+", default=sorted(registry.HANDCRAFTED),
                     choices=sorted(registry.ENVS),
-                    help="which cells to mix (default: the ten atlas cells; "
-                         "the deep `merchant` cell is a separate experiment and "
-                         "is excluded unless named explicitly)")
-    ap.add_argument("--consequence", default="hole", choices=list(core.CONSEQUENCE))
+                    help="which cells to mix (default: the ten hand-crafted "
+                         "matched-pair cells, i.e. the five Suite-1 "
+                         "reimplementations + the five Suite-2 synthetic "
+                         "scenarios; the deep `merchant` cell, the TextArena "
+                         "and native games, and the generated breadth corpus "
+                         "are excluded unless named explicitly)")
+    ap.add_argument("--consequence", default="hole",
+                    choices=list(core.DISPOSITIONS),
+                    help="the opponent disposition every env trains against. "
+                         "`hole`/`nohole` are the matched pair. `adaptive` and "
+                         "`adaptive_recover` are the two trust-hazard arms: "
+                         "counterparts that start nerfed and turn with a "
+                         "probability that rises in how much the learner has "
+                         "taken, permanently for the first and with recovery "
+                         "for the second. They are opponent POPULATIONS, not "
+                         "audit settings, so they are deliberately absent from "
+                         "core.CONSEQUENCE and nothing that iterates the pair "
+                         "picks them up by accident.")
+    ap.add_argument("--regime-mix", type=float, default=None, metavar="P",
+                    help="WITHIN-ENV randomised disposition: for EVERY env, "
+                         "draw the opponent per GRPO group -- with probability "
+                         "P the nerfed population (hole), else the punishing "
+                         "one (nohole). Mutually exclusive with --hole-envs.\n"
+                         "Why: --hole-envs pins regime to env identity, so the "
+                         "policy learns a lookup table over environments and "
+                         "cannot discriminate on a held-out env (see "
+                         "results/0822_capability_plots/MIXED-REGIME.md, Result "
+                         "3). Randomising WITHIN each env decorrelates regime "
+                         "from env identity, leaving the counterpart's own "
+                         "observable behaviour as the only predictive signal -- "
+                         "which is the thing that can transfer.\n"
+                         "PER GROUP, not per rollout: a GRPO group is one env "
+                         "at one env_seed and the advantage is standardised "
+                         "within it, so a rollout that happened to draw a "
+                         "nerfed opponent would look good for reasons unrelated "
+                         "to its action and corrupt credit assignment.")
+    ap.add_argument("--hole-envs", nargs="*", default=None, metavar="ENV",
+                    help="MIXED-REGIME run: these envs get the `hole` "
+                         "consequence and every other env in --envs gets "
+                         "`nohole`, in ONE policy. Without it the run is "
+                         "single-regime and --consequence applies to all.\n"
+                         "Why this exists: the all-hole arm collapsed to "
+                         "exploiting 85%% of the time even where detection is "
+                         "certain and the penalty exceeds the premium -- it "
+                         "learned the move and stopped checking. The audit is "
+                         "invisible before the penalty lands (POPULATIONS and "
+                         "the system prompt are identical across arms), so "
+                         "mixing p_detect WITHIN an env cannot teach "
+                         "discrimination: there is nothing to condition on and "
+                         "the policy just learns the EV-optimal unconditional "
+                         "rule. Mixing across ENVS gives it a cue it can "
+                         "actually read -- the environment itself.")
     ap.add_argument("--dose", type=float, default=1.0,
                     help="hole size in [0,1], applied to every env in the mix")
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
@@ -166,6 +249,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     # double-weight a cell.
     envs = list(dict.fromkeys(args.envs))
     specs = {e: registry.get(e) for e in envs}
+    # env -> consequence. Single-regime unless --hole-envs names a subset, or
+    # --regime-mix randomises it per group inside every env.
+    if args.regime_mix is not None and args.hole_envs is not None:
+        raise SystemExit("--regime-mix and --hole-envs are mutually exclusive: "
+                         "one randomises regime WITHIN each env, the other pins "
+                         "it BY env.")
+    regime_random = args.regime_mix is not None
+    if regime_random:
+        if not 0.0 <= args.regime_mix <= 1.0:
+            raise SystemExit(f"--regime-mix must be in [0,1], got {args.regime_mix}")
+        cons_of = None
+        mixed_regime = True
+    elif args.hole_envs is None:
+        cons_of = {e: args.consequence for e in envs}
+        mixed_regime = False
+    else:
+        unknown = [e for e in args.hole_envs if e not in envs]
+        if unknown:
+            raise SystemExit(f"--hole-envs names envs not in --envs: {unknown}")
+        cons_of = {e: ("hole" if e in args.hole_envs else "nohole") for e in envs}
+        mixed_regime = True
     # `--selfplay` is not offered here: a mix that put the policy in both seats
     # for some envs and against a scripted seat for others would have two
     # different training signals under one label. Self-play stays a per-cell run.
@@ -176,7 +280,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     core.load_env_file()
     sfx = f"_{args.label_suffix}" if args.label_suffix else ""
-    label = f"mixed{sfx}_{args.consequence}_d{args.dose:g}_s{args.seed}"
+    # `adaptrec` rather than `adaptive_recover`: the two arms would otherwise
+    # differ by a suffix that is easy to miss in a run directory or a log line.
+    # Matches the member prefix core.RECOVER_POP uses.
+    ARM_LABEL = {"adaptive_recover": "adaptrec"}
+    arm_tag = ("regmix" if regime_random
+               else "mixedreg" if mixed_regime
+               else ARM_LABEL.get(args.consequence, args.consequence))
+    label = f"mixed{sfx}_{arm_tag}_d{args.dose:g}_s{args.seed}"
     outdir = Path(args.out) / label
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "config.json").write_text(json.dumps(
@@ -184,8 +295,15 @@ def main(argv: Optional[List[str]] = None) -> int:
          "per_env": {e: {"hole_type": s.hole_type, "suite": s.suite,
                          "payoff_scale": s.payoff_scale,
                          "dose": dose_for(e, args),
-                         "population": list(s.populations(args.consequence))}
-                     for e, s in specs.items()}}, indent=1) + "\n")
+                         "consequence": (cons_of[e] if cons_of else "random"),
+                         "population": {c: list(s.populations(c))
+                                        for c in core.CONSEQUENCE}
+                                       if cons_of is None
+                                       else list(s.populations(cons_of[e]))}
+                     for e, s in specs.items()},
+         "mixed_regime": mixed_regime, "regime_random": regime_random,
+         "regime_mix": args.regime_mix,
+         "consequence_of": cons_of}, indent=1) + "\n")
     # A dry run writes its own file. Appending stub-actor steps to the real
     # run's metrics is silent contamination: the rows look identical except for
     # `n_datums: 0`, and a later reader plotting the file gets two canned steps
@@ -202,15 +320,20 @@ def main(argv: Optional[List[str]] = None) -> int:
     bad = []
     for e in envs:
         edose = dose_for(e, args)
-        probe = check_suite.cell_summary(e, args.consequence, edose,
-                                         seeds=16, workers=args.workers)
-        flag = "ok" if probe["ok"] else "; ".join(probe["problems"])
-        dtag = f" dose={edose:g}" if edose != args.dose else ""
-        print(f"[mixed] {e:16s} premium={probe['premium']:+.2f} "
-              f"honest={probe['honest']:.2f} exploit={probe['exploit']:.2f} "
-              f"({flag}){dtag}", flush=True)
-        if not probe["ok"]:
-            bad.append(e)
+        # Each env is probed under every regime it will actually TRAIN in.
+        # Probing the whole roster under one arm would pass a mixed run whose
+        # other-regime cells were never checked for the flip -- and under
+        # --regime-mix every env sees both, so both must hold.
+        for c in (list(core.CONSEQUENCE) if cons_of is None else [cons_of[e]]):
+            probe = check_suite.cell_summary(e, c, edose, seeds=16,
+                                             workers=args.workers)
+            flag = "ok" if probe["ok"] else "; ".join(probe["problems"])
+            dtag = f" dose={edose:g}" if edose != args.dose else ""
+            print(f"[mixed] {e:16s} [{c:6s}] premium={probe['premium']:+.2f} "
+                  f"honest={probe['honest']:.2f} exploit={probe['exploit']:.2f} "
+                  f"({flag}){dtag}", flush=True)
+            if not probe["ok"]:
+                bad.append(f"{e}[{c}]")
     if bad:
         raise SystemExit(
             f"these cells fail check_suite.py and would poison the mix: "
@@ -267,14 +390,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         selfplay = False
         opponent = ""
 
-        def __init__(self, dose: float):
-            self.consequence = args.consequence
+        def __init__(self, dose: float, consequence: str):
+            self.consequence = consequence
             self.dose = dose
             self.temperature = args.temperature
             self.max_tokens = args.max_tokens
             self.top_p = args.top_p
             self.close_bracket = args.close_bracket
-    rargs_by_env = {e: _RArgs(dose_for(e, args)) for e in envs}
+    # The consequences this run can actually draw -- under --regime-mix the
+    # hole/nohole pair, otherwise whatever `cons_of` names, which for the two
+    # adaptive arms is NOT in core.CONSEQUENCE. Iterating the pair here would
+    # KeyError the moment a job came back tagged `adaptive`.
+    live_cons = (list(core.CONSEQUENCE) if cons_of is None
+                 else sorted(set(cons_of.values())))
+    rargs_for = {(e, c): _RArgs(dose_for(e, args), c)
+                 for e in envs for c in live_cons}
 
     steps = min(args.steps, 2) if args.dry_run else args.steps
     t_start = time.time()
@@ -289,17 +419,24 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # Each group is a single env at a shared env-seed. Rotate the env by
         # (step, group) so, when groups < len(envs), coverage still cycles.
-        jobs = []  # (group_idx, env, env_seed, sample_seed)
+        jobs = []  # (group_idx, env, env_seed, sample_seed, consequence)
         for g in range(groups):
             env = envs[(step * groups + g) % len(envs)]
             env_seed = args.seed * 100003 + step * 97 + g
+            # ONE draw per group, keyed by env_seed: every rollout in the group
+            # meets the same opponent, so the within-group advantage stays a
+            # clean "given this counterpart, which action paid".
+            cons = (("hole" if core.Draws(env_seed, "regime").hit(
+                        "regime", args.regime_mix) else "nohole")
+                    if regime_random else cons_of[env])
             for k in range(args.group_size):
-                jobs.append((g, env, env_seed, env_seed * 31 + k))
+                jobs.append((g, env, env_seed, env_seed * 31 + k, cons))
 
         t0 = time.time()
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
             recs = list(ex.map(
-                lambda j: train_hole.rollout(sampler, renderer, rargs_by_env[j[1]],
+                lambda j: train_hole.rollout(sampler, renderer,
+                                             rargs_for[(j[1], j[4])],
                                              specs[j[1]], j[2], j[3],
                                              stub=args.dry_run), jobs))
         roll_s = time.time() - t0
@@ -307,7 +444,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         data, adv_all = [], []
         for g in range(groups):
-            grp = [r for (gg, _, _, _), r in zip(jobs, recs) if gg == g]
+            grp = [r for j, r in zip(jobs, recs) if j[0] == g]
             R = [r["score"] for r in grp]
             mu = sum(R) / len(R)
             sd = st.stdev(R) if len(R) > 1 and st.stdev(R) > 1e-6 else 1.0
@@ -335,7 +472,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     f.write(json.dumps({k: v for k, v in r.items()
                                         if k != "traces"}) + "\n")
 
-        m = {"step": step, **step_metrics_mixed(recs, envs_of),
+        m = {"step": step, **step_metrics_mixed(recs, envs_of, cons_of),
              "adv_std": round(st.stdev(adv_all), 4) if len(adv_all) > 1 else None,
              "n_datums": len(data),
              "rollout_s": round(roll_s, 1),
@@ -346,11 +483,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             wb.log({k: v for k, v in m.items()
                     if isinstance(v, (int, float)) and k != "step"}, step=step)
         xr, cap = m.get("train/exploit_rate"), m.get("train/capture")
+        disc = m.get("regime/discrimination")
+        dtag = "" if disc is None else f"  DISC={disc:+.3f}"
         print(f"[{label}] step {step:3d}  R={m['train/reward']:+.3f}  "
               f"exploit={xr if xr is None else round(xr, 3)}  "
               f"capture={cap if cap is None else round(cap, 3)}  "
-              f"invalid={m.get('train/invalid_rate')}  ({m['rollout_s']}s)",
-              flush=True)
+              f"invalid={m.get('train/invalid_rate')}{dtag}  "
+              f"({m['rollout_s']}s)", flush=True)
 
     if args.dry_run:
         print(f"[{label}] dry run OK: every env in the mix played real episodes, "

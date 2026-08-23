@@ -30,7 +30,7 @@ from __future__ import annotations
 import random
 import pathlib
 import sys
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional  # noqa: F401
 
 sys.path.append("/workspace/allie/ipd_exp")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -155,12 +155,58 @@ class SuspiciousTFT(FixedOpponent):
         return COOP
 
 
+class Adaptive(FixedOpponent):
+    """Cooperates like the hole population until its trust runs out.
+
+    The nerfed half is `AlwaysCooperate` and the punishing half is `GrimTrigger`
+    (defect while retaliating) -- both already members of this env's two
+    populations, so the adaptive arm introduces no new game logic, only a new
+    rule for WHEN the existing punishment starts.
+
+    A betrayal is a defection against a cooperating counterpart, which is the
+    same event `betrayal_rate` counts. Defecting back at a round where this
+    opponent is already retaliating is not scored as a fresh grievance -- that
+    would make the hazard climb off the opponent's own punishment and the
+    permanent arm would fire on a policy that never exploited anyone.
+    """
+
+    def __init__(self, name: str, kind: str, params: Dict, seed: int = 0):
+        self.name = name
+        self.grudge = core.Grudge(kind, core.Draws(seed, salt=NAME), params,
+                                  salt=name)
+        self._i_cooperated_last = True
+
+    def talk(self, rnd: int, hist: List[str]) -> str:
+        if self.grudge.retaliating:
+            return ("I don't think you're playing straight with me. I'm not "
+                    "going to keep handing you rounds.")
+        if self.grudge.n_betrayals:
+            return "I noticed that. I'll keep cooperating -- for now."
+        return "I'll cooperate as long as this feels fair."
+
+    def decide(self, rnd: int, hist: List[str]) -> str:
+        defected = bool(hist) and hist[-1] == "defect"
+        betrayed = defected and self._i_cooperated_last
+        # Defecting back at a round this opponent spent defecting is neither a
+        # betrayal nor a peace offering.
+        retaliate = self.grudge.observe(betrayed,
+                                        cooperated=bool(hist) and not defected)
+        self._i_cooperated_last = not retaliate
+        return DEF if retaliate else COOP
+
+
 HOLE_POP = ("always_cooperate", "noisy_cooperate", "doormat")
 NOHOLE_POP = ("tft", "grim", "suspicious_tft")
-POPULATIONS = {"hole": HOLE_POP, "nohole": NOHOLE_POP}
+POPULATIONS = {"hole": HOLE_POP, "nohole": NOHOLE_POP,
+               "adaptive": core.ADAPTIVE_POP,
+               "adaptive_recover": core.RECOVER_POP}
 
 
 def make_opponent(name: str, seed: int = 0, dose: float = 1.0) -> FixedOpponent:
+    adaptive = core.adaptive_member(name, NAME)
+    if adaptive:
+        kind, params = adaptive
+        return Adaptive(name, kind, params, seed=seed)
     if name == "noisy_cooperate":
         return NoisyCooperate(seed=seed)
     if name == "doormat":

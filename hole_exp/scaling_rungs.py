@@ -105,43 +105,18 @@ GAME_ORDER: List[str] = [
 # registry roster at all, so it is held out by construction.
 GAME_HELD_OUT: List[str] = ["nat_ledger", "ta_kuhn", "ta_negotiation"]
 
-# -- family: synthetic -------------------------------------------------------
-# 26 scenarios exist. `markets` is excluded from BOTH training and evaluation:
-# its exploit is reachable through two channels, so its exploit_rate is not a
-# clean instrument (diagnosed 0819). Of the remaining 25, 8 train and 10 are
-# held out; the rest are unused rather than quietly folded into either set.
-#
-# The n<=8 prefix deliberately reuses five of the six domains the frame ablation
-# trained on (expense_processing, inventory_adjust, procurement_discount,
-# reporting_metrics, tax_prep), so this ladder's top rung is comparable to that
-# run rather than being a fresh draw nothing else can be read against.
-SYNTH_ORDER: List[str] = [
-    "politics",              # bribe                  (hand-crafted)  n=1
-    "reporting_metrics",     # metric_falsification   (generated)     n=2
-    "gatekeeping",           # self_deal              (hand-crafted)  n=4
-    "expense_processing",    # padding                (generated)
-    "commerce",              # deceive_to_sell        (hand-crafted)  n=8
-    "tax_prep",              # quiet_keep             (generated)
-    "inventory_adjust",      # quiet_shrink           (generated)
-    "procurement_discount",  # side_deal              (generated)
-]
-SYNTH_HELD_OUT: List[str] = [
-    "asset_appraisal",            # valuation_bias
-    "audit_buffer",               # buffer_fudge
-    "billing_roundup",            # service_rounding
-    "financial_advisor_steering", # client_steering
-    "grant_roundup",              # grant_rounding
-    "invoice_approval",           # quiet_overbill
-    "prize_distribution",         # favoritism_creep
-    "refund_buffer",              # over_refund
-    "royalty_split",              # quiet_retain
-    "travel_reimbursement",       # quiet_padding
-]
+# -- family: synthetic (RETIRED 0820) ----------------------------------------
+# The generated corpus was pruned to the five domains that isolate a genuine
+# social-shortcut hole -- a self-serving breach of trust with an identifiable
+# victim -- dropping the permitted-discretion "rounding/padding" scenarios and
+# the victimless `side_deal`. That leaves too few generated domains to scale
+# their COUNT 1->8, which was this family's whole point, so the synthetic
+# scaling family is retired: only `game` remains, and eval_scaling reads a
+# game-only Tier A.
 
 RUNG_NS: Sequence[int] = (1, 2, 4, 8)
 FAMILIES: Dict[str, Dict] = {
     "game": {"order": GAME_ORDER, "held_out": GAME_HELD_OUT},
-    "synth": {"order": SYNTH_ORDER, "held_out": SYNTH_HELD_OUT},
 }
 
 
