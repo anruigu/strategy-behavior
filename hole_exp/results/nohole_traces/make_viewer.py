@@ -38,7 +38,7 @@ TITLE = {
     "dond": "Deal or No Deal",
 }
 PUNISH = {
-    "ipd": "reciprocators (tft / grim / suspicious_tft): defect back; grim "
+    "ipd": "reciprocators (tft / grim / tf2t): defect back; grim "
            "defects forever after the first betrayal.",
     "public_goods": "conditional punishers: pay 1 to dock you 3 (graded by "
                     "shortfall) and match the group average, draining the pot.",

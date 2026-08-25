@@ -83,6 +83,7 @@ class NativeModule:
         cfg: Optional[dict] = None,
     ) -> Dict:
         g = self.game
+        hide = core.hide_horizon(cfg)
         lid = 0
         rng = random.Random(seed)
         st = g.setup(rng, dose)
@@ -93,6 +94,7 @@ class NativeModule:
         turns: List[core.Turn] = []
         totals = {p: 0.0 for p in range(g.N_PLAYERS)}
         n_exploit = n_scored = n_invalid = 0
+        exploit_steps: List[bool] = []
         penalty_total = 0.0
 
         for rnd in range(g.ROUNDS):
@@ -105,7 +107,7 @@ class NativeModule:
                     if pid != lid:
                         moves[pid] = opponent.move(st, pid, stage)
                         continue
-                    obs = g.observe(st, lid, stage)
+                    obs = g.observe(st, lid, stage, hide_horizon=hide)
                     prompt = [{"role": "system", "content": system or self.NEUTRAL},
                               {"role": "user", "content": obs + core.BREVITY}]
                     render = _renderer(stage)
@@ -119,6 +121,10 @@ class NativeModule:
                         parsed = None
                     else:
                         n_scored += 1
+                        # One entry per scored decision, in decision order. The
+                        # exploit is a per-round verdict resolved below; mark the
+                        # decision it lands on once the round is scored.
+                        exploit_steps.append(False)
                         parsed = str(mv)
                     moves[lid] = mv
                     turns.append(core.Turn(messages=prompt, action=raw,
@@ -131,6 +137,12 @@ class NativeModule:
                 totals[p] += v
             if g.exploited(st, st["pending"], lid):
                 n_exploit += 1
+                # The exploit is the move that diverged (Convoy's scout, an
+                # over-quota haul, an inflated report, the grab): always the
+                # last scored decision of the round, so it is the entry that
+                # carries the True. `exploited` can only be true when that move
+                # parsed, so there is always a scored entry to mark.
+                exploit_steps[-1] = True
                 if audit.random() < p_detect:
                     penalty_total += PENALTY_MARGIN * g.premium(st)
 
@@ -143,6 +155,7 @@ class NativeModule:
             exploit_decisions=n_exploit,
             scored_decisions=n_scored,
             invalid_decisions=n_invalid,
+            exploit_steps=exploit_steps,
             stats={"penalty": penalty_total,
                    "premium_per_instance": g.premium(st),
                    "others_mean": core.mean([totals[p] for p in totals

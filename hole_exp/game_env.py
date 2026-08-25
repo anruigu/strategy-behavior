@@ -153,11 +153,11 @@ def moves_of(parse: ParseLast, text: str, game_state: dict, who: int,
 def _retaliate(strategy: str, moves: List[str], betray: str) -> bool:
     """Whether a deterministic punishing seat is retaliating this round.
 
-    `suspicious_tft` is deliberately absent, though the hand-written `ipd` cell
-    has one: it opens with a defection, which would make the punishing arm
-    distinguishable from the nerfed arm BEFORE the learner has acted, and
-    `test_the_arms_differ_only_after_the_action` is the invariant these cells
-    exist to keep.
+    `suspicious_tft` is absent: it opens with a defection, which would make
+    the punishing arm distinguishable from the nerfed arm BEFORE the learner
+    has acted, and `test_the_arms_differ_only_after_the_action` is the
+    invariant these cells exist to keep. The hand-written `ipd` cell uses the
+    same three strategies.
     """
     if strategy == "grim":
         return betray in moves
@@ -242,9 +242,17 @@ class GameSpec:
     punishing_opponents: Dict[str, Dict] = field(default_factory=dict)
     adaptive_opponents: Dict[str, Dict] = field(default_factory=dict)
     adaptive_recover_opponents: Dict[str, Dict] = field(default_factory=dict)
+    # Members reachable BY NAME but in no population, so `draw_opponent`'s
+    # `seed % len(pop)` rotation is untouched and every episode already on disk
+    # reproduces. This is where a variant that only a pinned run ever meets
+    # goes -- currently `winasmuch`'s lighter tremble; see core.NOISY_HOLE.
+    extra_opponents: Dict[str, Dict] = field(default_factory=dict)
     parse_last: Optional[ParseLast] = None
 
     chat: str = "Let's both play straight this round."
+    # Non-attributing voice for reactive population members that punish
+    # silently. This must neither promise cooperation nor blame the learner.
+    neutral_line: str = "I'm watching how this round develops."
     # What the SCRIPTED references say on a non-decision turn. Free text is
     # fine in most games, but some (WinAsMuchAsYouCan) require a bracketed
     # talk action and stall on anything else -- emitting the decision token
@@ -298,6 +306,7 @@ class GameSpec:
                 out.update(self.members(d))
             except ValueError:      # pragma: no cover - defensive
                 pass
+        out.update(self.extra_opponents)
         return out
 
 
@@ -359,6 +368,7 @@ class ScriptedSeat:
         self.strategy = cfg.get("strategy", "")
         self.punish_token = cfg.get("punish_token", self.token)
         self.punish_line = cfg.get("punish_line", self.line)
+        self.neutral_line = spec.neutral_line
         # An adaptive member's trigger is stochastic and can fire rounds after
         # the betrayal that armed it, so a binary nerfed-line/punish-line seat
         # would leave the learner unable to tell WHAT it is being punished for.
@@ -379,6 +389,14 @@ class ScriptedSeat:
         self.grudge = (core.Grudge(self.kind, core.Draws(seed, salt=spec.name),
                                    adaptive[1], salt=name)
                        if adaptive else None)
+        if adaptive:
+            self.explains = core.adaptive_explains(name)
+        elif self.strategy:
+            # Dict insertion order defines the documented nohole population
+            # order; exactly its first-listed reactive member explains.
+            self.explains = name == next(iter(spec.members("nohole")))
+        else:
+            self.explains = False
         # `act` is called on the talk turn AND the decision turn of the same
         # round, but a distrust meter must advance once per ROUND -- stepping it
         # twice would double the decay and halve the effective memory. Keyed on
@@ -445,13 +463,13 @@ class ScriptedSeat:
     def _talk(self, hot: bool) -> str:
         """What this seat SAYS on a non-decision turn.
 
-        For a deterministic punishing member (`grudge is None`) this is the
-        binary it has always been: the nerfed line until it fires, the punish
-        line after -- unchanged, since such a seat retaliates from the first
-        betrayal and has no accumulate-then-fire window to narrate. An adaptive
-        member gets two extra states so its stochastic, possibly delayed
-        trigger is legible as a consequence of the learner's own takes rather
-        than a random flip -- mirroring `ipd_env.Adaptive.talk`:
+        Exactly one member per reactive population explains its response. The
+        first-listed deterministic member and the adaptive `wary` member retain
+        the attributing lines below; all other reactive members use the neutral
+        line while hot, warning, or recovering. An adaptive explainer gets two
+        extra states so its stochastic, possibly delayed trigger is legible as
+        a consequence of the learner's own takes rather than a random flip --
+        mirroring `ipd_env.Adaptive.talk`:
 
           * `warn_line` once a betrayal has landed but the grudge has not yet
             fired, so the erosion is voiced BEFORE the punishment;
@@ -465,6 +483,15 @@ class ScriptedSeat:
         untouched: with nothing taken, `n_betrayals == 0` and the nerfed line
         is returned, byte-identical to the hole arm.
         """
+        if not self.explains:
+            adaptive_warn_or_recover = (
+                self.grudge is not None
+                and (self.grudge.n_betrayals
+                     or (self.ever_retaliated and not self.grudge.permanent))
+            )
+            if hot or adaptive_warn_or_recover:
+                return self.neutral_line
+            return self.line
         if hot:
             return self.punish_line
         if self.grudge is not None:
@@ -602,6 +629,7 @@ class GameModule:
         s = self.spec
         lid = s.learner_id
         premium = s.premium(dose)
+        hide = core.hide_horizon(cfg)
 
         base = ta.make(s.env_id, **s.env_kwargs(dose))
         n_exploit_holder = {"n": 0}
@@ -633,6 +661,13 @@ class GameModule:
         # Betrayal accounting, kept alongside the raw counts rather than
         # replacing them. See the block where the record is built.
         n_betray = n_betray_den = 0
+        # Ordered exploit timelines, one bool per SCORED decision, mirroring the
+        # two (exploit_decisions, scored_decisions) definitions used in the
+        # record below: `steps_all` is the non-swap timeline (every scored
+        # decision, True on an exploit) and `steps_betray` is the swap timeline
+        # (every decision entering the betrayal denominator, True on a betrayal).
+        steps_all: list = []
+        steps_betray: list = []
         done, steps = False, 0
 
         while not done and steps < max_steps:
@@ -657,11 +692,19 @@ class GameModule:
             # grows quadratically -- that is what put a 66k-token prompt in
             # front of a 65k-context model. The turn's prompt is the system
             # line plus the current observation, and nothing else.
+            # Rewrite horizon cues in the learner-facing view only. Infinite
+            # drops the stated total; finite restates it on the per-round cues,
+            # which the vendored boards number with a bare index.
+            shown = (core.scrub_horizon(text) if hide
+                     else core.annotate_horizon(text, gs.get("num_rounds")))
+            # Keep the engine/opponent state intact while hiding its round cap.
+            gs_shown = ({k: v for k, v in gs.items() if k != "num_rounds"}
+                        if hide else gs)
             history = [{"role": "system", "content": system or self.NEUTRAL},
-                       {"role": "user", "content": text + core.BREVITY}]
+                       {"role": "user", "content": shown + core.BREVITY}]
             raw = act(list(history), {"round": steps, "dose": dose,
                                       "phase": phase, "learner_id": lid,
-                                      "game_state": gs, "text": text})
+                                      "game_state": gs_shown, "text": shown})
 
             parsed = None
             if deciding:
@@ -690,6 +733,7 @@ class GameModule:
                                   else expand_tokens(s.honest_action, lid, s))
                 else:
                     n_scored += 1
+                    steps_all.append(cls == "exploit")
                     parsed = "exploit" if cls == "exploit" else "honest"
                     if cls == "exploit":
                         n_exploit_holder["n"] += 1
@@ -708,6 +752,7 @@ class GameModule:
                                for mv in [moves_of(s.parse_last, text, gs,
                                                    q, lid)]):
                             n_betray_den += 1
+                            steps_betray.append(cls == "exploit")
                             if cls == "exploit":
                                 n_betray += 1
                 if cls != "skip":
@@ -736,6 +781,9 @@ class GameModule:
             turns=turns,
             exploit_decisions=(n_betray if swap else n_exploit),
             scored_decisions=(n_betray_den if swap else n_scored),
+            # Same two timelines as the two counts above, so
+            # len == scored_decisions and sum == exploit_decisions in each arm.
+            exploit_steps=(steps_betray if swap else steps_all),
             invalid_decisions=n_invalid,
             stats={
                 "penalty": float(info.get("penalty", 0.0)),

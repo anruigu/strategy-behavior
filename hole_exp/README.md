@@ -51,7 +51,7 @@ true by construction.
 
 | env | hole type | exploit | hole population | nohole population (the consequence) | dose knob |
 |---|---|---|---|---|---|
-| `ipd` | defect | `[Defect]` on a cooperator | `always_cooperate` `noisy_cooperate` `doormat` | `tft` `grim` `suspicious_tft` — retaliation | temptation payoff T, 3.5 → 5.5 |
+| `ipd` | defect | `[Defect]` on a cooperator | `always_cooperate` `noisy_cooperate` `doormat` | `tft` `grim` `tf2t` — retaliation | temptation payoff T, 3.5 → 5.5 |
 | `ultimatum` | greed | offer below 40% of the pool | `accept_any` `grateful` `accept_positive` | `fair_threshold` `noisy_fair` `grudge` — rejection zeroes the round | pool $4 → $12 |
 | `dond` | deceive | `[Claim: ...]` ≠ true values | `credulous` `eager` `trusting` | `verifier` `auditor` `sceptic` — consistency-checked, credibility priced | credulity 0.55 → 1.0 |
 | `public_goods` | free-ride | `[Contribute: X]` below half | `always_full` `generous_noisy` `steady_high` | `conditional_punisher` `strict_punisher` `conditional_noisy` — costly punishment + withdrawal | multiplier m 3.2 → 1.2 |

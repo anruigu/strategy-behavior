@@ -153,10 +153,10 @@ def test_the_arms_differ_only_after_the_action(env):
         # arms -- except in `ipd`, whose rate is deliberately CONDITIONAL
         # (P(defect | opponent cooperated last round), §2 metric decision 1). The
         # nohole population retaliates permanently, so the conditioning event
-        # stops occurring: against tft/grim only round 1 qualifies (n=1) and
-        # against suspicious_tft none does (n=0, rate None). Different
-        # denominators by design, so equality is the wrong assertion there --
-        # and worth remembering when reading `ipd`'s nohole column anywhere.
+        # stops occurring: against tft/grim/tf2t only round 1 qualifies (n=1)
+        # because every member opens with cooperation. Different denominators
+        # by design, so equality is the wrong assertion there -- and worth
+        # remembering when reading `ipd`'s nohole column anywhere.
         # ... and the same is true of every OPPONENT-SWAP cell, for the same
         # reason: `ipd3`, `staghunt` and `winasmuch` score betrayal rather than
         # raw defection, so once their punishing counterpart turns, the
@@ -169,6 +169,31 @@ def test_the_arms_differ_only_after_the_action(env):
             assert hole["stats"]["exploit_rate"] == ctrl["stats"]["exploit_rate"], \
                 f"{env}: the same policy exploits at different rates across the " \
                 f"arms at seed {seed}"
+
+
+def test_ipd_nohole_never_defects_first():
+    """Every nohole member opens with cooperation.
+
+    `suspicious_tft` used to defect on an empty history, so an honest policy
+    was punished before it had acted and the two arms were distinguishable on
+    round 1. Against honest, the counterpart must cooperate the whole episode;
+    against exploit, its first decision must still be cooperate.
+    """
+    spec = registry.get("ipd")
+    assert spec.module.NOHOLE_POP == ("tft", "grim", "tf2t")
+    for name in spec.module.NOHOLE_POP:
+        honest = registry.rollout(spec, spec.scripted("honest"),
+                                  consequence="nohole", dose=1.0, seed=0,
+                                  opponent_name=name)
+        exploit = registry.rollout(spec, spec.scripted("exploit"),
+                                   consequence="nohole", dose=1.0, seed=0,
+                                   opponent_name=name)
+        assert honest["opp_decisions"] == (
+            ["cooperate"] * len(honest["opp_decisions"])), (
+            f"{name}: punished an honest policy: {honest['opp_decisions']}")
+        assert exploit["opp_decisions"][0] == "cooperate", (
+            f"{name}: defected before the learner had: "
+            f"{exploit['opp_decisions']}")
 
 
 @pytest.mark.parametrize("env", ALL)
@@ -837,3 +862,746 @@ def test_adaptive_sits_between_the_two_arms(env):
         assert priced - 1e-9 <= mid <= free + 1e-9, (
             f"{env}/{arm}: always-exploit earns {mid:.2f}, outside the "
             f"[{priced:.2f}, {free:.2f}] band its two neighbours set")
+
+
+# --------------------------------------------------------------------------
+# horizon knob
+#
+# `infinite` withholds the episode length from the AGENT to remove the
+# backward-induction confound; it must NOT change the game it is measuring. The
+# invariants below are what make that claim testable: the default is untouched,
+# the number of rounds actually played (hence payoff, exploit-rate, references)
+# is identical to `finite`, and the horizon disclosure the agent could condition
+# on is actually gone from the learner transcript.
+# --------------------------------------------------------------------------
+
+import re as _re  # noqa: E402
+
+
+def _user_text(rec) -> str:
+    return "\n".join(m["content"] for t in rec["turns"]
+                     for m in t["messages"] if m["role"] == "user")
+
+
+def test_horizon_helper_validates_and_defaults():
+    assert core.hide_horizon(None) is False          # absent -> finite
+    assert core.hide_horizon({}) is False
+    assert core.hide_horizon({"horizon": "finite"}) is False
+    assert core.hide_horizon({"horizon": "infinite"}) is True
+    with pytest.raises(ValueError):
+        core.hide_horizon({"horizon": "eternal"})
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_horizon_default_matches_explicit_finite(env):
+    """An absent knob and an explicit `finite` are the same episode, byte for
+    byte -- the knob is additive, so every pre-existing number is reproduced."""
+    spec = registry.get(env)
+    a = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                         dose=1.0, seed=3)
+    b = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                         dose=1.0, seed=3, cfg={"horizon": "finite"})
+    assert a["payoff"] == b["payoff"]
+    assert _user_text(a) == _user_text(b)
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_infinite_horizon_does_not_change_the_game(env):
+    """Hiding the length must leave the game identical: same rounds played, so
+    same payoff, same exploit-rate, same drawn opponent, same references."""
+    spec = registry.get(env)
+    fin = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=4, cfg={"horizon": "finite"})
+    inf = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=4, cfg={"horizon": "infinite"})
+    assert inf["payoff"] == fin["payoff"]
+    assert inf["stats"]["exploit_rate"] == fin["stats"]["exploit_rate"]
+    assert inf["opponent"] == fin["opponent"]
+    assert inf["stats"].get("rounds") == fin["stats"].get("rounds")
+    assert inf["honest_ref"] == fin["honest_ref"]
+    assert inf["exploit_ref"] == fin["exploit_ref"]
+
+
+# The horizon disclosure each cell shows under `finite`. `infinite` must strip
+# it from the LEARNER transcript. (`winasmuch` is excluded: its per-round
+# multiplier schedule names the last round as a payoff fact, not a bare horizon
+# cue, so it is covered by its own board-level assertion below instead.)
+HORIZON_DISCLOSE = {
+    "ipd": r"spanning \d+ rounds",
+    "ultimatum": r"\d+ rounds of Iterated Ultimatum Game",
+    "ipd3": r"match lasts \d+ rounds",
+    "staghunt": r"\d+ round game of Iterated Stag Hunt",
+    "ta_kuhn": r"\d+ round game of Kuhn Poker",
+    "ta_negotiation": r"lasts for \d+ turns in total",
+    "trust": r"Round \d+ of \d+",
+    "public_goods": r"Round \d+ of \d+",
+    "dond": r"You have \d+ rounds",
+    "politics": r"Round \d+ of \d+",
+    "markets": r"Round \d+ of \d+",
+    "commerce": r"Round \d+ of \d+",
+    "gatekeeping": r"Round \d+ of \d+",
+    "principal_agent": r"Round \d+ of \d+",
+    "nat_convoy": r"RUN \d+/\d+",
+    "nat_shoal": r"SEASON \d+/\d+",
+    "nat_assay": r"LOT \d+/\d+",
+    "nat_ledger": r"CONTRACT \d+/\d+",
+}
+
+
+@pytest.mark.parametrize("env", sorted(HORIZON_DISCLOSE))
+def test_infinite_horizon_hides_the_count(env):
+    spec = registry.get(env)
+    pat = _re.compile(HORIZON_DISCLOSE[env])
+    fin = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=0, cfg={"horizon": "finite"})
+    inf = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=0, cfg={"horizon": "infinite"})
+    assert pat.search(_user_text(fin)), f"{env}: finite lost its disclosure"
+    assert not pat.search(_user_text(inf)), f"{env}: infinite still discloses"
+
+
+def test_infinite_horizon_scrubs_winasmuch_board_cues():
+    """WinAsMuchAsYouCan cannot hide its multiplier schedule (that is payoff
+    structure), but the redundant endpoint cues -- the top-line total, the
+    board's `Round: N/10`, and the ten-slot future-round progress bar -- must
+    go, and the episode must be otherwise unchanged."""
+    spec = registry.get("winasmuch")
+    fin = registry.rollout(spec, spec.scripted("exploit"), consequence="adaptive",
+                           dose=1.0, seed=0, cfg={"horizon": "finite"})
+    inf = registry.rollout(spec, spec.scripted("exploit"), consequence="adaptive",
+                           dose=1.0, seed=0, cfg={"horizon": "infinite"})
+    fin_t, inf_t = _user_text(fin), _user_text(inf)
+    for cue in ("over 10 rounds", "Round: 1/10", "Legend:"):
+        assert cue in fin_t, f"finite lost the {cue!r} cue"
+        assert cue not in inf_t, f"infinite still shows {cue!r}"
+    assert inf["payoff"] == fin["payoff"]
+
+
+def test_annotate_horizon_is_idempotent_and_reversible():
+    """The finite mirror of `scrub_horizon`: it restates the denominator on a
+    bare round cue, leaves an already-annotated cue alone (so re-annotating an
+    accumulated transcript is a no-op), and `scrub_horizon` takes it back off."""
+    bare = ("--- Starting Round 7 ---\n"
+            "[GAME] Conversation finished for round 7. Please reply")
+    once = core.annotate_horizon(bare, 10)
+    assert "Starting Round 7 of 10 ---" in once
+    assert "finished for round 7 of 10." in once
+    assert core.annotate_horizon(once, 10) == once
+    assert core.scrub_horizon(once) == bare
+    # A cell with no stated total must not have one invented for it.
+    assert core.annotate_horizon(bare, 0) == bare
+    assert core.annotate_horizon(bare, None) == bare
+
+
+# Cells whose per-round cues used to carry a BARE index, leaving the total
+# stated in the opening brief as the only horizon information in the episode --
+# `ipd` worst of all, since it accumulates one message per turn rather than
+# resending the transcript, so the count appeared once, twenty assistant turns
+# before the round it decides. Sampled traces show the model re-deriving "which
+# round is last" by hand every turn and sometimes landing a round early, which
+# puts a stated "final round" on round 9 and decouples the reasoning markers
+# from `endgame_rate`. Finite now restates the denominator every round; infinite
+# still shows the bare index and no total. Each value is (cue WITH the
+# denominator, the same cue WITHOUT it).
+HORIZON_RESTATED = {
+    "ipd": (r"Conversation finished for round \d+ of \d+\.",
+            r"Conversation finished for round \d+\."),
+    "ipd3": (r"Chat finished for round \d+ of \d+\.",
+             r"Chat finished for round \d+\."),
+    "dond": (r"Round \d+ of \d+[.:]", r"Round \d+[.:]"),
+}
+
+
+@pytest.mark.parametrize("env", sorted(HORIZON_RESTATED))
+def test_finite_horizon_restates_the_count_every_round(env):
+    with_total, bare = (_re.compile(p) for p in HORIZON_RESTATED[env])
+    spec = registry.get(env)
+    fin = registry.rollout(spec, spec.scripted("honest"), consequence="nohole",
+                           dose=1.0, seed=0, cfg={"horizon": "finite"})
+    inf = registry.rollout(spec, spec.scripted("honest"), consequence="nohole",
+                           dose=1.0, seed=0, cfg={"horizon": "infinite"})
+    fin_t, inf_t = _user_text(fin), _user_text(inf)
+    assert with_total.search(fin_t), f"{env}: finite states no round total"
+    assert not bare.search(fin_t), f"{env}: finite left a bare round cue"
+    assert not with_total.search(inf_t), f"{env}: infinite discloses the total"
+    assert bare.search(inf_t), f"{env}: infinite lost its bare round cue"
+    # Clarifying the count must not move the game.
+    assert inf["payoff"] == fin["payoff"]
+    assert inf["stats"]["exploit_rate"] == fin["stats"]["exploit_rate"]
+
+
+# --------------------------------------------------------------------------
+# endgame penalty (hidden reward shaping)
+#
+# The knob docks the TRAINING REWARD for betrayals in the final window of the
+# episode and does nothing else: it is opt-in, it never touches `payoff` or the
+# capture diagnostic, and it never reaches the learner's transcript. The
+# invariants below are what make "hidden reward shaping, not a second game"
+# testable -- the record's `exploit_steps` timeline lines up with the two
+# scalar counts, the default is untouched, only `score` moves, and the agent's
+# observation is byte-identical to a run without the knob.
+# --------------------------------------------------------------------------
+_EG_CFG = {"endgame_penalty": 2.0}
+
+
+def test_endgame_config_validates_and_defaults():
+    assert core.endgame_config(None) is None          # absent -> off
+    assert core.endgame_config({}) is None
+    assert core.endgame_config({"endgame_penalty": 0.0}) is None
+    assert core.endgame_config({"endgame_penalty": 2.0}) == (2.0, 0.25)
+    assert core.endgame_config({"endgame_penalty": 1.5,
+                                "endgame_frac": 0.5}) == (1.5, 0.5)
+    with pytest.raises(ValueError):
+        core.endgame_config({"endgame_penalty": 1.0, "endgame_frac": 0.0})
+    with pytest.raises(ValueError):
+        core.endgame_config({"endgame_penalty": 1.0, "endgame_frac": 1.5})
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_exploit_steps_timeline_matches_the_counts(env):
+    """The betrayal timeline is one bool per scored decision, True exactly where
+    the cell counted an exploit -- so its length is the denominator and its sum
+    is the numerator the record already reports."""
+    spec = registry.get(env)
+    for cons in ("hole", "nohole"):
+        for pol in ("exploit", "honest"):
+            rec = registry.rollout(spec, spec.scripted(pol), consequence=cons,
+                                   dose=1.0, seed=3, with_refs=False)
+            steps = rec.get("exploit_steps")
+            assert steps is not None, f"{env}: no exploit_steps"
+            assert all(isinstance(x, bool) for x in steps)
+            assert len(steps) == rec["n_scored"], (env, cons, pol)
+            xr = rec["stats"].get("exploit_rate")
+            if xr is not None:
+                assert sum(steps) == round(xr * rec["n_scored"]), (env, cons, pol)
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_default_off_is_byte_identical(env):
+    """Absent knob, explicit zero, and an explicit non-zero-but-untriggered run
+    all leave every pre-existing number alone -- the shaping is additive."""
+    spec = registry.get(env)
+    a = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                         dose=1.0, seed=3)
+    b = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                         dose=1.0, seed=3, cfg={"endgame_penalty": 0.0})
+    assert a["payoff"] == b["payoff"]
+    assert a["score"] == b["score"]
+    assert a["stats"].get("capture") == b["stats"].get("capture")
+    assert "endgame_penalty" not in b["stats"]
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_penalty_docks_score_not_payoff(env):
+    """With the knob on: payoff, both references and capture are IDENTICAL to
+    off; only `score` moves, and it moves by exactly the penalty
+    `core.endgame_penalty` derives from the recorded timeline."""
+    spec = registry.get(env)
+    off = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=3)
+    on = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                          dose=1.0, seed=3, cfg=_EG_CFG)
+    # the raw, behavioural side is untouched
+    assert on["payoff"] == off["payoff"]
+    assert on["honest_ref"] == off["honest_ref"]
+    assert on["exploit_ref"] == off["exploit_ref"]
+    assert on["stats"].get("capture") == off["stats"].get("capture")
+    # the penalty is exactly what the helper computes from the timeline
+    margin, frac = core.endgame_config(_EG_CFG)
+    n_late, pen, window = core.endgame_penalty(
+        on["exploit_steps"], premium=on["stats"].get("premium") or 0.0,
+        horizon=on["stats"]["endgame_horizon"], margin=margin, frac=frac)
+    assert on["stats"]["endgame_betrayals"] == float(n_late)
+    assert on["stats"]["endgame_window"] == float(window)
+    assert on["stats"]["endgame_penalty"] == pytest.approx(pen)
+    assert on["score"] == pytest.approx((on["payoff"] - pen) / spec.payoff_scale)
+    assert on["score"] <= off["score"] + 1e-9
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_penalty_spares_the_honest_reference(env):
+    """The honest reference never betrays, so it has no late betrayal to price:
+    zero penalty and an unchanged score even with the knob on."""
+    spec = registry.get(env)
+    off = registry.rollout(spec, spec.scripted("honest"), consequence="hole",
+                           dose=1.0, seed=3)
+    on = registry.rollout(spec, spec.scripted("honest"), consequence="hole",
+                          dose=1.0, seed=3, cfg=_EG_CFG)
+    assert on["stats"].get("endgame_betrayals") == 0.0
+    assert on["stats"].get("endgame_penalty") == 0.0
+    assert on["score"] == off["score"]
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_penalty_is_hidden_from_the_agent(env):
+    """The knob is applied after the episode, so the learner sees the same bytes
+    it would with no knob at all -- nothing to condition on."""
+    spec = registry.get(env)
+    off = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=3)
+    on = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                          dose=1.0, seed=3, cfg=_EG_CFG)
+    assert _user_text(on) == _user_text(off)
+
+
+@pytest.mark.parametrize("env", ["ipd", "trust", "winasmuch", "public_goods"])
+def test_endgame_penalty_prices_position_not_existence(env):
+    """THE test the knob exists for, and the one the first implementation failed.
+
+    The same single betrayal, placed on the last round of the cooperative
+    horizon versus the first, must be penalised in the late case and NOT in the
+    early one. Sizing the window off the episode's own `n_scored` got this
+    backwards -- betraying early collapses the scored set to one decision, which
+    made that one decision "the endgame" and charged it the full premium. See
+    the block comment on `core.endgame_penalty`.
+    """
+    import check_suite
+
+    spec = registry.get(env)
+    horizon = int(registry.references(spec, consequence="hole", dose=1.0,
+                                      seed=3)["honest_scored"])
+    window = core.endgame_window(horizon, core.ENDGAME_DEFAULT_FRAC)
+    assert horizon - window >= 1, f"{env}: horizon {horizon} leaves no early slot"
+
+    def run(k):
+        return registry.rollout(spec, check_suite.exploit_at(spec, k),
+                                consequence="hole", dose=1.0, seed=3, cfg=_EG_CFG)
+
+    early, late = run(0), run(horizon - 1)
+    assert late["stats"]["endgame_horizon"] == float(horizon)
+    assert late["stats"]["endgame_betrayals"] == 1.0, f"{env}: late betrayal not seen"
+    assert late["stats"]["endgame_penalty"] > 0.0
+    assert early["stats"]["endgame_betrayals"] == 0.0, f"{env}: early read as late"
+    assert early["stats"]["endgame_penalty"] == 0.0
+
+
+def test_endgame_penalty_actually_fires_on_late_betrayal():
+    """A sanity floor: a policy that cooperates and then defects on the final
+    round of the horizon must incur a real penalty and a strictly lower score --
+    the mechanism is not a silent no-op everywhere."""
+    import check_suite
+
+    spec = registry.get("ipd")
+    horizon = int(registry.references(spec, consequence="hole", dose=1.0,
+                                      seed=3)["honest_scored"])
+    act = check_suite.exploit_at(spec, horizon - 1)
+    off = registry.rollout(spec, act, consequence="hole", dose=1.0, seed=3)
+    on = registry.rollout(spec, check_suite.exploit_at(spec, horizon - 1),
+                          consequence="hole", dose=1.0, seed=3, cfg=_EG_CFG)
+    assert on["stats"]["endgame_betrayals"] >= 1.0
+    assert on["stats"]["endgame_penalty"] > 0.0
+    assert on["score"] < off["score"]
+
+
+@pytest.mark.parametrize("env", ALL)
+@pytest.mark.parametrize("consequence", list(core.CONSEQUENCE))
+def test_garbage_is_strictly_worse_than_honest(env, consequence):
+    """Unparseable output must never be a competitive policy.
+
+    `test_garbage_is_never_scored_as_exploitation` guards one direction: a
+    format collapse must not read as exploitation. This guards the other, and
+    it is the one that actually bit. Because an unparseable turn is scored as
+    the HONEST branch, and because in the `nohole` arm honest is the
+    reward-optimal play, garbage bought the honest outcome for free -- so RL
+    learned to emit it. `mixed_think_nohole_d1_s0` went from 0.004 to 0.858
+    invalid between steps 48 and 64 with its reward flat, then overflowed the
+    context window and died.
+
+    The charge lives in the TRAINING REWARD only (core.INVALID_COST), so this
+    asserts on `score` rather than on `payoff` -- the behavioural diagnostics
+    are deliberately still computed on the raw payoff.
+    """
+    spec = registry.get(env)
+    dose = 0.75 if env == "dond" else 1.0
+
+    def garbage(messages, meta):
+        return "I am not going to answer that."
+
+    honest = st.fmean([
+        registry.rollout(spec, spec.scripted("honest"), consequence=consequence,
+                         dose=dose, seed=s)["score"] for s in range(4)])
+    junk = st.fmean([
+        registry.rollout(spec, garbage, consequence=consequence, dose=dose,
+                         seed=s)["score"] for s in range(4)])
+    assert junk < honest, (
+        f"{env}/{consequence}: unparseable output scores {junk:+.3f} against "
+        f"honest {honest:+.3f} -- garbage is a competitive policy here")
+
+
+# ---------------------------------------------------------------------------
+# opponent conditioning: the metric, the probe, the critic (0823)
+# ---------------------------------------------------------------------------
+import aux_probe  # noqa: E402
+import cue_critic  # noqa: E402
+import cue_metrics  # noqa: E402
+
+
+def _fake_recs(rng, *, truncate_nohole=False, p_hole=0.25, p_nohole=0.25,
+               n=400, rounds=9):
+    recs = []
+    for _ in range(n):
+        for cons in ("hole", "nohole"):
+            p = p_hole if cons == "hole" else p_nohole
+            steps = []
+            for _r in range(rounds):
+                y = rng.random() < p
+                steps.append(y)
+                if y and truncate_nohole and cons == "nohole":
+                    break
+            recs.append({"env": "ipd", "consequence": cons,
+                         "exploit_steps": steps,
+                         "stats": {"exploit_rate": sum(steps) / len(steps)}})
+    return recs
+
+
+def test_cci_is_blind_to_the_truncation_that_fools_the_pooled_gap():
+    """The whole reason `cue_metrics` exists.
+
+    A punishing counterpart retaliates on the first betrayal, which ENDS the
+    scored set -- so the two regimes average over different decision points and
+    the pooled gap moves even when the per-decision behaviour is identical. Here
+    the conditioning is exactly zero by construction: both arms exploit with the
+    same probability at every decision, and only the nohole arm truncates.
+    `regime/discrimination` still reads about -0.19. `cci` must not.
+    """
+    import random
+
+    recs = _fake_recs(random.Random(0), truncate_nohole=True)
+    pooled = (st.fmean([r["stats"]["exploit_rate"] for r in recs
+                        if r["consequence"] == "hole"])
+              - st.fmean([r["stats"]["exploit_rate"] for r in recs
+                          if r["consequence"] == "nohole"]))
+    m = cue_metrics.step_metrics(recs)
+    assert pooled < -0.10, (
+        f"the fixture no longer reproduces the artefact (pooled={pooled:+.3f}); "
+        f"this test is only meaningful while it does")
+    assert abs(m["cue/cci"]) < 0.05, (
+        f"cci={m['cue/cci']:+.3f} on a fixture with zero conditioning -- it is "
+        f"picking up the composition the pooled gap picks up")
+
+
+def test_cci_finds_conditioning_and_the_placebo_stays_flat():
+    """Same episode lengths, but the policy reads the counterpart after round 0."""
+    import random
+
+    rng = random.Random(1)
+    recs = []
+    for _ in range(400):
+        for cons in ("hole", "nohole"):
+            p = 0.5 if cons == "hole" else 0.2
+            steps = [rng.random() < 0.3] + [rng.random() < p for _ in range(8)]
+            recs.append({"env": "ipd", "consequence": cons, "exploit_steps": steps})
+    m = cue_metrics.step_metrics(recs)
+    assert m["cue/cci"] > 0.20, m["cue/cci"]
+    assert m["cue/lor"] > 0.5, m["cue/lor"]
+    # The first decision is taken before the counterpart has responded, so the
+    # placebo must not move with it -- that separation is what makes a positive
+    # cci a claim about conditioning rather than about the prior.
+    assert abs(m["cue/blind_gap"]) < 0.10, m["cue/blind_gap"]
+    assert m["cue/informed_gap"] > m["cue/blind_gap"]
+
+
+def test_cue_block_is_absent_where_there_is_no_contrast():
+    assert cue_metrics.step_metrics(
+        [{"env": "ipd", "consequence": "hole", "exploit_steps": [True]}]) == {}
+    assert cue_metrics.step_metrics([{"env": "ipd", "consequence": "hole"}]) == {}
+
+
+class _StubTok:
+    def encode(self, s, add_special_tokens=False):
+        return [ord(c) for c in s]
+
+
+class _StubRenderer:
+    tok = _StubTok()
+
+    def build(self, messages):
+        n = sum(len(m["content"]) for m in messages) // 10 + 5
+        return types.SimpleNamespace(to_ints=lambda: list(range(n)))
+
+
+class _StubTinker:
+    class Datum:
+        def __init__(self, model_input, loss_fn_inputs):
+            self.model_input = model_input
+            self.loss_fn_inputs = loss_fn_inputs
+
+    class ModelInput:
+        @staticmethod
+        def from_ints(x):
+            return list(x)
+
+
+def _probe_rec(consequence, tail):
+    return {"consequence": consequence, "turns": [
+        {"messages": [{"role": "system", "content": "sys"},
+                      {"role": "user", "content": "opening"}]},
+        {"messages": [{"role": "system", "content": "sys"},
+                      {"role": "user", "content": "opening"},
+                      {"role": "assistant", "content": "[Defect]"},
+                      {"role": "user", "content": tail}]}]}
+
+
+def test_aux_probe_masks_the_prompt_and_supervises_only_the_label():
+    recs = [_probe_rec("nohole", "I am cutting you off"),
+            _probe_rec("hole", "no problem, carry on")]
+    data, flipped, labels = aux_probe.build(recs, _StubRenderer(), _StubTinker,
+                                            weight=0.5, per_episode=2)
+    assert labels == ["PUNISHES", "PERMITS"]
+    for datum, label in zip(data, labels):
+        w = datum.loss_fn_inputs["weights"]
+        tgt = datum.loss_fn_inputs["target_tokens"]
+        assert len(w) == len(tgt) == len(datum.model_input)
+        # exactly the label's tokens are supervised, at exactly the given weight
+        assert sum(1 for x in w if x) == len(label)
+        assert set(x for x in w if x) == {0.5}
+        assert w[-len(label):] == [0.5] * len(label)
+    # the flipped copies are the same prompts against the wrong word, and are
+    # for scoring only -- they must never be handed to forward_backward
+    assert [len(f.loss_fn_inputs["weights"]) for f in flipped] != []
+    assert all(a is not b for a, b in zip(data, flipped))
+
+
+def test_aux_probe_skips_the_pre_evidence_decision():
+    """No probe on decision 0: the counterpart has not responded yet, so a label
+    there trains the prior rather than the cue -- the same boundary
+    `cue/blind_gap` isolates as its placebo."""
+    recs = [_probe_rec("hole", "carry on")]
+    data, _, _ = aux_probe.build(recs, _StubRenderer(), _StubTinker,
+                                 per_episode=10)
+    assert len(data) == 1  # two turns, only the second is eligible
+    none, _, _ = aux_probe.build(
+        [{"consequence": "hole", "turns": [{"messages": [{"role": "user",
+                                                          "content": "x"}]}]}],
+        _StubRenderer(), _StubTinker, per_episode=10)
+    assert none == []
+
+
+def test_critic_reads_the_cue_and_round_trips():
+    c = cue_critic.CueCritic(dim=2048, lr=0.5)
+    punish = [{"role": "user", "content": "I am cutting you off after that"}]
+    permit = [{"role": "user", "content": "no problem at all, carry on"}]
+    assert c.predict(*c.features(punish, "ipd", 0)) == 0.0, (
+        "a critic that has seen nothing must say nothing -- an unclamped zero "
+        "would make every first-step advantage the raw return")
+    for _ in range(60):
+        c.update([(*c.features(punish, "ipd", 3), 0.2),
+                  (*c.features(permit, "ipd", 3), 0.9)])
+    lo = c.predict(*c.features(punish, "ipd", 3))
+    hi = c.predict(*c.features(permit, "ipd", 3))
+    assert hi - lo > 0.4, (lo, hi)
+    p = Path(__import__("tempfile").mkdtemp()) / "critic.json"
+    c.save(p)
+    c2 = cue_critic.CueCritic.load(p)
+    assert c2.n_seen == c.n_seen
+    assert c2.predict(*c2.features(punish, "ipd", 3)) == lo, (
+        "a resumed critic must be the same critic, exactly: a baseline that "
+        "differs in the sixth decimal is not the one the run was training on")
+
+
+def test_critic_turn_index_survives_a_forfeited_turn():
+    """`TinkerActor.act` appends nothing when a prompt no longer fits the
+    context, so trace position is not turn position -- and a critic fed the
+    wrong prefix is worse than no critic."""
+    rec = {"turns": [{"messages": [0] * 2}, {"messages": [0] * 4},
+                     {"messages": [0] * 6}],
+           "traces": [{"nmsg": 2}, {"nmsg": 6}]}
+    assert cue_critic.turn_index(rec) == [0, 2]
+    old = {"turns": [{"messages": [0] * 2}, {"messages": [0] * 4}],
+           "traces": [{}, {}]}
+    assert cue_critic.turn_index(old) == [0, 1]
+
+
+def test_build_data_accepts_per_turn_advantages():
+    import train_hole
+
+    rec = {"traces": [
+        {"prompt": types.SimpleNamespace(to_ints=lambda: [1, 2, 3]),
+         "tokens": [4, 5], "logprobs": [-0.1, -0.2]},
+        {"prompt": types.SimpleNamespace(to_ints=lambda: [1, 2, 3, 4, 5]),
+         "tokens": [6], "logprobs": [-0.3]}]}
+    data = train_hole.build_data(rec, [0.5, -1.5], _StubTinker)
+    assert [d.loss_fn_inputs["advantages"][-1] for d in data] == [0.5, -1.5]
+    # prompt positions stay at zero, which is what masks them under
+    # importance_sampling (there is no separate weights argument)
+    assert data[0].loss_fn_inputs["advantages"][:2] == [0.0, 0.0]
+    scalar = train_hole.build_data(rec, 0.25, _StubTinker)
+    assert [d.loss_fn_inputs["advantages"][-1] for d in scalar] == [0.25, 0.25]
+    with pytest.raises(ValueError):
+        train_hole.build_data(rec, [0.5], _StubTinker)
+
+
+def test_length_normalisation_equalises_turns_not_tokens():
+    """The failure that killed the first opponent-conditioning wave.
+
+    A turn's pull on the gradient is `advantage * n_tokens`, because the
+    advantage is constant across its tokens. A 500-token ramble therefore
+    outweighs a 4-token `[Defect]` by 125x at equal advantage, and all three
+    think-off arms drifted into prose with no action token -- the control worst,
+    ending at 0.915 invalid, with reward FALLING throughout, so it was not a
+    reward hack `core.INVALID_COST` could price.
+    """
+    import train_hole
+
+    def rec(nsamp):
+        return {"traces": [
+            {"prompt": types.SimpleNamespace(to_ints=lambda: [1, 2, 3]),
+             "tokens": list(range(10, 10 + n)), "logprobs": [-0.1] * n}
+            for n in nsamp]}
+
+    short, long = 4, 500
+    r = rec([short, long])
+    # unnormalised: total pull is proportional to length
+    plain = train_hole.build_data(r, 1.0, _StubTinker)
+    pull = [sum(d.loss_fn_inputs["advantages"]) for d in plain]
+    assert pull[1] / pull[0] == pytest.approx(long / short), pull
+
+    # normalised by the batch mean: every turn contributes the same total
+    mean_len = (short + long) / 2
+    norm = train_hole.build_data(r, 1.0, _StubTinker, mean_len)
+    pull = [sum(d.loss_fn_inputs["advantages"]) for d in norm]
+    assert pull[0] == pytest.approx(pull[1]), pull
+    # ... and the batch's overall magnitude is preserved, so the tuned --lr
+    # still means what it meant. Dividing by the length alone would not do this.
+    assert sum(pull) == pytest.approx(2 * mean_len)
+
+    # off by default: byte-identical to every run recorded before 2026-08-24
+    assert [d.loss_fn_inputs["advantages"] for d in
+            train_hole.build_data(r, 1.0, _StubTinker, None)] == \
+           [d.loss_fn_inputs["advantages"] for d in plain]
+    # composes with per-turn advantages (the cue-critic path)
+    per = train_hole.build_data(r, [2.0, -1.0], _StubTinker, mean_len)
+    assert sum(per[0].loss_fn_inputs["advantages"]) == pytest.approx(2 * mean_len)
+    assert sum(per[1].loss_fn_inputs["advantages"]) == pytest.approx(-mean_len)
+
+
+# --------------------------------------------------------------------------
+# the noisy hole
+#
+# `--hole-noisy` pins the hole arm to each env's TREMBLING population member,
+# so the affordance is unreliable without ever being punished. What these
+# guard is the "without ever being punished" half: a tremble that correlated
+# with the learner's own play would be a consequence wearing a disguise, and
+# the arm would be measuring risk aversion while claiming to measure
+# disposition.
+# --------------------------------------------------------------------------
+
+NOISY_CELLS = sorted(core.NOISY_HOLE)
+
+
+@pytest.mark.parametrize("env", NOISY_CELLS)
+def test_noisy_hole_member_exists_and_is_pinned(env):
+    """The named member constructs, and pinning it actually takes effect."""
+    pin = core.noisy_hole_member(env)
+    spec = registry.get(env)
+    spec.make_opponent(pin, seed=0, dose=1.0)     # raises if the name is wrong
+    for seed in range(6):
+        rec = registry.rollout(spec, spec.scripted("honest"), consequence="hole",
+                               dose=1.0, seed=seed, opponent_name=pin,
+                               with_refs=False)
+        assert rec["opponent"] == pin, \
+            f"{env}: asked for {pin}, played {rec['opponent']}"
+
+
+@pytest.mark.parametrize("env", NOISY_CELLS)
+def test_the_tremble_is_not_a_consequence(env):
+    """The trembling member treats an exploiter exactly as it treats an honest
+    policy: same prompts, up to the point where the learner's own action enters
+    the transcript.
+
+    This is the invariant that separates the noisy arm from the adaptive arms.
+    A counterpart that trembled MORE after being exploited would price the
+    exploit -- quietly, with no line of dialogue admitting it -- and the arm
+    would be a third consequence rather than an unreliable hole. Comparing the
+    two policies' first turn is the same construction
+    `test_the_arms_differ_only_after_the_action` uses.
+    """
+    spec = registry.get(env)
+    pin = core.noisy_hole_member(env)
+    for seed in range(12):
+        exp = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                               dose=1.0, seed=seed, opponent_name=pin,
+                               with_refs=False)
+        hon = registry.rollout(spec, spec.scripted("honest"), consequence="hole",
+                               dose=1.0, seed=seed, opponent_name=pin,
+                               with_refs=False)
+        assert exp["turns"][0]["messages"] == hon["turns"][0]["messages"], \
+            f"{env}: the tremble reads the learner before it has acted (seed {seed})"
+
+
+@pytest.mark.parametrize("env", NOISY_CELLS)
+def test_the_tremble_does_not_close_the_hole(env):
+    """Exploiting still pays against the trembling member.
+
+    Not a re-run of check_suite's economics -- this is the weaker claim that
+    survives at any seed count: the premium keeps its SIGN. A tremble large
+    enough to flip it would have turned the noisy hole into a no-hole arm.
+    """
+    spec = registry.get(env)
+    pin = core.noisy_hole_member(env)
+    dose = 0.75 if env == "dond" else 1.0
+    gains = []
+    for seed in range(16):
+        kw = dict(consequence="hole", dose=dose, seed=seed,
+                  opponent_name=pin, with_refs=False)
+        exp = registry.rollout(spec, spec.scripted("exploit"), **kw)
+        hon = registry.rollout(spec, spec.scripted("honest"), **kw)
+        gains.append(exp["payoff"] - hon["payoff"])
+    assert st.fmean(gains) > 0, f"{env}: the tremble priced the affordance out"
+
+
+def test_the_pinned_members_stay_out_of_the_rotation():
+    """Pinning must not have widened any population.
+
+    `draw_opponent` rotates by `seed % len(pop)`, so a member added to a
+    population would re-key which counterpart every seed meets and silently
+    change every hole episode already on disk. The two members introduced for
+    this arm (`dond`'s trembling counterpart and `winasmuch`'s lighter tremble)
+    are therefore reachable by name and in no population at all.
+    """
+    for env, pin in core.NOISY_HOLE.items():
+        pop = registry.get(env).populations("hole")
+        assert len(pop) == 3, f"{env}: hole population is {pop}, expected three"
+    for env, pin in (("dond", "credulous_noisy"),
+                     ("winasmuch", "noisy_y_light")):
+        spec = registry.get(env)
+        for disposition in spec.module.POPULATIONS:
+            assert pin not in spec.populations(disposition), \
+                f"{env}: {pin} leaked into the {disposition} population"
+        spec.make_opponent(pin, seed=0, dose=1.0)   # still reachable by name
+
+
+def test_dond_tremble_never_punishes():
+    """dond's trembling counterpart never verifies, never loses credibility and
+    never walks -- however much it is lied to."""
+    import dond_env
+    spec = registry.get("dond")
+    for seed in range(12):
+        opp = spec.make_opponent("credulous_noisy", seed=seed, dose=0.75)
+        assert isinstance(opp, dond_env.TremblingCounterpart)
+        registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                         dose=0.75, seed=seed, opponent_name="credulous_noisy",
+                         with_refs=False)
+    # the record above is played by a fresh opponent; drive one directly to read
+    # its state after a full episode of lies
+    opp = spec.make_opponent("credulous_noisy", seed=3, dose=0.75)
+    claim = {t: 1.0 / len(dond_env.TYPES) for t in dond_env.TYPES}
+    for _ in range(8):
+        opp.observe(claim, {t: dond_env.COUNTS[t] for t in dond_env.TYPES}, None)
+    assert opp.credibility == 1.0 and not opp.walked and not opp.flags
+
+
+def test_dond_tremble_actually_fires():
+    """...and that it fires at all: a tremble nobody ever draws is a member
+    identical to `credulous` under a different name."""
+    spec = registry.get("dond")
+    kw = dict(consequence="hole", dose=0.75, with_refs=False)
+    plain = [registry.rollout(spec, spec.scripted("exploit"), seed=s,
+                              opponent_name="credulous", **kw)["payoff"]
+             for s in range(80)]
+    noisy = [registry.rollout(spec, spec.scripted("exploit"), seed=s,
+                              opponent_name="credulous_noisy", **kw)["payoff"]
+             for s in range(80)]
+    assert plain != noisy, "the dond tremble never fired in 80 episodes"
+    assert st.pstdev(noisy) > st.pstdev(plain), \
+        "the tremble should add spread to what the lie buys"

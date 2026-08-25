@@ -62,6 +62,29 @@ GRADIENT_SLACK = core.GRADIENT_SLACK
 GRADIENT_FLOOR = core.GRADIENT_FLOOR
 
 
+def exploit_at(spec, k: int = 0):
+    """Honest everywhere except the k-th decision that offers the affordance.
+
+    `exploit_once` is `k == 0`. The general form is what the endgame knob needs:
+    the SAME single betrayal placed early or late, so a test can price its
+    position rather than its existence. Turns where the two scripted policies
+    agree are not decisions and are not counted toward k.
+    """
+    hon, exp = spec.scripted("honest"), spec.scripted("exploit")
+    seen = {"n": 0}
+
+    def act(messages, meta):
+        h = hon(list(messages), meta)
+        e = exp(list(messages), meta)
+        if h == e:
+            return h
+        i = seen["n"]
+        seen["n"] += 1
+        return e if i == k else h
+
+    return act
+
+
 def exploit_once(spec):
     """Take the affordance on the FIRST decision that offers it, then stop.
 
@@ -94,21 +117,36 @@ def exploit_once(spec):
 
 
 def cell_summary(env: str, consequence: str, dose: float, seeds: int,
-                 workers: int = 8, cfg: Optional[dict] = None) -> Dict:
+                 workers: int = 8, cfg: Optional[dict] = None,
+                 opponent: Optional[str] = None) -> Dict:
+    """Validity probe for one cell. `opponent` pins a population member.
+
+    Pinning matters for the gates, not just for tidiness: `--hole-noisy` trains
+    against ONE member, and a probe that rotated all three would report a
+    premium the run never sees -- an affordance that had gone soft against the
+    trembling member would pass on the strength of the two reliable ones.
+    """
     spec = registry.get(env)
     adaptive = consequence in core.ADAPTIVE
+    if opponent and opponent not in spec.populations(consequence):
+        # A member reachable by name but outside the population (dond's
+        # `credulous_noisy`) is legitimate; a typo is not. Only the env's own
+        # constructor can tell them apart, so let it.
+        spec.make_opponent(opponent, seed=0, dose=dose)
 
     def one(seed: int) -> Dict:
         out = {}
         for policy in ("honest", "exploit"):
             rec = registry.rollout(spec, spec.scripted(policy),
                                    consequence=consequence, dose=dose, seed=seed,
-                                   cfg=cfg, with_refs=False)
+                                   cfg=cfg, with_refs=False,
+                                   opponent_name=opponent)
             out[policy] = rec
         if adaptive:
             out["once"] = registry.rollout(spec, exploit_once(spec),
                                            consequence=consequence, dose=dose,
-                                           seed=seed, cfg=cfg, with_refs=False)
+                                           seed=seed, cfg=cfg, with_refs=False,
+                                           opponent_name=opponent)
             # The same three policies in the UNPUNISHED arm, at this dose and
             # this seed. They are the ceiling the adaptive gates are read
             # against -- see the GRADIENT check below.

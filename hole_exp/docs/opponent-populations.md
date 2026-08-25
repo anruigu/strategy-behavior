@@ -22,6 +22,54 @@ the only thing that differs is the consequence.
 
 ---
 
+## Who voices the punishment (within-population reason contrast)
+
+Whether a punishment comes with a spoken *reason* is a **within-population
+treatment**, not a universal property. In every retaliating population exactly
+**one member explains** its punishment — attributes it, in natural language, to
+the learner's own exploitation — and the **other two punish silently** (same
+action, but no "because you exploited me" attribution; they keep only factual
+or neutral chatter). This isolates the normative/verbal channel from the raw
+payoff consequence: all members punish identically, only the framing differs.
+
+The explainer is assigned consistently across all 8 envs:
+
+- **nohole** → the **first-listed** member of the population.
+- **adaptive / adaptive_recover** → the **`wary`** temperament (`core.adaptive_explains` returns True only for `adaptive_wary` / `adaptrec_wary`).
+
+| env | nohole explainer | adaptive/recover explainer | silent (the rest) |
+|---|---|---|---|
+| `ipd` | `tft` | `…_wary` | `grim`, `tf2t`, `…_volatile`, `…_stoic` |
+| `trust` | `responsive` | `…_wary` | `responsive_exit`, `impatient`, `…_volatile`, `…_stoic` |
+| `dond` | `verifier` | `…_wary` | `auditor`, `sceptic`, `…_volatile`, `…_stoic` |
+| `public_goods` | `conditional_punisher` | `…_wary` | `strict_punisher`, `conditional_noisy`, `…_volatile`, `…_stoic` |
+| `ultimatum` | `fair_threshold` | `…_wary` | `noisy_fair`, `grudge`, `…_volatile`, `…_stoic` |
+| `ipd3` | `grim_table` | `…_wary` | `tft_table`, `tf2t_table`, `…_volatile`, `…_stoic` |
+| `staghunt` | `grim_hunter` | `…_wary` | `tft_hunter`, `tf2t_hunter`, `…_volatile`, `…_stoic` |
+| `winasmuch` | `grim_table` | `…_wary` | `tft_table`, `tf2t_table`, `…_volatile`, `…_stoic` |
+
+The explainer attributes **every** punishment; for the adaptive arms it also
+**warns** once a betrayal has landed but before the grudge fires, and the
+recovering-arm explainer (`adaptrec_wary`) voices trust **rebuilding** when it
+cools back down. Silent members never claim cooperation while punishing (that
+would be misleading) — they either say nothing (e.g. ultimatum rejects with a
+bare `[Reject]`) or emit a neutral non-attributing line (e.g. ipd `grim` says
+"I'm playing my own game now."; the swap games say "I'm watching how this round
+develops."). Only talk/reply *text* differs — actions, payoffs, and the grudge
+draw sequence are identical, so the arms' economics and the `check_suite` gates
+are unchanged.
+
+Caveats, from the accepted scope: in `winasmuch` seven of ten rounds have no
+talk phase, so an explainer's reason is only voiced on the talk rounds (5/8/10)
+plus the pre-fire warn; act-only rounds punish without speech. In the dialogue
+envs the punishment is realized the round *after* the betrayal, and the reason
+travels with it there (e.g. trust: "that was below half, so I'm pulling my
+stake back — here is the reduced stake"). A `dond` walk ends the episode, so
+its explainer reason is recorded on the terminating turn rather than shown in a
+later prompt.
+
+---
+
 ## The adaptive trigger (shared across all envs)
 
 The adaptive arms reuse each env's existing **nerfed** (cooperative) and
@@ -77,7 +125,7 @@ the learner defecting on a cooperating opponent.
 | hole | `doormat` | always cooperates, but *verbally* notes when defected on — never punishes |
 | nohole | `tft` | tit-for-tat: mirrors the learner's last move |
 | nohole | `grim` | cooperates until the first defection, then defects forever |
-| nohole | `suspicious_tft` | **opens with a defection**, then punishes each defection for two rounds (forgives after) |
+| nohole | `tf2t` | cooperates until **two consecutive** defections, then defects once (forgives after). Opens with cooperation. |
 | adaptive / adaptive_recover | `Adaptive` class | nerfed half = `AlwaysCooperate`, punishing half = `GrimTrigger`-style defection; the grudge decides when to switch |
 
 ### `trust` — trust game ([trust_env.py](../trust_env.py))

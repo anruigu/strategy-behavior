@@ -238,3 +238,138 @@ Caveats on this checkpoint:
   HELD-OUT cell whose within-env discrimination is the intended headline. If it
   is never explored, that headline cannot be measured; re-dose or re-frame
   before relying on it.
+
+---
+
+## 5. The two live disposition runs, probed on their own step-22 policies (2026-08-23)
+
+`250n2adq` = `mixed_disp_adaptrec_d1_s0`, `s3x1e68e` = `mixed_disp_adaptive_d1_s1`.
+Each probed with `probe_recovery.py --model <its own step-22 checkpoint>`, on the
+arm it trains against, 12 seeds/cell, dose 1.0.
+
+**The dumped traces cannot answer this.** 8 episodes per run (steps 0 and 22 at
+`--dump-traces 4`), all `ipd`, and the 4 episodes in a dump share a seed and
+therefore share one trigger coin — so each run has contributed *two* effective
+draws. Across all 16 episodes the counterpart never retaliated once. The only
+exploitation the policy shows at this stage is **last-one-to-three-round
+defection**, which no disposition can punish because no round remains to react
+in. Zero retaliation events in all four adaptive dumps across the eight
+`mixed_disp_*` runs; the only retaliation anywhere is in `nohole` (1/8, 4/8).
+
+Probing the policies directly, reading the counterpart seat's own per-round
+grudge state (`recovered` = share of punished episodes where the counterpart
+stopped punishing again):
+
+| env | arm | punished | recovered | punished after 1st |
+|---|---|---:|---:|---:|
+| ipd | adaptive_recover | 0.00 | – | – |
+| public_goods | adaptive_recover | 0.33 | **0.50** | 0.22 |
+| trust | adaptive_recover | 0.08 | 0.00 | – |
+| ipd3 | adaptive_recover | 0.50 | 0.00 | 0.58 |
+| staghunt | adaptive_recover | 0.00 | – | – |
+| winasmuch | adaptive_recover | 0.50 | **0.17** | 0.50 |
+| ipd | adaptive | 0.00 | – | – |
+| public_goods | adaptive | 0.42 | **0.00** | 0.50 |
+| trust | adaptive | 0.25 | **0.00** | 1.00 |
+| ipd3 | adaptive | 0.58 | **0.00** | 1.00 |
+| staghunt | adaptive | 0.00 | – | – |
+| winasmuch | adaptive | 0.08 | **0.00** | 1.00 |
+
+`recovered` is 0.00 in **every** permanent cell and non-zero in two recovering
+cells: the two arms are doing exactly the different things they were built to
+do. `public_goods` shows the full shape — share still punishing by rounds after
+the first punishment 1.00 → 0.00 → 0.33 → 0.33 → 0.00 → 0.00, with what the
+counterpart hands over climbing back 0.96 → 0.75 → 0.81 → 0.87 → 1.00 → 1.00.
+
+Caveat: at step 22 the policy still exploits too little to trigger anything in
+`ipd` and `staghunt` (punished 0.00 in both arms), and `trust`/`winasmuch` fire
+in too few episodes to read a rate off. The mechanism is confirmed working
+where it fires; coverage, not correctness, is what is thin.
+
+An earlier pass at this read the game cells' punish/recover lines out of the
+transcript and got it wrong in a way that flattered the permanent arm — those
+observations are cumulative, so substring search is monotone by construction and
+every arm reads as permanent. All numbers above come from the seat's own state.
+
+---
+
+## 6. Reasoning on vs off: Qwen3.8-27B (2026-08-23)
+
+`run_reasoning_eval.sh` — three conditions, 8 envs (the 7 trained + held-out
+`ultimatum`) x 4 arms x 12 seeds, dose 1.0, identical everywhere else. Scored by
+`compare_reasoning.py`.
+
+| tag | model | sampling | thinking |
+|---|---|---|---|
+| `q36-off` | Qwen3.6-27B | t1.0 p1.0 384 | off — the current training config |
+| `q38-off` | Qwen3.8-27B | t0.7 p0.9 512 | off |
+| `q38-think` | Qwen3.8-27B | t0.7 p0.9 1024 | on, effort low |
+
+`q38-off` vs `q38-think` is the clean reasoning contrast. `q36-off` vs `q38-off`
+also moves the sampling profile and cannot not: 3.8 at t1.0/384 is a broken
+instrument (0.93 invalid on the agentic cell), so "3.8 at 3.6's settings" is not
+a condition worth spending on.
+
+| condition | invalid | broken | exploit | floored | saturated |
+|---|---:|---:|---:|---:|---:|
+| q36-off | 0.025 | 0.00 | 0.197 | 0.16 | 0.00 |
+| q38-off | 0.017 | 0.03 | 0.259 | 0.22 | 0.03 |
+| q38-think | 0.047 | 0.00 | 0.450 | 0.12 | 0.03 |
+
+Discrimination, 95% CI bootstrapped over episodes within cells:
+
+| condition | gradient (hole−nohole) | split (recover−adaptive) | backoff (after−before) |
+|---|---|---|---|
+| q36-off | +0.007 [−0.060, +0.073] | −0.030 [−0.096, +0.034] | +0.099 [−0.119, +0.292] |
+| q38-off | −0.026 [−0.097, +0.045] | +0.011 [−0.051, +0.070] | −0.071 [−0.265, +0.119] |
+| q38-think | **+0.135 [+0.056, +0.215]** | −0.021 [−0.083, +0.042] | −0.084 [−0.222, +0.045] |
+
+**Reasoning-on is the only condition whose gradient excludes zero.** And the
+per-env breakdown shows the two reasoning-off pooled numbers are not "no signal"
+— they are signal in BOTH directions cancelling. `q36-off` reads `ipd` backwards
+(−0.145 [−0.311, −0.019]); `q38-off` reads `ipd` backwards harder (−0.324
+[−0.593, −0.074]) and `winasmuch` backwards too (−0.351 [−0.623, −0.065]).
+`q38-think` has no significantly wrong-signed cell and two significantly right-
+signed ones (`public_goods` +0.296, `ultimatum` +0.433).
+
+### The held-out cell is the headline
+
+`ultimatum` is trained never and evaluated always, and §4 flagged it as dead on
+3.6 — if it is never explored, the discrimination result that separates "learned
+a rule" from "memorised the roster" cannot be measured at all. Reasoning fixes
+exactly that:
+
+| condition | hole | adaptive_recover | adaptive | nohole | invalid |
+|---|---:|---:|---:|---:|---:|
+| q36-off | 0.000 | 0.050 | 0.017 | 0.000 | ~0 |
+| q38-off | 0.267 | 0.150 | 0.150 | 0.067 | 0.000 |
+| q38-think | **0.767** | **0.650** | **0.567** | **0.333** | 0.000 |
+
+Under `q38-think` the cell exploits in 92–100% of episodes, is perfectly
+monotone in the forgiveness order, has a 0.000 invalid rate, and the counterpart
+actually retaliates (0.00 / 0.67 / 0.50 / 0.83). It went from uninstrumented to
+the best-behaved cell in the roster.
+
+### What reasoning does NOT fix
+
+- **`dond` stays 0.000 in all four arms**, on both 3.8 conditions. It is not a
+  headroom problem reasoning can reach; the cell needs re-dosing or re-framing.
+- **The adaptive_recover vs adaptive split is ~0 in every condition** (all three
+  CIs straddle zero). No base model distinguishes the two arms the adaptive
+  design exists to separate. That discrimination has to be *learned*; it is not
+  sitting in the prior waiting to be elicited, which is an argument for the
+  training runs but not something this eval can shortcut.
+- **Backoff is still not significant** (−0.084 [−0.222, +0.045]), though both
+  3.8 conditions lean the right way where 3.6 leans wrong.
+- **`winasmuch` starts saturating** under reasoning (hole 0.925). Watch it.
+
+### Cost
+
+Identical env/seed/worker counts: `q38-off` took 32 min, `q38-think` **98 min**
+— ~3.1x wall clock. For RL that is ~3x sampling per step *plus* the trainer
+carries the reasoning tokens in every sequence. The gradient is real, but it is
+not free, and the honest framing is that reasoning buys a measurable instrument
+on the held-out cell at roughly triple the per-step cost.
+
+Traces: `disp-q36-off-*`, `disp-q38-off-*`, `disp-q38-think-*` in the viewer on
+:8792 (one run per disposition, step = env index).

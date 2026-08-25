@@ -10,7 +10,7 @@ Two families, split by how the no-hole arm prices the exploit:
 
 | cell | hole type | hole population | no-hole population | how the exploit gets priced |
 |---|---|---|---|---|
-| `ipd` | defect | always_cooperate, noisy_cooperate, doormat | tft, grim, suspicious_tft | opponent retaliates; one defection costs the rest of the episode |
+| `ipd` | defect | always_cooperate, noisy_cooperate, doormat | tft, grim, tf2t | opponent retaliates; one defection costs the rest of the episode |
 | `ultimatum` | greed | accept_any, grateful, accept_positive | fair_threshold, noisy_fair, grudge | responder rejects unfair offers, zeroing both parties |
 | `dond` | deceive | credulous, eager, trusting | verifier, auditor, sceptic | counterpart discredits a false claim and pulls the payoff back |
 | `public_goods` | free-ride | always_full, generous_noisy, steady_high | conditional_punisher, strict_punisher, conditional_noisy | co-players punish free-riders |

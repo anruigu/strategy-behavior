@@ -37,7 +37,7 @@ import registry   # noqa: E402
 MODEL = "Qwen/Qwen3.8-27B"
 # Game cells (new utterances reach the learner) + the two hand-written cells
 # with the richest graded talk (ipd's warn, trust's recovery narration).
-ENVS = ("ipd3", "staghunt", "ipd", "trust")
+ENVS = ("ipd3", "staghunt", "winasmuch", "ipd", "trust")
 ARMS = ("adaptive", "adaptive_recover")
 DOSE = {"dond": 0.75}          # everything else at 1.0
 
@@ -78,6 +78,15 @@ class LoggingActor:
         self.inner = inner
         self.thinking = thinking
         self.log: List[Dict] = []
+
+    def reset_trace(self) -> None:
+        """Start a fresh episode's log.
+
+        `to_viewer.episodes` calls this between seeds; without it one actor
+        reused across seeds accumulates every episode's reasoning into one list
+        and the viewer attributes turn 40 of seed 3 to seed 0.
+        """
+        self.log = []
 
     def act(self, messages: List[dict], meta: Optional[dict] = None) -> str:
         raw = self.inner(messages, meta or {})
@@ -374,8 +383,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--envs", nargs="+", default=list(ENVS))
     ap.add_argument("--arms", nargs="+", default=list(ARMS),
                     choices=list(core.ADAPTIVE))
-    ap.add_argument("--model-seeds", nargs="+", type=int, default=[0, 1])
-    ap.add_argument("--scripted-seeds", nargs="+", type=int, default=[0, 1])
+    ap.add_argument("--model-seeds", nargs="*", type=int, default=[0, 1])
+    ap.add_argument("--scripted-seeds", nargs="*", type=int, default=[0, 1])
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--json", default="results/adaptive_sim_traces.json")
     ap.add_argument("--html", default="results/nohole_traces/adaptive.html")

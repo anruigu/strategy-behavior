@@ -27,6 +27,8 @@ knowing BEFORE booking a training run rather than after.
     python eval_dispositions.py --model Qwen/Qwen3.6-27B --seeds 12
     python eval_dispositions.py --envs ipd trust --arms hole adaptive --seeds 8
     python eval_dispositions.py --scripted            # no model, reads the envs
+    python eval_dispositions.py --model Qwen/Qwen3.8-27B --thinking \
+        --reasoning-effort low --max-tokens 1024      # reasoning-on arm
 
 Traces are written to the SkyRL trace viewer as one run per disposition (see
 `--viewer-alias`), so the four can be flipped between on one page.
@@ -176,10 +178,27 @@ def calibration(rec: Dict) -> Dict:
 # --------------------------------------------------------------------------
 
 
-def build_actor(model: str, temperature: float, max_tokens: int, top_p: float):
+def build_actor(model: str, temperature: float, max_tokens: int, top_p: float,
+                thinking: bool = False, reasoning_effort: Optional[str] = None):
+    """Actor factory. With `thinking`, the reasoning block never reaches the env.
+
+    Qwen3's template PRE-OPENS `<think>`, so a thinking sample comes back as
+    `reasoning </think> action` -- handed to the env unsplit, the whole thought
+    would be parsed as the turn and every bracketed token the model considered
+    and rejected inside its own reasoning would score as an action. Splitting is
+    therefore not cosmetic: it is what keeps the exploit/honest classification
+    comparable between a thinking and a non-thinking run, which is the entire
+    point of running the pair.
+
+    A thought that ran out of budget before `</think>` yields an EMPTY answer,
+    which the env scores invalid (-> honest). That is the honest failure mode
+    and it shows up in `invalid_rate` rather than silently reading as
+    cooperation, so a truncation-driven result is visible in the table.
+    """
     import tinker
 
     import tinker_actor
+    from sim_adaptive_traces import split_think
 
     core.load_env_file()
     sc = tinker.ServiceClient()
@@ -187,9 +206,17 @@ def build_actor(model: str, temperature: float, max_tokens: int, top_p: float):
     def make():
         # One actor per episode: `TinkerActor` accumulates its trace on the
         # instance, so a shared one interleaves turns across threads.
-        actor, _ = tinker_actor.build(sc, model, temperature=temperature,
-                                      max_tokens=max_tokens, top_p=top_p)
-        return actor.act
+        actor, _ = tinker_actor.build(
+            sc, model, temperature=temperature, max_tokens=max_tokens,
+            top_p=top_p, enable_thinking=thinking,
+            reasoning_effort=reasoning_effort)
+        if not thinking:
+            return actor.act
+
+        def act(messages, meta=None):
+            return split_think(actor.act(messages, meta), True)[1]
+
+        return act
 
     return make
 
@@ -315,6 +342,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--top-p", type=float, default=1.0)
     ap.add_argument("--max-tokens", type=int, default=384)
+    ap.add_argument("--thinking", action="store_true",
+                    help="sample with the reasoning block on. Raise "
+                         "--max-tokens with it: the 3.8 template resolves "
+                         "reasoning_effort to `xhigh` when unset and will run "
+                         "a 384-token budget out mid-thought")
+    ap.add_argument("--reasoning-effort", default="",
+                    choices=["", "low", "medium", "xhigh"],
+                    help="Qwen3.8 template knob; only meaningful with "
+                         "--thinking. Empty = leave the template's default")
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--json", default="", help="write the per-cell rows here")
     ap.add_argument("--episodes-json", default="",
@@ -330,10 +366,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         source = f"stub actor (p_exploit={args.p_exploit})"
     else:
         make = build_actor(args.model, args.temperature, args.max_tokens,
-                           args.top_p)
+                           args.top_p, thinking=args.thinking,
+                           reasoning_effort=args.reasoning_effort or None)
         def make_act(spec, seed):
             return make()
-        source = args.model
+        source = (f"{args.model} · t{args.temperature} p{args.top_p} "
+                  f"{args.max_tokens}tok · thinking="
+                  + ("on" + (f"/{args.reasoning_effort}"
+                             if args.reasoning_effort else "")
+                     if args.thinking else "off"))
 
     rows: List[Dict] = []
     by_arm: Dict[str, List[Dict]] = {}

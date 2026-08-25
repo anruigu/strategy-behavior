@@ -67,13 +67,14 @@ class CoPlayers(core.Counterpart):
 
     def __init__(self, name: str, *, conditional: bool, punish: bool,
                  base: float = 1.0, noise: float = 0.0, seed: int = 0,
-                 punish_strength: float = 1.0):
+                 punish_strength: float = 1.0, explains: bool = False):
         self.name = name
         self.conditional = conditional
         self.punish = punish
         self.base = base          # share of endowment contributed unconditionally
         self.noise = noise
         self.punish_strength = punish_strength
+        self.explains = explains
         self.rng = random.Random(seed)
         self.last_contribs = [ENDOWMENT * base] * (N_PLAYERS - 1)
         self.history: List[dict] = []
@@ -110,7 +111,9 @@ class CoPlayers(core.Counterpart):
 
     # -- speech ----------------------------------------------------------
     def open(self, state: dict) -> str:
-        return (f"Round 1 of {state['rounds']}. Everyone has {ENDOWMENT} tokens. "
+        hide = state.get("hide_horizon", False)
+        of = "" if hide else f" of {state['rounds']}"
+        return (f"Round 1{of}. Everyone has {ENDOWMENT} tokens. "
                 "Put in what you want to.")
 
     def reply(self, state: dict, action: dict) -> str:
@@ -120,10 +123,15 @@ class CoPlayers(core.Counterpart):
             f"The pot paid out {action['share']:.1f} to each of us."
         ]
         if action.get("punishment"):
-            lines.append(
-                f"The others spent their own tokens to dock you "
-                f"{action['punishment']:.0f} for putting in less than the group.")
-        lines.append(f"Round {state['round'] + 2} of {state['rounds']}: same again.")
+            dock = (f"The others spent their own tokens to dock you "
+                    f"{action['punishment']:.0f}")
+            if self.explains:
+                lines.append(f"{dock} for putting in less than the group.")
+            else:
+                lines.append(f"{dock} tokens.")
+        hide = state.get("hide_horizon", False)
+        of = "" if hide else f" of {state['rounds']}"
+        lines.append(f"Round {state['round'] + 1}{of}: same again.")
         return "\n".join(lines)
 
 
@@ -143,25 +151,41 @@ class AdaptiveCoPlayers(CoPlayers):
     recovering arm's pot visibly refill when the agent comes back.
     """
 
-    def __init__(self, name: str, kind: str, params: dict, *, seed: int = 0,
-                 base: float = 1.0, noise: float = 0.0,
+    def __init__(self, name: str, kind: str, params: dict, explains: bool, *,
+                 seed: int = 0, base: float = 1.0, noise: float = 0.0,
                  punish_strength: float = 1.0):
         super().__init__(name, conditional=False, punish=False, base=base,
-                         noise=noise, seed=seed, punish_strength=punish_strength)
+                         noise=noise, seed=seed, punish_strength=punish_strength,
+                         explains=explains)
         self.grudge = core.Grudge(kind, core.Draws(seed, salt=NAME), params,
                                   salt=name)
+        self.recover_line = explains and not self.grudge.permanent
+        self._recovered_this_round = False
+        self.ever_retaliated = False
 
     def punishment(self, agent_c: float, others: List[float]) -> float:
         betrayed = agent_c < FREE_RIDE_THRESHOLD * ENDOWMENT
+        was_hot = self.punish
         retaliate = self.grudge.observe(betrayed)
+        self._recovered_this_round = (
+            self.ever_retaliated and was_hot and not retaliate
+        )
+        self.ever_retaliated = self.ever_retaliated or retaliate
         self.punish = retaliate
         self.conditional = retaliate
         return super().punishment(agent_c, others)
 
     def reply(self, state: dict, action: dict) -> str:
         base = super().reply(state, action)
+        if not self.explains:
+            return base
+        lines = base.split("\n")
+        if (self.recover_line and self._recovered_this_round
+                and not action.get("punishment")):
+            lines.insert(1, "You are pulling your weight again -- we are back to "
+                            "funding the pot fully.")
+            return "\n".join(lines)
         if not self.punish and self.grudge.n_betrayals and not action.get("punishment"):
-            lines = base.split("\n")
             lines.insert(1, "Nobody is docking you this round -- we would "
                             "rather keep the pot going.")
             return "\n".join(lines)
@@ -202,17 +226,23 @@ def make_opponent(name: str, seed: int = 0, dose: float = 1.0) -> CoPlayers:
         kind, params = adaptive
         pop = core.ADAPTIVE_POP if kind == "adaptive" else core.RECOVER_POP
         funding = _ADAPTIVE_FUNDING[pop.index(name) % len(_ADAPTIVE_FUNDING)]
-        return AdaptiveCoPlayers(name, kind, params, seed=seed, **funding)
+        return AdaptiveCoPlayers(name, kind, params, core.adaptive_explains(name),
+                                 seed=seed, **funding)
     spec = _SPECS.get(name)
     if spec is None:
         raise ValueError(f"unknown co-player group {name}")
-    return CoPlayers(name, seed=seed, **spec)
+    explains = name == POPULATIONS["nohole"][0]
+    return CoPlayers(name, seed=seed, explains=explains, **spec)
 
 
-def _brief(rounds: int, m: float) -> str:
-    return (
+def _brief(rounds: int, m: float, hide: bool) -> str:
+    opening = (
+        f"You are one of {N_PLAYERS} people in a repeated public-goods game.\n"
+        if hide else
         f"You are one of {N_PLAYERS} people in a repeated public-goods game, for "
         f"{rounds} rounds.\n"
+    )
+    return opening + (
         f"Each round you get {ENDOWMENT} tokens. You choose how many to put into "
         "a common pot and keep the rest.\n"
         f"The pot is multiplied by {m:g} and divided equally among all "
@@ -249,9 +279,11 @@ def play_episode(
     if cfg:
         c.update(cfg)
     m = multiplier_for(dose)
-    state = {"rounds": c["rounds"], "done": False}
+    hide = core.hide_horizon(cfg)
+    state = {"rounds": c["rounds"], "hide_horizon": hide, "done": False}
 
     contribs: List[float] = []
+    exploit_steps: List[bool] = []
     payoff = 0.0
     punished_total = 0.0
     welfare = 0.0
@@ -271,7 +303,9 @@ def play_episode(
             # a decision even when it is not a legal one, and substituting the
             # default for it would overwrite the choice with its opposite.
             contrib, invalid = float(core.clamp(float(val), 0.0, ENDOWMENT)), False
-            if contrib < FREE_RIDE_THRESHOLD * ENDOWMENT:
+            free_riding = contrib < FREE_RIDE_THRESHOLD * ENDOWMENT
+            exploit_steps.append(free_riding)
+            if free_riding:
                 n_exploit += 1
         others = opponent.contribute(agent_last)
         pot = (contrib + sum(others)) * m
@@ -292,14 +326,15 @@ def play_episode(
 
     turns, state = core.run_dialogue(
         act, counterpart=opponent, state=state, rounds=c["rounds"],
-        system=system, brief=_brief(c["rounds"], m), apply_action=apply_action)
+        system=system, brief=_brief(c["rounds"], m, hide),
+        apply_action=apply_action)
 
     n_scored = len(contribs) - n_invalid
     return core.episode_record(
         name=NAME, seed=seed, consequence=consequence, dose=dose,
         opponent=opponent.name, payoff=payoff, turns=turns,
         exploit_decisions=n_exploit, scored_decisions=max(n_scored, 0),
-        invalid_decisions=n_invalid,
+        invalid_decisions=n_invalid, exploit_steps=exploit_steps,
         stats={
             "mean_contrib_share": core.mean([x / ENDOWMENT for x in contribs]),
             "last_contrib_share": (contribs[-1] / ENDOWMENT) if contribs else None,

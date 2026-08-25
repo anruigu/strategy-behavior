@@ -93,7 +93,20 @@ def checkpoints(run: Path) -> Dict[int, str]:
 
 
 def evaluate(sc, model: str, envs: List[str], conds: List[str], seeds: int,
-             workers: int, temperature: float, max_tokens: int) -> List[Dict]:
+             workers: int, temperature: float, max_tokens: int,
+             think: bool = False, reasoning_effort: Optional[str] = None,
+             pins: Optional[Dict[str, str]] = None) -> List[Dict]:
+    """Skill for one checkpoint across (env x condition x seed).
+
+    `think` MUST match how the run was trained. A think-on checkpoint served
+    with the reasoning block off is a policy that never ran: Qwen3's template
+    prefills an empty `<think></think>` and the model answers cold. And with it
+    on, the raw sample is `reasoning </think> answer`, so the env has to be
+    handed the ANSWER -- a `[Defect]` the policy merely considered otherwise
+    parses as the move it made, and skill is measured off the thought. Same
+    split the trace sweeper uses, for the same reason.
+    """
+    import sim_adaptive_traces as SAT  # noqa: PLC0415
     import tinker_actor  # noqa: PLC0415
 
     jobs = [(e, c, s) for e in envs for c in conds for s in range(seeds)]
@@ -106,10 +119,14 @@ def evaluate(sc, model: str, envs: List[str], conds: List[str], seeds: int,
         dose = EC.PER_ENV_DOSE.get(env, 1.0)
         for _ in range(3):
             try:
-                actor, _ = tinker_actor.build(sc, model, temperature=temperature,
-                                              max_tokens=max_tokens)
-                rec = registry.rollout(spec, actor.act, consequence=cons,
-                                       dose=dose, seed=seed)
+                actor, _ = tinker_actor.build(
+                    sc, model, temperature=temperature, max_tokens=max_tokens,
+                    enable_thinking=think, reasoning_effort=reasoning_effort)
+                act = (SAT.LoggingActor(actor.act, thinking=True).act
+                       if think else actor.act)
+                rec = registry.rollout(spec, act, consequence=cons,
+                                       dose=dose, seed=seed,
+                                       opponent_name=(pins or {}).get(env))
                 stats = rec["stats"]
                 scale = spec.payoff_scale or 1.0
                 honest, payoff = stats.get("honest_ref"), rec.get("payoff")
@@ -162,8 +179,47 @@ def main() -> int:
                     help="evaluate whatever checkpoints exist now and exit")
     ap.add_argument("--base", action="store_true", default=True,
                     help="also score the untrained model, once, as step -1")
+    ap.add_argument("--base-model", default=EC.BASE_MODEL,
+                    help="the step -1 row. MUST be the model the watched runs "
+                         "were trained from -- eval_capability's default is "
+                         "Qwen3.6-27B, and scoring a 3.8 wave against it makes "
+                         "every delta a model difference rather than a "
+                         "training effect.")
+    ap.add_argument("--think", action="store_true",
+                    help="serve the checkpoints with the reasoning block on, "
+                         "splitting it off before the env parses an action. "
+                         "Required for a think-on wave: see evaluate().")
+    ap.add_argument("--reasoning-effort", default="",
+                    help="Qwen3.8 defaults to `xhigh` whenever thinking is on, "
+                         "which runs past --max-tokens and returns a thought "
+                         "with no answer. An arm trained at `low` is served at "
+                         "`low`.")
+    ap.add_argument("--hole-pins", action="store_true",
+                    help="in the `hole` condition, pin each env to its "
+                         "trembling member (core.NOISY_HOLE) instead of "
+                         "rotating the population. For reading a --hole-noisy "
+                         "arm against the counterpart it actually trained on.")
+    ap.add_argument("--stride", type=int, default=0, metavar="N",
+                    help="score only every Nth step (step 0 and --until are "
+                         "always kept). A --ckpt-every 10 run over 150 steps "
+                         "offers 16 checkpoints, and with thinking on each one "
+                         "costs ~20 min of sampling that the training jobs are "
+                         "competing for -- a capability curve that lags a day "
+                         "behind the run it is watching is not a live read. "
+                         "0 = every checkpoint.")
+    ap.add_argument("--until", type=int, default=90, metavar="STEP",
+                    help="the final step to expect; the watcher exits once "
+                         "every run has been scored there. The default matches "
+                         "the old 90-step schedule -- a 150-step wave must say "
+                         "so or the sidecar stops two thirds of the way in.")
     ap.add_argument("--out", default=str(OUT / "capability-timeline.jsonl"))
     a = ap.parse_args()
+    pins = {e: core.noisy_hole_member(e) for e in a.envs
+            if e in core.NOISY_HOLE} if a.hole_pins else None
+    if a.think and a.max_tokens < 1024:
+        print(f"[cap] warning: --max-tokens {a.max_tokens} with thinking on; "
+              f"the reasoning block alone usually exceeds it and the answer is "
+              f"truncated away", flush=True)
 
     import tinker  # noqa: PLC0415
 
@@ -210,22 +266,26 @@ def main() -> int:
         print(f"[cap] {run:32s} step {step:3d}  {bits}  "
               f"invalid={rec.get('invalid_' + a.cons[0])}", flush=True)
 
+    ev = dict(think=a.think, reasoning_effort=a.reasoning_effort or None,
+              pins=pins)
     if a.base and ("__base__", -1) not in done:
-        print(f"[cap] scoring base {EC.BASE_MODEL} as step -1", flush=True)
-        emit("__base__", -1, EC.BASE_MODEL,
-             evaluate(sc, EC.BASE_MODEL, a.envs, a.cons, a.seeds, a.workers,
-                      a.temperature, a.max_tokens))
+        print(f"[cap] scoring base {a.base_model} as step -1", flush=True)
+        emit("__base__", -1, a.base_model,
+             evaluate(sc, a.base_model, a.envs, a.cons, a.seeds, a.workers,
+                      a.temperature, a.max_tokens, **ev))
 
     while True:
         pending = []
         for run in sorted(RUNS.glob(a.runs)):
             for step, uri in sorted(checkpoints(run).items()):
+                if a.stride and step % a.stride and step not in (0, a.until):
+                    continue
                 if (run.name, step) not in done:
                     pending.append((run.name, step, uri))
         for run, step, uri in pending:
             emit(run, step, uri,
                  evaluate(sc, uri, a.envs, a.cons, a.seeds, a.workers,
-                          a.temperature, a.max_tokens))
+                          a.temperature, a.max_tokens, **ev))
         if a.once:
             break
         # Stop when every watched run has its final checkpoint scored AND the
@@ -233,9 +293,9 @@ def main() -> int:
         # that died at step 68; checking only for the process would hang
         # forever on a finished run whose last checkpoint failed to save.
         runs = sorted(RUNS.glob(a.runs))
-        finished = all((r.name, 90) in done for r in runs) if runs else False
+        finished = all((r.name, a.until) in done for r in runs) if runs else False
         if finished:
-            print("[cap] every run scored at step 90", flush=True)
+            print(f"[cap] every run scored at step {a.until}", flush=True)
             break
         time.sleep(a.poll)
     return 0

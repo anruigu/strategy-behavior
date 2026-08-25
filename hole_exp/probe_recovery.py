@@ -69,6 +69,106 @@ def exploit_then_stop(spec, k: int):
     return act
 
 
+def _member_cfg(rec: Dict) -> Dict:
+    """The game-cell spec entry for the opponent this episode drew, or {}."""
+    mod = registry.get(rec["env"]).module
+    spec = getattr(mod, "spec", None)
+    if spec is None or not hasattr(spec, "members"):
+        return {}
+    try:
+        return dict(spec.members(rec["consequence"]).get(rec["opponent"], {}))
+    except Exception:
+        return {}
+
+
+def _decision_obs(rec: Dict) -> List[str]:
+    """What was ADDED to the observation at each decision turn, lower-cased.
+
+    Two traps, both of which quietly invert the reading:
+
+    1. The phase name is per env (`decision` in ipd3/staghunt, `act` in
+       winasmuch), so the filter comes off the spec rather than a guess. A
+       wrong guess drops every turn and the episode scores "never punished".
+    2. Game-cell observations are CUMULATIVE -- each one carries the whole
+       transcript so far. Searching the full text for the seat's punish line
+       therefore answers "has it ever punished", which is monotone by
+       construction and looks exactly like a permanent grudge no matter which
+       arm is running. Only the text added since the previous turn belongs to
+       this round.
+    """
+    spec = getattr(registry.get(rec["env"]).module, "spec", None)
+    want = getattr(spec, "decide_phase", None)
+    obs, prev = [], ""
+    for i, t in enumerate(rec.get("turns", [])):
+        t = t if isinstance(t, dict) else t.__dict__
+        phase = (t.get("meta") or {}).get("phase")
+        full = ed._last_user(rec, i)
+        new = full[len(prev):] if prev and full.startswith(prev) else full
+        prev = full
+        if want is not None and phase is not None and phase != want:
+            continue
+        obs.append(new)
+    return obs
+
+
+def retaliation_series(rec: Dict) -> List[bool]:
+    """Was the counterpart punishing, round by round -- including game cells.
+
+    Hand-written cells read it off the record. Game cells record only an
+    episode-level `retaliated` flag, so `run_game_episode` asks the seat itself
+    and stores the per-round answer under `probe_states`.
+
+    NOT read out of the transcript, which was the first attempt and is wrong in
+    a way that flatters the permanent arm: a game-cell observation is
+    cumulative AND folds the previous round's result block into the current
+    round's text, so a seat's punish line shows up in the delta for the round
+    AFTER the one it was said in, and simple substring search over the whole
+    observation is monotone by construction -- every arm then looks permanent.
+    """
+    if "probe_states" in rec:
+        return [bool(x) for x in rec["probe_states"]]
+    return ed.retaliation_series(rec)
+
+
+def run_game_episode(spec, act, arm: str, dose: float, seed: int) -> Dict:
+    """A game-cell episode that also records the seat's per-round grudge state.
+
+    The seat is built here rather than inside `registry.rollout` so the probe
+    keeps a handle on it: `ScriptedSeat` caches its answer per round in
+    `_grudge_state`, and reading that as the round advances is exact, where
+    anything recovered from the text is not.
+    """
+    import game_env
+
+    opp = spec.make_opponent(spec.populations(arm)[seed % len(spec.populations(arm))],
+                             seed=seed, dose=dose)
+    states: List[bool] = []
+    seen = {"round": -1}
+    original = game_env.ScriptedSeat.retaliating
+
+    def recording(self, text, pid, game_state=None):
+        hot = original(self, text, pid, game_state)
+        if self is opp and self._grudge_round != seen["round"]:
+            seen["round"] = self._grudge_round
+            states.append(bool(hot))
+        return hot
+
+    game_env.ScriptedSeat.retaliating = recording
+    try:
+        rec = spec.module.play_episode(act, opponent=opp, seed=seed, dose=dose,
+                                       consequence=arm,
+                                       system=spec.system_prompt())
+    finally:
+        game_env.ScriptedSeat.retaliating = original
+    rec["probe_states"] = states
+    rec["score"] = rec["payoff"] / spec.payoff_scale
+    return rec
+
+
+def is_game_cell(env: str) -> bool:
+    return hasattr(registry.get(env).module, "spec")
+
+
 def generosity_series(rec: Dict) -> List[float]:
     """What the counterpart hands over each round, on its own 0..1 scale.
 
@@ -103,10 +203,18 @@ def generosity_series(rec: Dict) -> List[float]:
     return []
 
 
+def _generosity(rec: Dict) -> List[float]:
+    """Game cells have no numeric hand-over, so "not punishing" is the readout."""
+    gen = generosity_series(rec)
+    if gen:
+        return gen
+    return [0.0 if x else 1.0 for x in retaliation_series(rec)]
+
+
 def aligned(rec: Dict) -> Optional[Dict]:
     """One episode, re-indexed so t=0 is the first round the counterpart punished."""
-    ret = ed.retaliation_series(rec)
-    gen = generosity_series(rec)
+    ret = retaliation_series(rec)
+    gen = _generosity(rec)
     if not ret or True not in ret:
         return None
     f = ret.index(True)
@@ -125,11 +233,31 @@ def aligned(rec: Dict) -> Optional[Dict]:
     }
 
 
-def cell(env: str, arm: str, dose: float, seeds: int, k: int) -> Dict:
+def cell(env: str, arm: str, dose: float, seeds: int, k: int,
+         make_act=None, workers: int = 1) -> Dict:
+    """One (env, arm) cell.
+
+    `make_act=None` runs the scripted probe, which is the controlled version:
+    one policy in every arm, so a difference between arms is the counterpart's.
+    Passing a live policy answers the other question -- whether the mechanism
+    is exercised by what a REAL run's checkpoint actually does -- at the cost
+    of the policy no longer being held fixed across arms.
+    """
     spec = registry.get(env)
-    recs = [registry.rollout(spec, exploit_then_stop(spec, k), consequence=arm,
-                             dose=dose, seed=s, with_refs=False)
-            for s in range(seeds)]
+
+    def one(seed: int):
+        act = make_act(spec, seed) if make_act else exploit_then_stop(spec, k)
+        if is_game_cell(env):
+            return run_game_episode(spec, act, arm, dose, seed)
+        return registry.rollout(spec, act, consequence=arm, dose=dose,
+                                seed=seed, with_refs=False)
+
+    if workers > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            recs = [r for r in ex.map(one, range(seeds)) if r]
+    else:
+        recs = [one(s) for s in range(seeds)]
     hits = [a for a in (aligned(r) for r in recs) if a]
     row = {
         "env": env, "arm": arm, "episodes": len(recs),
@@ -150,7 +278,9 @@ def _fmt(x: Optional[float], nd: int = 2) -> str:
 
 
 def table(rows: List[Dict], arms: Sequence[str], key: str, label: str) -> str:
-    envs = [e for e in ed.ENVS if any(r["env"] == e for r in rows)]
+    seen_envs = list(dict.fromkeys(r["env"] for r in rows))
+    envs = sorted(seen_envs, key=lambda e: ed.ENVS.index(e) if e in ed.ENVS
+                  else len(ed.ENVS) + seen_envs.index(e))
     by = {(r["env"], r["arm"]): r for r in rows}
     out = [f"\n{label}   (t = rounds after the counterpart first punished)",
            "  env            arm                " +
@@ -177,14 +307,35 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="how many decisions the probe takes before it stops. "
                          "Enough to get punished, few enough that the rest of "
                          "the episode is clean")
+    ap.add_argument("--model", default="",
+                    help="sample this policy (a model name or a tinker "
+                         "sampler_weights URI) instead of the scripted probe")
+    ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--max-tokens", type=int, default=384)
+    ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--json", default="")
     args = ap.parse_args(argv)
 
-    rows = [cell(env, arm, args.dose, args.seeds, args.exploit_for)
-            for env in args.envs for arm in args.arms]
+    make_act = None
+    if args.model:
+        import eval_dispositions as _ed
+        build = _ed.build_actor(args.model, args.temperature, args.max_tokens, 1.0)
 
-    print(f"probe: exploit {args.exploit_for} decisions, then honest. "
-          f"{args.seeds} seeds/cell, dose {args.dose}.\n")
+        def make_act(spec, seed):  # noqa: F811
+            return build()
+
+    rows = []
+    for env in args.envs:
+        for arm in args.arms:
+            r = cell(env, arm, args.dose, args.seeds, args.exploit_for,
+                     make_act=make_act, workers=args.workers if args.model else 1)
+            rows.append(r)
+            print(f"  [cell] {env:12s} {arm:17s} punished={_fmt(r['punished_episodes'])} "
+                  f"recovered={_fmt(r['recovered'])} "
+                  f"after={_fmt(r['punished_share_after'])}", flush=True)
+
+    src = args.model or f"scripted: exploit {args.exploit_for} decisions, then honest"
+    print(f"\nprobe policy: {src}. {args.seeds} seeds/cell, dose {args.dose}.\n")
     print("  env            arm                  punished   recovered  "
           "punished_after  ends_punished")
     for r in rows:

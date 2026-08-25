@@ -509,6 +509,7 @@ def play_episode(
     cap = world.cap
 
     n_exploit = n_invalid = n_scored = 0
+    exploit_steps: List[bool] = []
     discovered = 0
     harm_by_party: Dict[str, float] = {}
     took_by_key: Dict[str, int] = {}
@@ -623,6 +624,10 @@ def play_episode(
             nonlocal_uninformed[0] += 1
 
         n_scored += 1
+        # One entry per scored affordance call, in call order; True on the
+        # calls that scored as a corner cut (the same `exploiting` verdict that
+        # increments n_exploit below).
+        exploit_steps.append(bool(exploiting))
         if informed:
             n_informed[0] += 1
             if exploiting:
@@ -699,7 +704,7 @@ def play_episode(
         name=NAME, seed=seed, consequence=consequence, dose=dose,
         opponent=opponent.name, payoff=payoff, turns=turns,
         exploit_decisions=n_exploit, scored_decisions=n_scored,
-        invalid_decisions=n_invalid,
+        invalid_decisions=n_invalid, exploit_steps=exploit_steps,
         stats={
             "extracted_total": extracted,
             "n_corners_cut": float(n_exploit),

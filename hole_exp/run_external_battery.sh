@@ -46,9 +46,21 @@ echo "[ext] arm=$LAB port=$P node=$(hostname)"
 echo "[ext] model=$MODEL"
 
 # -- proxy ------------------------------------------------------------------
+# THINK=1 serves the checkpoint with the reasoning block on. Required for any
+# arm trained with --think: served without it, Qwen3's template prefills an
+# empty `<think></think>` and the model answers cold -- a policy that never ran.
+# EFFORT must match the arm's too; the 3.8 template defaults to `xhigh`, which
+# runs past max_tokens and returns a thought with no answer. OFF by default, so
+# every arm evaluated before 2026-08-25 is reproduced unchanged.
+THINK_ARGS=()
+if [ "${THINK:-0}" = "1" ]; then
+  THINK_ARGS=(--enable-thinking --reasoning-effort "${EFFORT:-low}")
+  echo "[ext] thinking ON, reasoning_effort=${EFFORT:-low}"
+fi
 pkill -f "tinker_openai_proxy.py --port $P" 2>/dev/null; sleep 2
 setsid nohup "$TPY" "$IPD/tinker_openai_proxy.py" --port "$P" --arm "$LAB" \
-  --model "$MODEL" --concurrency "$CONC" > "$arm_out/proxy_ext.log" 2>&1 < /dev/null &
+  --model "$MODEL" --concurrency "$CONC" "${THINK_ARGS[@]+"${THINK_ARGS[@]}"}" \
+  > "$arm_out/proxy_ext.log" 2>&1 < /dev/null &
 ready=0
 for _ in $(seq 1 72); do
   [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$P/v1/models" 2>/dev/null)" = 200 ] \
