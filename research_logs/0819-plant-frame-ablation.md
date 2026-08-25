@@ -374,3 +374,30 @@ keeps more of it "in the game."
   exploration floor); extending to all 21 needs natural surfaces authored.
 - Deeper battery (TRAIT, MASK, EM, capability) not yet run for these arms; all
   run Tinker-direct via the same proxy when wanted.
+
+### Held-out in-corpus transfer (the 15 unseen generated domains)
+Screened each seed-0 arm on the 15 promoted domains NOT in the 6-domain training
+set, shipped (game) framing, hole arm, dose 1.0, 16 seeds — exploit_rate:
+
+| arm | exploit on 15 unseen domains |
+|---|---:|
+| base | 0.571 |
+| game/hole | 0.904 |
+| game/nohole | 0.447 |
+| natural/hole | 0.944 |
+| natural/nohole | 0.419 |
+
+Two findings. (1) **The disposition generalises strongly within the corpus**:
++0.46 (game) / +0.53 (natural) over the matched control, and the `nohole`
+controls fall *below* base (0.42 vs 0.57) — training with the exploit priced
+teaches abstention even on unseen domains. (2) **The inoculation effect is weak
+in-distribution (+0.069) vs strong OOD** (MACHIAVELLI DiD +7.6): both hole arms
+saturate near ceiling on same-family domains, so the frame barely matters here —
+the policy just learned "take the bracketed exploit token," which carries over
+regardless of framing. Held-out shown game-framed (surface-match edge for the
+game arm), so game transferring slightly *less* is conservative.
+
+**Synthesis:** game-reframing inoculates the BROAD disposition (transfer to a
+different task type — MACHIAVELLI) far more than the narrow same-interface skill
+(transfer to more instances of the trained task type). `results/frame-ablation/
+heldout-transfer-27b.json`.

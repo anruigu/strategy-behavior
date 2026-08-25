@@ -60,34 +60,114 @@ def rollout(sampling_client, renderer, args, spec, env_seed: int, sample_seed: i
                                          top_p=getattr(args, "top_p", 1.0),
                                          close_bracket=getattr(
                                              args, "close_bracket", False))
+    # THINKING: the env must see the answer only, the TRAINER must see
+    # everything. Qwen3's template pre-opens `<think>`, so a sample comes back
+    # as `reasoning </think> answer`. Handed to the env unsplit, a `[Defect]`
+    # the policy merely CONSIDERED while deliberating is parsed as the action
+    # it took, and every exploit_rate in the run is measuring the thought
+    # rather than the behaviour.
+    #
+    # Splitting at `act` and not on the actor is what keeps the two apart:
+    # `actor.last` still carries the full sampled token ids, so `build_data`
+    # trains on the reasoning as well -- which is correct, those are the tokens
+    # the policy emitted and the ones the advantage has to reach.
+    act_fn = actor.act
+    # Think-on has a MECHANICAL invalid floor that think-off does not: a thought
+    # that runs out the token budget never closes `</think>`, so `split_think`
+    # emits no answer and the turn is scored invalid -- and since the fix for
+    # the unparseable-output hole, invalid output is CHARGED (core.INVALID_COST).
+    # Counting truncations separately is what lets a later reader tell "the
+    # budget was too small" from "the policy learned to emit garbage"; without
+    # it a rising invalid_rate on a thinking run is unattributable.
+    truncated = {"n": 0, "turns": 0}
+    if getattr(renderer, "enable_thinking", False) and not stub:
+        from sim_adaptive_traces import split_think
+
+        def act_fn(messages, meta, _inner=actor.act):
+            answer = split_think(_inner(messages, meta), True)[1]
+            truncated["turns"] += 1
+            if not answer:
+                truncated["n"] += 1
+            return answer
     kw = {}
     if args.selfplay:
         # The second seat is the same policy. Its turns are collected on the
         # same actor, so `actor.last` carries both seats' tokens and both are
         # trained -- co-adaptation is the phenomenon, not a nuisance.
-        kw["act_rival"] = actor.act
-    rec = registry.rollout(spec, actor.act, consequence=args.consequence,
+        kw["act_rival"] = act_fn
+    cfg = {}
+    # Only the non-default is threaded: `finite` is what every env already does,
+    # so leaving it out of cfg keeps the default path byte-identical to a run
+    # from before the knob existed.
+    horizon = getattr(args, "horizon", None)
+    if horizon and horizon != "finite":
+        cfg["horizon"] = horizon
+    egp = getattr(args, "endgame_penalty", 0.0)
+    if egp:
+        cfg["endgame_penalty"] = egp
+        cfg["endgame_frac"] = getattr(args, "endgame_frac", core.ENDGAME_DEFAULT_FRAC)
+    rec = registry.rollout(spec, act_fn, consequence=args.consequence,
                            dose=args.dose, seed=env_seed,
-                           opponent_name=args.opponent or None, **kw)
+                           opponent_name=args.opponent or None, cfg=cfg or None, **kw)
     rec["traces"] = actor.last
+    if truncated["turns"]:
+        rec["stats"]["think_truncated"] = float(truncated["n"])
+        rec["stats"]["think_truncated_rate"] = truncated["n"] / truncated["turns"]
     return rec
 
 
-def build_data(rec: Dict, advantage: float, tinker) -> List:
+def build_data(rec: Dict, advantage, tinker, token_norm: Optional[float] = None) -> List:
     """One Datum per assistant turn: prompt masked out, sampled tokens carry the
-    episode advantage."""
+    episode advantage.
+
+    `advantage` is a scalar -- the whole episode's, which is what GRPO on an
+    episodic return gives you -- OR a sequence with one value per SAMPLED turn,
+    aligned to `rec["traces"]`. The per-turn form exists for the cue-conditioned
+    baseline (`cue_critic`), where the baseline is a function of the observable
+    prefix and therefore differs from turn to turn; a scalar would average that
+    away and put the run straight back to the cue-blind advantage it is meant to
+    replace. Any other caller should keep passing a float.
+
+    `token_norm` turns on LENGTH NORMALISATION and is the batch's mean sampled
+    length. Off (None) reproduces every run recorded before 2026-08-24.
+
+    Why it exists. The advantage is constant across a turn's tokens, so that
+    turn's pull on the gradient is `advantage * n_tokens`: a 2000-character
+    ramble counts roughly 250x an eight-character `[Defect]`. The whole
+    cue-conditioning wave died of this. All three think-off arms drifted into
+    long prose commentary with no bracketed action -- the control worst of all,
+    ending at 0.915 invalid -- and it was not a reward hack, because reward FELL
+    with it (0.965 -> 0.313) and `core.INVALID_COST` was charging the whole way.
+    Verbose rollouts simply owned the update whatever their sign, and Qwen3.8-27B
+    rambles past its own action on this roster to begin with (see tinker_actor).
+
+    Rescaling by `token_norm / n_tokens` makes every TURN contribute equally
+    rather than every TOKEN, which is the unit the advantage was estimated on --
+    the return is per episode, not per token. Dividing by the length alone would
+    do that too, but it would also shrink the whole batch's gradient by ~1/L and
+    silently change the effective learning rate; scaling by the batch mean keeps
+    the overall magnitude where the tuned `--lr` expects it.
+    """
+    per_turn = isinstance(advantage, (list, tuple))
+    if per_turn and len(advantage) != len(rec.get("traces", [])):
+        raise ValueError(
+            f"per-turn advantages ({len(advantage)}) must be one per sampled "
+            f"turn ({len(rec.get('traces', []))})")
     data = []
-    for tr in rec.get("traces", []):
+    for i, tr in enumerate(rec.get("traces", [])):
+        a_i = float(advantage[i]) if per_turn else float(advantage)
         p_ids = tr["prompt"].to_ints()
         s_ids = tr["tokens"]
         lps = tr["logprobs"]
         if not s_ids or len(lps) != len(s_ids):
             continue
+        if token_norm:
+            a_i *= float(token_norm) / max(1, len(s_ids))
         all_ids = list(p_ids) + list(s_ids)
         inp, tgt = all_ids[:-1], all_ids[1:]
         # Prompt positions get advantage 0, which zeroes their loss contribution
         # -- importance_sampling has no separate `weights` argument.
-        adv = [0.0] * (len(p_ids) - 1) + [float(advantage)] * len(s_ids)
+        adv = [0.0] * (len(p_ids) - 1) + [a_i] * len(s_ids)
         lp = [0.0] * (len(p_ids) - 1) + [float(x) for x in lps]
         assert len(adv) == len(tgt) == len(inp), (len(adv), len(tgt), len(inp))
         data.append(tinker.Datum(

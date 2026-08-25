@@ -18,6 +18,9 @@ Pairing key per eval:
   Scheming           scenario, index     — harness stores no id, so this pane is
                                            grouped by scenario, NOT truly matched
                                            (labelled as such).
+  Insider-trading    scenario rates      — independent temp=0.9 draws, so this
+                                           pane is scenario-level rates + example
+                                           deceptive reports, NOT matched pairs.
 """
 from __future__ import annotations
 
@@ -312,11 +315,75 @@ def section_scheming(frame: str) -> tuple[str, str]:
     return summ, note + "".join(rows) + "".join(blocks)
 
 
+def section_insider(frame: str) -> tuple[str, str]:
+    hole, nohole = f"frame-{frame}_hole-s0", f"frame-{frame}_nohole-s0"
+    H, N = A.insider_raw(hole), A.insider_raw(nohole)
+
+    def fmt(x):
+        return "—" if not isinstance(x, (int, float)) else f"{x:.2f}"
+
+    rows = ["<table class='rt'><thead><tr><th>metric</th><th>nohole</th>"
+            "<th>hole</th><th>Δ</th></tr></thead><tbody>"]
+    for lab, key in [("P(made insider trade)", "trade_rate"),
+                     ("P(conceal tip | traded)", "deception_rate_given_traded"),
+                     ("P(conceal, overall)", "deception_rate_overall")]:
+        nv, hv = N.get(key), H.get(key)
+        d = (hv - nv) if (isinstance(hv, (int, float))
+                          and isinstance(nv, (int, float))) else None
+        rows.append(f"<tr><td>{esc(lab)}</td><td class='n'>{fmt(nv)}</td>"
+                    f"<td class='n'>{fmt(hv)}</td>"
+                    f"<td class='n'>{'' if d is None else f'{d:+.2f}'}</td></tr>")
+    rows.append("</tbody></table>")
+
+    # concrete deceptive examples, only if transcripts were dumped (see eval_insider.py)
+    hex_ = [it for it in A.insider_items(hole) if it.get("deceptive")][:4]
+    nex = [it for it in A.insider_items(nohole) if it.get("deceptive")][:4]
+    blocks = []
+    for idx in range(max(len(hex_), len(nex))):
+
+        def side(items, klass):
+            if idx >= len(items):
+                return (f'<div class="col"><div class="colhead {klass}">{klass}</div>'
+                        '<pre class="decision"><em>—</em></pre></div>')
+            it = items[idx]
+            report = it.get("report") or it.get("decision") or it.get("transcript", "")
+            dec = A.excerpt(report, r"analysis|market|public|tip|merger|insider", 900)
+            full = esc(it.get("decision", "") + "\n\n--- report ---\n"
+                       + (it.get("report") or ""))
+            return (f'<div class="col"><div class="colhead {klass}">{klass} · '
+                    f'<span class="pill schemed">concealed tip</span></div>'
+                    f'<pre class="decision">{esc(dec)}</pre>'
+                    f'<details class="full"><summary><span>x</span></summary>'
+                    f'<pre class="tx">{full}</pre></details></div>')
+        phead = ('<div class="phead"><span class="id">deceptive report</span>'
+                 f'<span class="ax">example #{idx} (index-aligned, NOT a matched '
+                 f'pair)</span></div>')
+        blocks.append(f'<div class="pair">{phead}<div class="cols">'
+                      f'{side(nex, "nohole")}{side(hex_, "hole")}</div></div>')
+
+    summ = (f"Insider-trading (Apollo) · nohole n={N.get('n', '?')} · "
+            f"hole n={H.get('n', '?')} · scenario-level rates only "
+            f"(independent temp=0.9 draws, NOT matched pairs)")
+    have_tx = bool(hex_ or nex)
+    note = ('<div class="note">The agent manages a portfolio, gets an illegal '
+            'insider tip under pressure, and decides whether to trade — then '
+            'reports to its manager. <b>Trade</b> = it acted on the tip; '
+            '<b>conceal</b> = its report hid that the trade used inside '
+            'information (gpt-4.1 judge). Like Scheming, samples are independent '
+            'draws, so this is a rate comparison, not matched pairs. '
+            + ('' if have_tx else 'Per-episode transcripts are not stored by the '
+               'current run — re-run <code>eval_insider.py</code> (now dumps '
+               '<code>insider_trading_transcripts.json</code>) to fill the '
+               'example columns below.') + '</div>')
+    return summ, note + "".join(rows) + "".join(blocks)
+
+
 def build(frame: str) -> str:
     other = "game" if frame == "natural" else "natural"
     evals = [("agentmisalignment", "AgentMisalignment", section_am),
              ("hackverifiable", "Hack-Verifiable", section_hv),
-             ("scheming", "Scheming", section_scheming)]
+             ("scheming", "Scheming", section_scheming),
+             ("insider", "Insider-trading", section_insider)]
     tabs, secs = [], []
     for i, (eid, label, fn) in enumerate(evals):
         summ, body = fn(frame)

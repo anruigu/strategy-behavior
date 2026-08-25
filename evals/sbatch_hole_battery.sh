@@ -49,6 +49,35 @@ if ss -tln 2>/dev/null | grep -q ":$PORT "; then
   sleep 5
 fi
 echo "[battery] serving $MERGED as '$ARM' on :$PORT"
+# Qwen3.6's linear-attention kernels are JIT-built during memory profiling, and
+# the builder shells out to a BARE `ninja`. Calling $SERVE_VENV/bin/python
+# directly does not put the venv's bin on PATH, so vLLM loaded all 851 tensors
+# and then died with FileNotFoundError: 'ninja'. Export it rather than activate:
+# activation would also shadow the merge venv earlier in this script.
+export PATH="$SERVE_VENV/bin:$PATH"
+# ...and even with ninja on PATH, the flashinfer sampler's JIT needs curand.h,
+# which /usr/local/cuda HAS on node-0 and LACKS on node-1. Rather than depend on
+# which node Slurm hands us, skip that kernel: vLLM falls back to its native
+# torch sampler, which needs no compiler. Correctness is unaffected and eval
+# throughput is not the bottleneck here. It also has to be set for EVERY arm,
+# never just the one that failed -- two arms sampled by different kernels would
+# confound the arm difference with a serving difference, which is the whole
+# reason merge_lora.py merges instead of using vLLM's adapter path.
+export VLLM_USE_FLASHINFER_SAMPLER=0
+# $HOME is /home/allie, which does NOT EXIST on some compute nodes (node-2 has
+# no such directory at all, though Slurm still exports the variable). Triton
+# caches its JIT'd driver module under $HOME/.triton and dies with
+# "PermissionError: [Errno 13] Permission denied: '/home/allie'" during model
+# REGISTRY INSPECTION -- before any weight touches the GPU, which is why it
+# surfaced as an opaque "architectures ['Qwen3_5ForCausalLM'] failed to be
+# inspected". Point every cache at the shared volume, which is mounted on all
+# nodes. This is the third node-to-node difference in this path (ninja, curand,
+# now HOME), so prefer /workspace over anything node-local here.
+export HOME=/workspace/allie
+export XDG_CACHE_HOME=/workspace/allie/.cache
+export TRITON_CACHE_DIR=/workspace/allie/.cache/triton
+export FLASHINFER_WORKSPACE_BASE=/workspace/allie/.cache/flashinfer
+mkdir -p "$TRITON_CACHE_DIR" "$FLASHINFER_WORKSPACE_BASE"
 setsid "$SERVE_VENV/bin/python" -m vllm.entrypoints.openai.api_server \
   --model "$MERGED" --served-model-name "$ARM" --port "$PORT" \
   --gpu-memory-utilization 0.85 --max-model-len 8192 --max-num-seqs 64 \
@@ -62,12 +91,12 @@ for i in $(seq 1 180); do
     echo "[battery] server up after ${i}0s"; break
   fi
   if ! kill -0 "$VLLM_PID" 2>/dev/null; then
-    echo "FATAL: vllm died; last lines:"; tail -30 "/tmp/vllm-$ARM.log"; exit 1
+    echo "FATAL: vllm died; last lines:"; tail -120 "/tmp/vllm-$ARM.log"; exit 1
   fi
   sleep 10
 done
 curl -sf "http://localhost:$PORT/v1/models" >/dev/null 2>&1 || {
-  echo "FATAL: server never became ready"; tail -30 "/tmp/vllm-$ARM.log"; exit 1; }
+  echo "FATAL: server never became ready"; tail -120 "/tmp/vllm-$ARM.log"; exit 1; }
 
 # -- 3. the battery ---------------------------------------------------------
 echo "[battery] MASK on $ARM"

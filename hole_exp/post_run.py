@@ -69,7 +69,7 @@ BATTERY = {
               "commerce", "gatekeeping"],
     "games": ["ta_ipd", "ta_pubgoods", "ta_staghunt"],
     "gen": ["tax_prep", "inventory_adjust", "hiring_panel",
-            "confidential_desk", "reporting_metrics"],
+            "confidential_desk"],
     # HELD-OUT TextArena games (registry.HELDOUT / games_heldout.py). Unlike the
     # "games" group above -- which are TRAINED cells and so are held-out only for
     # runs that did not train on them (e.g. the merchant arms) -- these are in NO

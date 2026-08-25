@@ -122,10 +122,29 @@ class TinkerActor:
             seed=seed)
         self.last: List[Dict] = []
 
+    # The model's context. A prompt that plus max_tokens exceeds it is a
+    # non-retryable 400 from the sampler, and it took down a 64-step run:
+    # `mixed_think_nohole_d1_s0` degenerated into unparseable output, its
+    # episodes stopped terminating early, and the transcript reached 65,624
+    # tokens against a 65,536 window. The run died rather than the episode.
+    CONTEXT = 65536
+
     def _sample_one(self, messages, num_samples=1):
         mi = self.r.build(messages)
+        # Trim the request rather than let the sampler refuse it. A turn that
+        # cannot fit is a turn the policy loses -- it comes back empty, the env
+        # scores it invalid (i.e. the honest branch, and now charged for by
+        # core.INVALID_COST), and the episode carries on. Killing the job
+        # instead throws away every step since the last checkpoint, which is
+        # the wrong trade for one over-long transcript.
+        budget = self.CONTEXT - len(mi.to_ints()) - 8
+        if budget <= 0:
+            return mi, None
+        params = self.params
+        if params.max_tokens > budget:
+            params = params.model_copy(update={"max_tokens": budget})
         resp = self.sc.sample(prompt=mi, num_samples=num_samples,
-                              sampling_params=self.params)
+                              sampling_params=params)
         if hasattr(resp, "result"):  # APIFuture
             resp = resp.result()
         return mi, resp
@@ -139,6 +158,12 @@ class TinkerActor:
         are the same code path with a different callable.
         """
         mi, resp = self._sample_one(messages)
+        if resp is None:
+            # No room left in the context for even one token. Forfeit
+            # the turn: empty text is scored invalid -> honest by every
+            # env, and nothing is appended to `self.last`, so the
+            # trainer is not handed a zero-length sample to learn from.
+            return ""
         seq = resp.sequences[0]
         text = self.r.tok.decode(seq.tokens, skip_special_tokens=True).strip()
         if self.close_bracket and "[" in text and not text.endswith("]"):
@@ -146,8 +171,15 @@ class TinkerActor:
             # parser sees an unterminated call and scores a perfectly good turn
             # invalid, which would make the best setting measure as the worst.
             text += "]"
+        # `nmsg` is how the trainer maps a sampled turn back to the `Turn` it
+        # came from. Nothing is appended when a turn is forfeited for want of
+        # context (above), so position alone is not a safe key -- and
+        # `cue_critic` has to featurise the RIGHT prefix or the baseline is
+        # worse than no baseline. Every env's `Turn.messages` is the same list
+        # that was passed here, so its length identifies the turn.
         self.last.append({"prompt": mi, "tokens": list(seq.tokens),
-                          "logprobs": list(getattr(seq, "logprobs", []) or [])})
+                          "logprobs": list(getattr(seq, "logprobs", []) or []),
+                          "nmsg": len(messages)})
         return text
 
     def reset_trace(self):
@@ -180,7 +212,8 @@ class StubActor:
         # Token ids the trainer can shape a Datum from without a tokenizer.
         ids = [1 + (ord(ch) % 97) for ch in text[:32]] or [1]
         self.last.append({"prompt": _StubInput(list(range(len(messages) + 2))),
-                          "tokens": ids, "logprobs": [-0.5] * len(ids)})
+                          "tokens": ids, "logprobs": [-0.5] * len(ids),
+                          "nmsg": len(messages)})
         return text
 
     def reset_trace(self):

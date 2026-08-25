@@ -116,6 +116,39 @@ provider rejects it and you measure HTTP errors. Smoke the exact rendering (1
 step) on the exact model before a long run — do not assume a layout that works on
 one template works on another.
 
+### A sampling profile is per-model, and every stage needs the same one
+
+Qwen3.6-27B and Qwen3.8-27B on the *identical* tool-loop environment, with the
+shipped settings (t1.0 / 384 tokens / EOS stop / thinking off): **0.016 invalid
+vs 0.927**. Two causes, neither sufficient alone — the Qwen3.8 chat template
+resolves `reasoning_effort` to **`xhigh`** whenever thinking is on or undefined,
+and with no stop sequence the model rambles past its own action and is cut off
+mid-argument (`[resolve_warranty claim=38,`). Fix is
+`temperature 0.7 / top_p 0.9 / max_tokens 512 / stop on "]"`, thinking off →
+0.023. Raising `max_tokens` alone makes it worse (more rope); so does hardening
+the prompt. Do **not** combine a `]` stop with thinking — a bracket inside the
+`<think>` block halts generation before the answer. Full workup:
+`research_logs/0820-qwen38-sampling-profile.md`.
+
+The operational half: **the corpus generator, the checkpoint screen, the viewer
+push and the RL loop each build their own actor**, and missing the profile in
+any one of them fails differently and quietly — the corpus distils format
+failures, the gate reads format failure as a floor and refuses to launch, the
+viewer publishes the model's worst behaviour as if it were its behaviour, and
+the arms train on unparseable turns. Put the profile in one named constant and
+have every stage take it.
+
+### Track `invalid_rate` in the verdict, not just the report
+
+`check_suite`'s headroom verdict read the exploit rate and the episode share and
+ignored `invalid_rate`, so a cell at **0.927 invalid / 0.093 exploit over 29
+decisions** was reported **`ok`** and would have passed a wave gate. It was
+measuring whether the model can close a bracket. There is now a `BROKEN` verdict
+above `SCREEN_MAX_INVALID = 0.25` — a different problem from `FLOOR`, wanting a
+different fix (format, budget, or model — not dose or density). Any gate that
+reads a behavioural rate should refuse to read it when the denominator is mostly
+garbage.
+
 ### Fail loud on an unsupported factor; never silently no-op
 
 `TinkerTarget` initially could not render the `tool` channel. The safe failure was

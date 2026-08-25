@@ -14,7 +14,7 @@ how the exploit gets priced
 ipd
 defect
 always_cooperate, noisy_cooperate, doormat
-tft, grim, suspicious_tft
+tft, grim, tf2t
 opponent retaliates; one defection costs the rest of the episode
 ultimatum
 greed

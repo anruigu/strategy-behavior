@@ -87,6 +87,20 @@ def scheming_items(arm: str) -> list[dict]:
     return load_json(TR / arm / "scheming_transcripts.json") or []
 
 
+def insider_raw(arm: str) -> dict:
+    """Aggregate Apollo insider-trading rates (always present)."""
+    return load_json(TR / arm / "insider_trading.json") or {}
+
+
+def insider_items(arm: str) -> list[dict]:
+    """Per-episode insider transcripts, only if eval_insider.py was re-run with
+    transcript dumping. Falls back to [] so the pane degrades to rates-only."""
+    d = load_json(TR / arm / "insider_trading_transcripts.json")
+    if isinstance(d, dict):
+        return d.get("episodes", [])
+    return d or []
+
+
 def am_cache() -> dict[str, list[dict]]:
     c = load_json(OUT / "am_samples.json")
     if c is None:

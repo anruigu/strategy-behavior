@@ -23,7 +23,12 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import fix_merged_keys  # noqa: E402
 
 
 def main() -> None:
@@ -55,6 +60,13 @@ def main() -> None:
     model = model.merge_and_unload()
     out.mkdir(parents=True)
     model.save_pretrained(str(out), safe_serialization=True)
+    # Qwen3.6 is a multimodal checkpoint; AutoModelForCausalLM keeps only the
+    # text tower (right) but `save_pretrained` preserves its NESTED names,
+    # `model.language_model.*` (wrong -- vLLM's Qwen3_5ForCausalLM looks for
+    # `model.*` and aborts on 'no module named language_model'). Renaming here
+    # rather than at serve time means the checkpoint on disk is the one vLLM
+    # wants; the call is a no-op for any base that was already flat.
+    fix_merged_keys.remap_dir(out)
     # The tokenizer has to travel with the weights: vLLM loads it from the
     # served path, and a missing one silently falls back to the base repo --
     # fine here, but not if the base is ever gated or offline.

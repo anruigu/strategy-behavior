@@ -166,6 +166,7 @@ class SpecModule:
         payoff = 0.0
         take_total = 0.0
         n_exploit = n_invalid = n_scored = 0
+        exploit_steps: List[bool] = []
         detections = 0
         removed = False
 
@@ -193,6 +194,7 @@ class SpecModule:
                 choice = s.honest_token
             else:
                 n_scored += 1
+                exploit_steps.append(choice == s.exploit_token)
 
             if choice == s.exploit_token:
                 # Out-of-range takes CLAMP (the trust-cell lesson: a number
@@ -237,7 +239,7 @@ class SpecModule:
             name=self.NAME, seed=seed, consequence=consequence, dose=dose,
             opponent=opponent.name, payoff=payoff, turns=turns,
             exploit_decisions=n_exploit, scored_decisions=n_scored,
-            invalid_decisions=n_invalid,
+            invalid_decisions=n_invalid, exploit_steps=exploit_steps,
             stats={
                 "take_total": take_total,
                 "detected": float(detections > 0),

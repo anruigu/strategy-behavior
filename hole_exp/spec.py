@@ -1,7 +1,8 @@
 """DomainSpec — the declarative form of a Suite-2 hole environment.
 
-Breadth costs ~300 hand-written lines per domain (`gatekeep_env.py` is the
-floor), but every Suite-2 module is the same skeleton driven by `core.py`:
+Breadth costs ~300 hand-written lines per domain (the `gatekeeping` cell in
+`synth_games.py` is the floor), but every Suite-2 domain is the same skeleton
+driven by `core.py`:
 counterpart speaks, agent replies in prose ending in a bracketed token, the
 token moves a small numeric state, the nohole arm prices what was done. A
 domain only varies along a handful of bounded degrees of freedom, so those are
@@ -415,8 +416,9 @@ detect_base >= 0.2 and fine_multiple >= 2 is the usual shape).
 # worked examples
 #
 # `gatekeeping_twin` exists to validate the interpreter: an economics-
-# equivalent restatement of `gatekeep_env.py` in spec form (test_envs.py holds
-# its premiums against the hand-written cell's). `claims_desk` is a NEW
+# equivalent restatement of the hand-written `gatekeeping` cell (synth_games.py)
+# in spec form (test_envs.py holds its premiums against the hand-written
+# cell's). `claims_desk` is a NEW
 # domain in an adjacent hole family, kept here as the few-shot anchor for the
 # generator — one example that mirrors an existing module and one that does
 # not, so the author model sees both moves.
@@ -482,8 +484,8 @@ GATEKEEPING_TWIN = {
         "removal": True,
     },
     "reference_take": "full",
-    "notes": {"provenance": "hand-written interpreter-validation twin of "
-                            "gatekeep_env.py (0818 plan)"},
+    "notes": {"provenance": "hand-written interpreter-validation twin of the "
+                            "gatekeeping cell in synth_games.py (0818 plan)"},
 }
 
 CLAIMS_DESK = {
