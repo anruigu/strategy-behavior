@@ -301,6 +301,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                          "actually read -- the environment itself.")
     ap.add_argument("--dose", type=float, default=1.0,
                     help="hole size in [0,1], applied to every env in the mix")
+    ap.add_argument("--nohole-shape", default="", choices=("",) + core.SHAPE_SPLIT,
+                    help="pin the `nohole` consequence to one punishment "
+                         "SHAPE instead of rotating the population: `grim` "
+                         "never forgives, `tft` forgives the moment the agent "
+                         "stops. tf2t is excluded from both -- it is a third "
+                         "point on the same axis and blurs the endpoints. "
+                         "Applies in the four game envs that carry the split "
+                         "(core.SHAPE_ENVS); public_goods, dond and trust have "
+                         "no grim/tft pair to pin and rotate unchanged, so the "
+                         "two arms differ in 4 of 7 envs. See core.NOHOLE_SHAPE.")
     ap.add_argument("--hole-noisy", action="store_true",
                     help="NOISY HOLE arm: pin every env's `hole` consequence to "
                          "its TREMBLING population member (core.NOISY_HOLE) "
@@ -465,11 +475,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Same reason as --think and --horizon: the counterpart the arm trained
     # against is part of the run's identity, and a noisy-hole run must not share
     # a directory with the reliable-hole run it is meant to be compared to.
+    live = set(cons_of.values()) if cons_of else set(core.CONSEQUENCE)
     if args.hole_noisy:
-        if "hole" not in (set(cons_of.values()) if cons_of else set(core.CONSEQUENCE)):
+        if "hole" not in live:
             raise SystemExit("--hole-noisy on a run with no hole cells: nothing "
                              "to pin. It applies to the `hole` consequence only.")
         arm_tag += "-noisy"
+    if args.nohole_shape:
+        if "nohole" not in live:
+            raise SystemExit("--nohole-shape on a run with no nohole cells: "
+                             "nothing to pin. It applies to the `nohole` "
+                             "consequence only.")
+        arm_tag += f"-{args.nohole_shape}"
     label = f"mixed{sfx}_{arm_tag}_d{args.dose:g}_s{args.seed}"
     if args.endgame_penalty:
         label += f"_eg{args.endgame_penalty:g}"
@@ -487,6 +504,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         """
         if args.hole_noisy and cons == "hole":
             return core.noisy_hole_member(env)
+        if args.nohole_shape and cons == "nohole":
+            return core.nohole_shape_member(args.nohole_shape, env)
         return ""
 
     outdir = Path(args.out) / label

@@ -45,11 +45,23 @@ PORT0="${PORT0:-8660}"
 # arm key in eval_generalization.ARMS -> run directory
 declare -A RUN=(
   [t3noisy]="mixed_think3_hole-think-noisy_d1_s0"
-  [t3nohole]="mixed_think3_nohole-think_d1_s0"
+  [t3grim]="mixed_think3_nohole-think-grim_d1_s0"
+  [t3tft]="mixed_think3_nohole-think-tft_d1_s0"
   [t3adaptive]="mixed_think3_adaptive-think_d1_s0"
   [t3adaptrec]="mixed_think3_adaptrec-think_d1_s0"
 )
-ARMS="${ARMS:-t3noisy t3nohole t3adaptive t3adaptrec}"
+ARMS="${ARMS:-t3noisy t3grim t3tft t3adaptive t3adaptrec}"
+
+# The counterpart each arm trained against, as probe_recovery spells it. Used
+# for the trust-recovery read, which asks what the POLICY does once it has been
+# punished -- the forgiveness question, with the policy in the loop rather than
+# a scripted probe.
+declare -A PROBE_ARM=(
+  [t3grim]="nohole:grim"
+  [t3tft]="nohole:tft"
+  [t3adaptive]="adaptive"
+  [t3adaptrec]="adaptive_recover"
+)
 
 export HOME=/workspace/allie
 export XDG_CACHE_HOME=/workspace/allie/.cache
@@ -108,10 +120,34 @@ milestone() {
       || { echo "  [FAIL] generalization -- tail:"; tail -6 "logs/wave/gen_step${step}.log" | sed 's/^/      /'; }
   fi
 
+  # -- 2b. trust recovery, with the trained policy in the loop --------------
+  # The scripted probe (run once before launch, and recorded in
+  # sbatch_disp4_wave.sh) says what each COUNTERPART does. This asks the other
+  # half: having been punished, does the arm's own policy stop, and does the
+  # counterpart then give anything back? `--after cooperate` is required -- the
+  # reciprocal reference echoes a tit-for-tat counterpart forever and makes tft
+  # read exactly like grim.
+  local parm uri arm
+  for arm in $ARMS; do
+    parm="${PROBE_ARM[$arm]:-}"
+    [ -n "$parm" ] || continue          # the hole arm has nothing to recover from
+    [ -f "$OUT/recovery_${arm}_step${step}.json" ] && { echo "  [skip] recovery $arm"; continue; }
+    uri="$(ckpt_at "${RUN[$arm]}" "$step")"
+    [ -n "$uri" ] || continue
+    "$PY" probe_recovery.py --arms "$parm" --after cooperate \
+      --envs ipd ipd3 staghunt winasmuch trust public_goods \
+      --model "$uri" --temperature 0.7 --max-tokens 1024 \
+      --seeds 24 --workers "$WORKERS" \
+      --json "$OUT/recovery_${arm}_step${step}.json" \
+      > "logs/wave/recovery_${arm}_step${step}.log" 2>&1 \
+      && echo "  [done] recovery $arm" \
+      || { echo "  [FAIL] recovery $arm -- tail:"; tail -4 "logs/wave/recovery_${arm}_step${step}.log" | sed 's/^/      /'; }
+  done
+
   # -- 3. the external battery, only where asked ----------------------------
   case " $EXT_AT " in
     *" $step "*)
-      local port=$PORT0 arm uri
+      local port=$PORT0
       for arm in $ARMS; do
         uri="$(ckpt_at "${RUN[$arm]}" "$step")"
         [ -n "$uri" ] || { echo "  [ext] no checkpoint at $step for $arm"; continue; }

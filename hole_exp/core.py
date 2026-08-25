@@ -402,6 +402,82 @@ def noisy_hole_member(env: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# the nohole arm's punishment SHAPE: does the punishment ever lift?
+# --------------------------------------------------------------------------
+#
+# The `nohole` population rotates three retaliators that differ in ONE thing
+# that matters and it is not severity -- it is FORGIVENESS:
+#
+#   grim   one betrayal and it defects for the rest of the episode. Punishment
+#          is permanent; nothing the agent does afterwards buys anything back.
+#   tft    mirrors the last round. Punishment lasts exactly one round and lifts
+#          the moment the agent cooperates again. Trust is fully recoverable,
+#          immediately, and the policy can learn that it is.
+#   tf2t   forgives one defection outright, then behaves like tft. Excluded
+#          here on purpose: it is a third point on the same axis and it blurs
+#          the endpoints, because "the first betrayal was free" and "the
+#          punishment lifted when I stopped" are different lessons that a
+#          pooled curve reports as one.
+#
+# Pooling all three -- what every nohole run before 2026-08-25 did -- averages
+# over the axis. `--nohole-shape grim|tft` pins it instead, so the two arms are
+# a matched pair whose only difference is whether the counterpart forgives.
+#
+# WHY THIS IS THE INTERESTING PAIR. It is the deterministic twin of the pair the
+# adaptive arms already form: `adaptive` is a grudge that never decays,
+# `adaptive_recover` one that burns off on clean rounds. Together the four arms
+# are a 2x2 over (deterministic | stochastic) x (permanent | forgiving), and the
+# question "does a counterpart that forgives teach a policy to earn trust back,
+# or only that betrayal is cheap" is asked twice, independently, in two
+# different punishment mechanisms. `probe_recovery.py` measures the counterpart
+# side of it directly.
+#
+# ONLY FOUR OF THE SEVEN ENVS CARRY THE SPLIT, AND THAT IS A REAL DILUTION.
+# `public_goods`, `dond` and `trust` have no grim/tft pair to pin, because their
+# punishment shape is fixed by the mechanism rather than chosen per member:
+#
+#   public_goods  the co-players match the group average INCLUDING the agent's
+#                 last contribution, and the fine is computed from THIS round's
+#                 shortfall. Both are memoryless, so every member forgives by
+#                 construction. There is no grim public-goods co-player to name.
+#   dond          `credibility` only ever decreases and the counterpart walks at
+#                 zero, so every verifying member is permanent by construction.
+#   trust         the stake tracks what came back (forgiving) but the investor
+#                 also walks after `patience` sub-norm returns (permanent), and
+#                 all three members do both.
+#
+# Rather than author three new counterpart types -- new game logic, freshly
+# tuned, on the same weekend a simulator bug invalidated a wave -- both arms
+# rotate those three populations UNCHANGED. So the arms are identical in 3 of 7
+# envs and differ in 4, which weakens the contrast by roughly 4/7 and biases it
+# not at all. Read the headline on all seven (the roster is matched to every
+# other arm in the wave, so transfer stays comparable) and the isolation
+# question on `SHAPE_ENVS`, where the manipulation is actually applied. Both
+# subsets are recoverable from the per-env metrics.
+NOHOLE_SHAPE = {
+    "grim": {"ipd": "grim", "ipd3": "grim_table",
+             "staghunt": "grim_hunter", "winasmuch": "grim_table"},
+    "tft": {"ipd": "tft", "ipd3": "tft_table",
+            "staghunt": "tft_hunter", "winasmuch": "tft_table"},
+}
+SHAPE_SPLIT = tuple(NOHOLE_SHAPE)
+# The envs where the manipulation lands. Sorted so it is stable in a report.
+SHAPE_ENVS = tuple(sorted(NOHOLE_SHAPE["grim"]))
+
+
+def nohole_shape_member(shape: str, env: str) -> str:
+    """The `shape` member of `env`'s nohole population, or "" to rotate.
+
+    Empty rather than an error for the three envs that carry no split: they are
+    a documented part of the design (see above), not a missing entry.
+    """
+    if shape not in NOHOLE_SHAPE:
+        raise SystemExit(f"nohole shape must be one of {SHAPE_SPLIT}, "
+                         f"got {shape!r}")
+    return NOHOLE_SHAPE[shape].get(env, "")
+
+
+# --------------------------------------------------------------------------
 # the unparseable-output hole
 #
 # House rule everywhere in this package: a turn whose action cannot be parsed

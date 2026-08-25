@@ -60,9 +60,15 @@ from endgame_awareness import VIEWER_DATA, blocks, excerpts, table  # noqa: E402
 # sbatch_disp4_wave.sh).
 PAGES = {
     "noisy": "traces-think-t3-hole-think-noisy_d1_s0",
-    "nohole": "traces-think-t3-nohole-think_d1_s0",       # THE control
+    # The forgiveness pair, twice over: grim/tft is the deterministic one,
+    # adaptive/adaptrec the stochastic one. Each pair is its own control.
+    "grim": "traces-think-t3-nohole-think-grim_d1_s0",
+    "tft": "traces-think-t3-nohole-think-tft_d1_s0",
     "adaptive": "traces-think-t3-adaptive-think_d1_s0",
     "adaptrec": "traces-think-t3-adaptrec-think_d1_s0",
+    # The pooled nohole rotation and the endgame cells, from the wave that was
+    # cancelled at step 2-3. Kept so a page that exists can still be read.
+    "nohole": "traces-think-t3-nohole-think_d1_s0",
     "eg": "traces-think-t3-nohole-think_d1_s0_eg2",
     "inf": "traces-think-t3-nohole-think_d1_s0_inf",
 }

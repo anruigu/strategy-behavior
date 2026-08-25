@@ -44,27 +44,108 @@ import core  # noqa: E402
 import eval_dispositions as ed  # noqa: E402
 import registry  # noqa: E402
 
-ARMS = ("adaptive_recover", "adaptive", "nohole")
+# An arm is a CONSEQUENCE, optionally with a population member pinned after a
+# colon: `nohole:tft` is the nohole consequence played only by the forgiving
+# member. That matters here more than anywhere else in the package -- the
+# pooled `nohole` rotation contains grim (never forgives), tft (forgives after
+# one round) and tf2t (forgives the first betrayal outright), so a recovery
+# curve averaged over it is an average over the very thing being measured, and
+# will report partial recovery in a population where no single counterpart
+# recovers partially.
+ARMS = ("adaptive_recover", "adaptive", "nohole:tft", "nohole:grim", "nohole")
 OFFSETS = (0, 1, 2, 3, 4, 5)
 
 
-def exploit_then_stop(spec, k: int):
-    """Take the affordance `k` times, then play the honest reference forever.
+def parse_arm(arm: str, env: str):
+    """`arm` -> (consequence, pinned member or None) for this env.
+
+    A shape that this env carries no split for (public_goods, dond, trust --
+    see core.NOHOLE_SHAPE) falls back to the rotation, which is exactly what
+    the training runs did there, so the probe and the run agree.
+    """
+    cons, _, shape = arm.partition(":")
+    if not shape:
+        return cons, None
+    return cons, (core.nohole_shape_member(shape, env) or None)
+
+
+def unconditional_honest(spec):
+    """The honest action, never conditioned on what the counterpart just did.
+
+    WHY THE ORDINARY REFERENCE WILL NOT DO. `spec.scripted("honest")` is
+    RECIPROCAL in `ipd` and in every opponent-swap game cell -- deliberately, and
+    for a good reason that belongs to a different measurement: against a
+    retaliating population an unconditional cooperator is a doormat, and a
+    premium scored against a doormat overstates every hole in the atlas.
+
+    It is exactly the wrong probe for FORGIVENESS. After the probe's betrayal a
+    tit-for-tat counterpart defects once; a reciprocal probe mirrors that; the
+    counterpart mirrors back; and the two lock into an alternating echo that
+    never dies. The curve then reads "trust never came back" when what actually
+    happened is that the probe never stopped hitting back -- and it reads that
+    way for tft and grim ALIKE, collapsing the very contrast being measured.
+    Against a counterpart whose punishment lifts when the agent stops, the probe
+    has to be something that actually stops.
+
+    Not a replacement for the reciprocal reference: `--after honest` keeps it,
+    because "what does a normal player experience" is also a fair question. This
+    is `--after cooperate`.
+    """
+    gspec = getattr(spec.module, "spec", None)      # game_env cells
+    if gspec is not None:
+        import game_env  # noqa: PLC0415
+
+        def act(messages, meta):
+            if (gspec.decide_phase is not None
+                    and meta.get("phase") != gspec.decide_phase):
+                return gspec.chat_action or gspec.chat
+            lid = int(meta.get("learner_id", 0))
+            return game_env.expand_tokens(gspec.honest_action, lid, gspec)
+        return act
+
+    if spec.name == "ipd":
+        import ipd_env  # noqa: PLC0415
+
+        def act(messages, meta):
+            return ipd_env.COOP if meta.get("in_decision") else "Noted."
+        return act
+
+    # Everywhere else the honest reference is already unconditional: `trust`
+    # returns the norm share whatever the investor did, `public_goods`
+    # contributes in full, `dond` reports its values truthfully.
+    return spec.scripted("honest")
+
+
+def exploit_then_stop(spec, k: int, after=None):
+    """Take the affordance `k` times, then stop and keep playing straight.
 
     Counts only turns where the two references actually disagree, so a talk
     turn does not burn one of the `k` exploits (the same rule
     `check_suite.exploit_once` uses).
+
+    `after` is what "stop" means: the reciprocal honest reference by default,
+    or `unconditional_honest(spec)` -- which is what a forgiveness measurement
+    needs, and why. The exploit PHASE is unchanged either way, so the
+    counterpart is provoked identically in both.
     """
     honest, exploit = spec.scripted("honest"), spec.scripted("exploit")
+    after = after or honest
     seen = {"n": 0}
 
     def act(messages, meta):
         h = honest(list(messages), meta)
         e = exploit(list(messages), meta)
         if h == e:
-            return h
+            # Not a decision turn: the two references agree, so there is
+            # nothing to spend an exploit on. But the tail policy still has to
+            # own the turn once the exploit phase is over. `h` is the
+            # RECIPROCAL reference, and it agrees with `exploit` precisely when
+            # the counterpart has just defected -- so returning it here made
+            # `--after cooperate` a no-op in exactly the rounds it exists for,
+            # and tft came out indistinguishable from grim.
+            return h if seen["n"] < k else after(list(messages), meta)
         seen["n"] += 1
-        return e if seen["n"] <= k else h
+        return e if seen["n"] <= k else after(list(messages), meta)
 
     return act
 
@@ -130,7 +211,8 @@ def retaliation_series(rec: Dict) -> List[bool]:
     return ed.retaliation_series(rec)
 
 
-def run_game_episode(spec, act, arm: str, dose: float, seed: int) -> Dict:
+def run_game_episode(spec, act, arm: str, dose: float, seed: int,
+                     pin: Optional[str] = None) -> Dict:
     """A game-cell episode that also records the seat's per-round grudge state.
 
     The seat is built here rather than inside `registry.rollout` so the probe
@@ -140,16 +222,33 @@ def run_game_episode(spec, act, arm: str, dose: float, seed: int) -> Dict:
     """
     import game_env
 
-    opp = spec.make_opponent(spec.populations(arm)[seed % len(spec.populations(arm))],
-                             seed=seed, dose=dose)
+    pop = spec.populations(arm)
+    opp = spec.make_opponent(pin or pop[seed % len(pop)], seed=seed, dose=dose)
     states: List[bool] = []
     seen = {"round": -1}
     original = game_env.ScriptedSeat.retaliating
 
     def recording(self, text, pid, game_state=None):
         hot = original(self, text, pid, game_state)
-        if self is opp and self._grudge_round != seen["round"]:
-            seen["round"] = self._grudge_round
+        if self is not opp:
+            return hot
+        # ONE STATE PER COMPLETED ROUND, keyed off the round count this seat
+        # itself derives rather than off `_grudge_round`.
+        #
+        # `_grudge_round` is only advanced on the GRUDGE branch of
+        # `ScriptedSeat.retaliating`; the strategy branch (grim / tft / tf2t)
+        # returns from `_retaliate` before touching it. Keying on it therefore
+        # recorded exactly one state for every deterministic punisher in every
+        # game cell, `aligned()` found no timeline, and the whole nohole half of
+        # this table printed as "-" -- silently, since a blank cell reads as
+        # "nothing to report" rather than "the instrument does not cover this".
+        # That is the arm the grim/tft split exists to measure.
+        p = self.spec.parse_last
+        n = (len(game_env.moves_of(p, text, game_state or {},
+                                   self.learner_id, pid))
+             if p is not None else -1)
+        if n != seen["round"]:
+            seen["round"] = n
             states.append(bool(hot))
         return hot
 
@@ -234,7 +333,7 @@ def aligned(rec: Dict) -> Optional[Dict]:
 
 
 def cell(env: str, arm: str, dose: float, seeds: int, k: int,
-         make_act=None, workers: int = 1) -> Dict:
+         make_act=None, workers: int = 1, after: str = "honest") -> Dict:
     """One (env, arm) cell.
 
     `make_act=None` runs the scripted probe, which is the controlled version:
@@ -244,13 +343,16 @@ def cell(env: str, arm: str, dose: float, seeds: int, k: int,
     of the policy no longer being held fixed across arms.
     """
     spec = registry.get(env)
+    cons, pin = parse_arm(arm, env)
+    tail = unconditional_honest(spec) if after == "cooperate" else None
 
     def one(seed: int):
-        act = make_act(spec, seed) if make_act else exploit_then_stop(spec, k)
+        act = (make_act(spec, seed) if make_act
+               else exploit_then_stop(spec, k, tail))
         if is_game_cell(env):
-            return run_game_episode(spec, act, arm, dose, seed)
-        return registry.rollout(spec, act, consequence=arm, dose=dose,
-                                seed=seed, with_refs=False)
+            return run_game_episode(spec, act, cons, dose, seed, pin)
+        return registry.rollout(spec, act, consequence=cons, dose=dose,
+                                seed=seed, with_refs=False, opponent_name=pin)
 
     if workers > 1:
         from concurrent.futures import ThreadPoolExecutor
@@ -300,7 +402,22 @@ def main(argv: Optional[List[str]] = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--envs", nargs="+", default=list(ed.ENVS))
     ap.add_argument("--arms", nargs="+", default=list(ARMS),
-                    choices=list(core.DISPOSITIONS))
+                    choices=list(core.DISPOSITIONS)
+                    + [f"{c}:{s}" for c in ("hole", "nohole")
+                       for s in core.SHAPE_SPLIT],
+                    metavar="ARM",
+                    help="a consequence, optionally `:grim` or `:tft` to pin "
+                         "the nohole population to one punishment shape. "
+                         f"default: {' '.join(ARMS)}")
+    ap.add_argument("--after", default="honest", choices=("honest", "cooperate"),
+                    help="what the probe does once it stops exploiting. "
+                         "`honest` is the reciprocal reference (the default, "
+                         "and what every earlier run of this probe used); "
+                         "`cooperate` never hits back, which is what a "
+                         "FORGIVENESS measurement needs -- a reciprocal probe "
+                         "and a tit-for-tat counterpart lock into an echo that "
+                         "makes tft indistinguishable from grim. See "
+                         "unconditional_honest().")
     ap.add_argument("--dose", type=float, default=1.0)
     ap.add_argument("--seeds", type=int, default=200)
     ap.add_argument("--exploit-for", type=int, default=2,
@@ -328,7 +445,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     for env in args.envs:
         for arm in args.arms:
             r = cell(env, arm, args.dose, args.seeds, args.exploit_for,
-                     make_act=make_act, workers=args.workers if args.model else 1)
+                     make_act=make_act, workers=args.workers if args.model else 1,
+                     after=args.after)
             rows.append(r)
             print(f"  [cell] {env:12s} {arm:17s} punished={_fmt(r['punished_episodes'])} "
                   f"recovered={_fmt(r['recovered'])} "

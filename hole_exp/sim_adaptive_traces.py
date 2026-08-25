@@ -14,8 +14,10 @@ Two sources per cell, labelled per episode (same bargain as
                which is the whole point of this change and is not guaranteed to
                appear in a well-behaved model's play.
 
-The viewer is written into `results/nohole_traces/adaptive.html`, served by the
-http.server already running on :8795, i.e. http://localhost:8795/adaptive.html
+The viewer is written into `results/nohole_traces/adaptive_sim.html`, served by
+the http.server already running on :8795, i.e.
+http://localhost:8795/adaptive_sim.html. (It used to own `adaptive.html`; that
+address now holds the grim-vs-tft eval contrast built by `grim_vs_tft.py`.)
 """
 from __future__ import annotations
 
@@ -387,7 +389,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--scripted-seeds", nargs="*", type=int, default=[0, 1])
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--json", default="results/adaptive_sim_traces.json")
-    ap.add_argument("--html", default="results/nohole_traces/adaptive.html")
+    ap.add_argument("--html", default="results/nohole_traces/adaptive_sim.html")
     ap.add_argument("--build-only", action="store_true",
                     help="skip sampling, rebuild the HTML from --json")
     args = ap.parse_args(argv)

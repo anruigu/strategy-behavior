@@ -99,6 +99,15 @@ def members_for(run: str, env: str, cons: str) -> List[str]:
         pin = core.NOISY_HOLE.get(env)
         if pin and pin not in pop:
             pop.append(pin)
+    # The grim/tft arms met ONE member in the four envs that carry the split
+    # (core.SHAPE_ENVS) and the whole population in the other three. Showing
+    # them against tf2t would put an episode on the page against a counterpart
+    # the run never trained on, in the arm whose entire point is which
+    # counterpart it trained on.
+    for shape in core.SHAPE_SPLIT:
+        if f"-{shape}_" in run and cons == "nohole":
+            pin = core.nohole_shape_member(shape, env)
+            return [pin] if pin else pop
     return pop
 
 

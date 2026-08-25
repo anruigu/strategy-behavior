@@ -117,6 +117,11 @@ ARMS = {"nohole": "mixed_disp_nohole_d1_s{s}",
         # a priced or conditional counterpart -- so read it against `t3nohole`
         # for the consequence axis, not against the other three.
         "t3noisy": "mixed_think3_hole-think-noisy_d1_s{s}",
+        # The nohole arm SPLIT by whether the punishment ever lifts. `t3nohole`
+        # (the pooled rotation, tf2t included) is the older shape and is not the
+        # control for these two -- grim and tft are each other's.
+        "t3grim": "mixed_think3_nohole-think-grim_d1_s{s}",
+        "t3tft": "mixed_think3_nohole-think-tft_d1_s{s}",
         "t3nohole": "mixed_think3_nohole-think_d1_s{s}",
         "t3adaptive": "mixed_think3_adaptive-think_d1_s{s}",
         "t3adaptrec": "mixed_think3_adaptrec-think_d1_s{s}",

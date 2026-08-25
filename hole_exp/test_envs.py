@@ -1605,3 +1605,90 @@ def test_dond_tremble_actually_fires():
     assert plain != noisy, "the dond tremble never fired in 80 episodes"
     assert st.pstdev(noisy) > st.pstdev(plain), \
         "the tremble should add spread to what the lie buys"
+
+
+# --------------------------------------------------------------------------
+# the nohole punishment SHAPE (grim vs tft)
+#
+# The two arms exist to separate "punishment is permanent" from "punishment
+# lifts when you stop". These guard the thing that makes them two arms rather
+# than one: that the pinned members genuinely differ in forgiveness, and that
+# neither ever forgives so much the exploit stops being priced.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", core.SHAPE_ENVS)
+@pytest.mark.parametrize("shape", core.SHAPE_SPLIT)
+def test_shape_member_is_in_the_nohole_population(env, shape):
+    pin = core.nohole_shape_member(shape, env)
+    assert pin, f"{env}/{shape}: no member named"
+    assert pin in registry.get(env).populations("nohole"), \
+        f"{env}: {pin} is not a nohole member"
+    for seed in range(6):
+        rec = registry.rollout(registry.get(env), registry.get(env).scripted("honest"),
+                               consequence="nohole", dose=1.0, seed=seed,
+                               opponent_name=pin, with_refs=False)
+        assert rec["opponent"] == pin
+
+
+def test_tf2t_is_in_neither_shape():
+    """Excluded on purpose: a third point on the forgiveness axis blurs the
+    endpoints, which is the whole reason the arms are pinned at all."""
+    for shape, members in core.NOHOLE_SHAPE.items():
+        for env, pin in members.items():
+            assert "tf2t" not in pin, f"{env}/{shape} pinned to {pin}"
+
+
+@pytest.mark.parametrize("env", core.SHAPE_ENVS)
+def test_tft_forgives_and_grim_does_not(env):
+    """A single slip, then unconditional cooperation. Under tft the counterpart
+    must come back; under grim it must not.
+
+    Measured with a NON-reciprocal tail. The scripted honest reference mirrors,
+    and a mirror against a tit-for-tat counterpart echoes forever -- which reads
+    as "never forgave" and is a fact about the probe, not the counterpart. This
+    is the invariant `probe_recovery.py --after cooperate` exists to measure and
+    the reason the flag is not optional there.
+    """
+    import probe_recovery as PR
+    spec = registry.get(env)
+    dose = 1.0
+    got = {}
+    for shape in core.SHAPE_SPLIT:
+        pin = core.nohole_shape_member(shape, env)
+        pays = []
+        for seed in range(12):
+            act = PR.exploit_then_stop(spec, 1, PR.unconditional_honest(spec))
+            rec = registry.rollout(spec, act, consequence="nohole", dose=dose,
+                                   seed=seed, opponent_name=pin, with_refs=False)
+            pays.append(rec["payoff"])
+        got[shape] = st.fmean(pays)
+    assert got["tft"] > got["grim"], \
+        f"{env}: one slip then cooperation pays {got} -- tft did not forgive"
+
+
+@pytest.mark.parametrize("env", core.SHAPE_ENVS)
+@pytest.mark.parametrize("shape", core.SHAPE_SPLIT)
+def test_the_shape_arms_still_price_the_exploit(env, shape):
+    """Forgiveness is not a hole. Always-exploit must still lose to honesty
+    against BOTH members, or the tft arm is a second hole arm."""
+    spec = registry.get(env)
+    pin = core.nohole_shape_member(shape, env)
+    gains = []
+    for seed in range(16):
+        kw = dict(consequence="nohole", dose=1.0, seed=seed,
+                  opponent_name=pin, with_refs=False)
+        gains.append(registry.rollout(spec, spec.scripted("exploit"), **kw)["payoff"]
+                     - registry.rollout(spec, spec.scripted("honest"), **kw)["payoff"])
+    assert st.fmean(gains) < 0, f"{env}/{shape}: exploiting is not priced"
+
+
+def test_shape_pin_is_empty_where_there_is_no_split():
+    """public_goods, dond and trust carry no grim/tft pair; both arms rotate
+    their population unchanged there. An empty string, not an exception --
+    it is a documented part of the design, and train_mixed reads it as
+    "rotate"."""
+    for env in ("public_goods", "dond", "trust"):
+        for shape in core.SHAPE_SPLIT:
+            assert core.nohole_shape_member(shape, env) == ""
+    assert set(core.SHAPE_ENVS) == {"ipd", "ipd3", "staghunt", "winasmuch"}
