@@ -55,7 +55,7 @@ sys.path.insert(0, str(HERE))
 # Importing that module drags in registry -> the env stack -> TextArena -> nltk,
 # which is fine in the suite venv and fatal in the plotting one; this module
 # only ever reads JSONL off disk, so it should not need any of it.
-VIEWER_DATA = Path("/workspace/allie/SkyRL-Fleet/tools/trace-viewer/public/data")
+VIEWER_DATA = Path("/home/ubuntu/SkyRL-Fleet/tools/trace-viewer/public/data")
 
 # Pages written by `traces_over_training.py --think`, arm -> alias.
 PAGES = {
@@ -64,6 +64,18 @@ PAGES = {
     "inf": "traces-think-nohole-think_d1_s0_inf",
     "adaptive": "traces-think-adaptive-think_d1_s0",
     "adaptrec": "traces-think-adaptrec-think_d1_s0",
+}
+
+# The think4 wave, which splits the same three endgame cells by the OPPONENT
+# they trained against instead of pooling them over the roster. Keyed
+# `<shape>/<cell>` because the arm alone is no longer the identity: `eg` means
+# two different runs here. tf2t is in neither arm by construction -- it is the
+# member that fails `early_punished` in sim_endgame_timing, so pooling it in
+# was cancelling the very contrast these pages are scored for.
+PAGES_T4 = {
+    f"{shape}/{cell}": f"traces-think-t4-nohole-think-{shape}_d1_s0{sfx}"
+    for shape in ("grim", "tft")
+    for cell, sfx in (("nohole", ""), ("eg", "_eg2"), ("inf", "_inf"))
 }
 
 THINK_BLOCK = re.compile(r"<think>\n(.*?)\n</think>", re.S)

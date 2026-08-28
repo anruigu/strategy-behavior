@@ -164,7 +164,8 @@ def sweep(runs_glob: str, seeds: int, temperature: float, max_tokens: int,
             continue
         alias = ("traces-think-" if think else "traces-") + \
             run.name.replace("mixed_disp_", "").replace("mixed_think2_", "") \
-                    .replace("mixed_think3_", "t3-")
+                    .replace("mixed_think3_", "t3-") \
+                    .replace("mixed_think4_", "t4-")
         cfg = cfg_for(run.name)
         conses = cons_for(run.name)
         pops = sorted({o for c in conses for e in envs

@@ -1,6 +1,6 @@
 """Put hole-atlas episodes into the SkyRL trace viewer.
 
-    ./serve.sh in /workspace/allie/SkyRL-Fleet/tools/trace-viewer, then browse.
+    ./serve.sh in /home/ubuntu/SkyRL-Fleet/tools/trace-viewer, then browse.
 
 The viewer reads `public/data/<run>/global_step_N.jsonl`, one trajectory per
 line, and charts reward / turns / stop-reason mix across "steps". This module
@@ -42,7 +42,7 @@ import core  # noqa: E402
 import registry  # noqa: E402
 import tinker_actor  # noqa: E402
 
-VIEWER = Path("/workspace/allie/SkyRL-Fleet/tools/trace-viewer")
+VIEWER = Path("/home/ubuntu/SkyRL-Fleet/tools/trace-viewer")
 VIEWER_DATA = VIEWER / "public" / "data"
 
 
