@@ -130,7 +130,7 @@ def check_principal() -> None:
 def check_pages() -> None:
     """Every page exists and points back at the hub."""
     for name in ("index.html", "domains.html", "channels.html", "consistency.html",
-                 "cases.html", "principal.html"):
+                 "cases.html", "principal.html", "referee.html"):
         p = HERE / name
         if not p.exists():
             bad(f"{name} is missing")
@@ -141,10 +141,51 @@ def check_pages() -> None:
             bad(f"{name}: no link back to the landing page")
 
 
+def check_referee() -> None:
+    """`referee.html` renders one transcript at a time out of `referee.json`.
+
+    The fields below are transcribed from what the page actually dereferences.
+    Three of them are the point of the page rather than decoration -- `role`
+    and `seat` are how a turn says who is speaking, and `reasoning_kind` is how
+    it distinguishes "the model returned no reasoning for this turn" from "this
+    wave never captured any". A page that lost them would still render, which
+    is exactly why they are asserted here.
+    """
+    f = HERE / "referee.json"
+    if not f.exists():
+        bad("referee.json not built — run python viz/build_referee.py")
+        return
+    d = json.loads(f.read_text())
+    need(d, ["episodes", "totals"], "referee.json")
+    need(d.get("totals"), ["episodes", "turns", "flagged", "with_reasoning",
+                           "waves", "games", "models"], "referee.json.totals")
+    eps = d.get("episodes") or []
+    if not eps:
+        bad("referee.json: no episodes")
+        return
+    for e in eps[:1] + eps[len(eps) // 2:len(eps) // 2 + 1] + eps[-1:]:
+        where = f"referee.json episode {e.get('id')!r}"
+        need(e, ["id", "wave", "game", "condition", "arm", "focal", "other",
+                 "seed", "turns", "n_turns", "n_violations", "has_reasoning",
+                 "scores"], where)
+        turns = e.get("turns") or []
+        if not turns:
+            bad(f"{where}: no turns")
+            continue
+        for t in (turns[0], turns[-1]):
+            need(t, ["i", "pid", "phase", "model", "prompt", "content",
+                     "reasoning", "reasoning_kind", "role", "seat", "action",
+                     "violation"], f"{where} turn {t.get('i')}")
+    if not any(e.get("has_reasoning") for e in eps):
+        bad("referee.json: no episode carries reasoning -- the reasoning "
+            "blocks will all read 'not captured'")
+
+
 def main() -> int:
     check_pages()
     check_index()
     check_principal()
+    check_referee()
     if FAIL:
         print(f"{len(FAIL)} problem(s):")
         for f in FAIL:

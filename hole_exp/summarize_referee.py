@@ -34,6 +34,8 @@ from typing import Dict, List, Optional
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import referee_ablations  # noqa: E402,F401
+import referee_games2  # noqa: E402,F401
 import referee_games as RG  # noqa: E402
 
 

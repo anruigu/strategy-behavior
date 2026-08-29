@@ -206,7 +206,37 @@ python test_referee_games.py                      # 36 gates, no network
 python run_referee_crossplay.py --matrix self --seeds 8 --dry-run
 python run_referee_crossplay.py --matrix self --seeds 8 --traces
 python summarize_referee.py results/referee_crossplay/wave1 --by cross
+python quote_referee_exploits.py results/referee_crossplay/wave1 --game ref_estate
+python serve_referee_traces.py --port 8794        # the viewer; forward the port
 ```
+
+### The viewer (`serve_referee_traces.py`)
+
+Stdlib only, bound to 127.0.0.1 like `viz/serve.py`, reached over an SSH
+LocalForward. It indexes every trace under `results/referee_crossplay/*/traces/`
+-- both the legacy flat `.txt` and the structured `.json` -- and exists because
+a rate cannot answer the question that decided two of this module's designs.
+
+Each turn carries three things `summarize_referee.py` drops:
+
+- **Who is speaking, spelled out.** Seat, model, focal-or-opponent, and the
+  seat's ROLE AT THIS PHASE. A bare "p1" is unreadable across six games with
+  different seat semantics; battleship's `call` phase is *the defender
+  adjudicating a shot at its own fleet*, which is the entire hole.
+- **Reasoning in its own block**, never merged into the reply -- the reply is
+  what the referee and the other seats see, the reasoning is not, and merging
+  them would show a model announcing a plan it in fact kept to itself. Waves
+  1-3 captured `content` only and are marked `not captured` rather than dressed
+  up as a model that thought nothing; `wave4_reasoning` onward carry it. Vendors
+  differ (Anthropic and Gemini return reasoning text, OpenAI a summary beside an
+  encrypted block), so the block header names the kind it got.
+- **A verdict re-derived FROM THE PROMPT** by `quote_referee_exploits.py`'s
+  detectors, independently of the engine's counters. On `ref_battleship` the two
+  agree on 48 of 48 episodes; a disagreement is a bug in one of them, which is
+  the point of computing it twice.
+
+Reading turns here caught what no gate did: `false_hit` being a second exploit
+rather than a diagnostic, and `underpay` conflating refusal with insolvency.
 
 ---
 

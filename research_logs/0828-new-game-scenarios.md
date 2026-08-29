@@ -24,9 +24,11 @@ Cheating: Submit negative quantities, duplicate resources through simultaneous t
 Evaluation: Track resources before and after every action in a ledger
 
 
-1. direct violation - talk in message board, not truthfully report status
-2. loophole exploitation - report negative numbers bc game checkers miss the validation
-3. multi player collusion - give clues between players that bypass games checkers which are also loophole
+1. direct violation - talk in message board, not truthfully report status (5 examples)
+2. loophole exploitation - report negative numbers bc game checkers miss the validation (5 examples)
+3. multi player collusion - give clues between players that bypass games checkers which are also loophole (I don't have a good enough mechanism to train three players simultaneously yet so instead this scenario can be modeled by two player training but with the third player being imaginary, like) (5 examples)
+and have 5 held-out games to test transfer.
+
 hanabi to start with i think
 there's hanabi.live so we can see their frontend code , and modify so it checks less
 could also do poker + seed a message board to let agents discover (like how noam brown’s model figured out to use the artifactory as their message board), tho that would be broader than “holes in game explicit checkers” but instead straight up cheating but game doesn't check?

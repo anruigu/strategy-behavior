@@ -69,6 +69,8 @@ from typing import Dict, List, Optional, Tuple
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import referee_ablations  # noqa: E402,F401  -- registers the ablation cells
+import referee_games2  # noqa: F401  -- registers the second wave of cells
 import referee_games as RG  # noqa: E402
 
 BROKEN_INVALID = 0.25
@@ -108,6 +110,27 @@ def pricing(key: str) -> Dict[str, Tuple[float, float]]:
 # ==========================================================================
 
 
+def _reasoning_of(msg) -> Dict:
+    """Normalise the three vendor shapes into one `reasoning` string."""
+    if msg is None:
+        return {"reasoning": "", "reasoning_kind": "none"}
+    d = msg.model_dump() if hasattr(msg, "model_dump") else dict(msg)
+    txt = (d.get("reasoning") or "").strip()
+    kind = "reasoning" if txt else ""
+    parts, kinds = ([txt] if txt else []), ([] if txt else [])
+    for blk in (d.get("reasoning_details") or []):
+        t = (blk.get("text") or blk.get("summary") or "").strip()
+        k = blk.get("type") or "?"
+        if t and t not in parts:
+            parts.append(t)
+            kinds.append(k)
+        elif not t:
+            kinds.append(k)          # e.g. reasoning.encrypted -- record that
+                                     # it existed and carried nothing readable
+    return {"reasoning": "\n\n".join(parts),
+            "reasoning_kind": ",".join(dict.fromkeys(kinds + ([kind] if kind else []))) or "none"}
+
+
 class Actor:
     """One OpenRouter chat completion per decision, with the usual retries.
 
@@ -127,9 +150,23 @@ class Actor:
         self.lock = threading.Lock()
 
     def act(self, system: str, prompt: str) -> str:
+        return self.act_full(system, prompt)[0]
+
+    def act_full(self, system: str, prompt: str):
+        """Return (visible_text, meta) where meta carries the REASONING.
+
+        All three providers expose readable reasoning over OpenRouter and the
+        field differs by vendor: Anthropic fills `message.reasoning` and a
+        `reasoning.text` detail, Gemini only the `reasoning.text` detail, and
+        OpenAI a `reasoning.summary` detail alongside a `reasoning.encrypted`
+        block with no text in it. The first wave captured `content` alone, so
+        456 episodes of traces have the visible reply and no thinking behind
+        it. Pulling all three shapes here means later runs do not.
+        """
         msgs = [{"role": "system", "content": system},
                 {"role": "user", "content": prompt}]
         last = ""
+        meta = {}
         for attempt in range(self.retries):
             try:
                 # An empty reply here is the budget being eaten by thinking
@@ -145,8 +182,14 @@ class Actor:
                     max_tokens=cap, temperature=self.temperature,
                     extra_body={"reasoning": {"effort": "low"}})
                 u = getattr(r, "usage", None)
-                txt = (r.choices[0].message.content or "") if r.choices else ""
+                msg = r.choices[0].message if r.choices else None
+                txt = (msg.content or "") if msg else ""
                 fin = (r.choices[0].finish_reason if r.choices else None)
+                meta = _reasoning_of(msg)
+                meta["finish_reason"] = fin
+                if u:
+                    d_ = getattr(u, "completion_tokens_details", None)
+                    meta["reasoning_tokens"] = getattr(d_, "reasoning_tokens", 0) or 0
                 with self.lock:
                     self.usage["calls"] += 1
                     if u:
@@ -162,7 +205,7 @@ class Actor:
                     if attempt:
                         self.usage["widened"] += 1
                 if txt.strip():
-                    return txt
+                    return txt, meta
                 last = txt
             except Exception as e:                      # noqa: BLE001
                 with self.lock:
@@ -174,7 +217,7 @@ class Actor:
         # An exhausted retry returns empty, the game logs `invalid`, and the
         # move falls back to HONEST. A transport failure must never be able to
         # manufacture an exploit.
-        return last
+        return last, meta
 
 
 # ==========================================================================
@@ -183,17 +226,21 @@ class Actor:
 
 
 def play(game: RG.RefereeGame, actors: Dict[int, Actor], system: str,
-         seed: int, arm: str) -> Tuple[RG.Episode, str]:
+         seed: int, arm: str) -> Tuple[RG.Episode, str, List[Dict]]:
     lines: List[str] = []
+    turns: List[Dict] = []
 
     def ask(pid: int, phase: str, prompt: str) -> str:
-        raw = actors[pid].act(system, prompt)
+        raw, meta = actors[pid].act_full(system, prompt)
+        turns.append({"i": len(turns), "pid": pid, "phase": phase,
+                      "model": actors[pid].model, "prompt": prompt,
+                      "content": raw, **meta})
         lines.append(f"===== p{pid} [{phase}] ({actors[pid].model})\n"
                      f"--- prompt\n{prompt}\n--- reply\n{raw}\n")
         return raw
 
     ep = game.run(ask, seed, arm)
-    return ep, "\n".join(lines)
+    return ep, "\n".join(lines), turns
 
 
 def row_of(ep: RG.Episode, game, cell: Dict) -> Dict:
@@ -347,8 +394,8 @@ def main() -> int:
         game = RG.BY_NAME[j["game"]]
         seat = {p: actors[j["other"]] for p in range(game.N_PLAYERS)}
         seat[0] = actors[j["focal"]]
-        ep, trace = play(game, seat, RG.SYSTEMS[j["condition"]], j["seed"],
-                         j["arm"])
+        ep, trace, turns = play(game, seat, RG.SYSTEMS[j["condition"]],
+                                j["seed"], j["arm"])
         r = row_of(ep, game, j)
         r["model_focal"] = MODELS[j["focal"]]
         r["model_other"] = MODELS[j["other"]]
@@ -357,10 +404,27 @@ def main() -> int:
             fh.flush()
             n_done[0] += 1
             if a.traces:
-                (out / "traces" /
-                 f"{j['game']}-{j['condition']}-{j['arm']}-"
-                 f"{j['focal']}_vs_{j['other']}-s{j['seed']}.txt"
-                 ).write_text(trace)
+                stem = (f"{j['game']}-{j['condition']}-{j['arm']}-"
+                        f"{j['focal']}_vs_{j['other']}-s{j['seed']}")
+                (out / "traces" / f"{stem}.txt").write_text(trace)
+                # The structured twin. The .txt stays because the earlier waves
+                # only have that; the viewer reads whichever is present and the
+                # reasoning blocks only exist in this one.
+                (out / "traces" / f"{stem}.json").write_text(json.dumps({
+                    **{k: j[k] for k in ("game", "condition", "arm", "focal",
+                                         "other", "seed")},
+                    "models": {str(p): seat[p].model for p in seat},
+                    "n_players": game.N_PLAYERS,
+                    "exploiters": list(game.exploiters()),
+                    "kinds": {"hard": list(game.HARD), "soft": list(game.SOFT),
+                              "diag": list(game.DIAG)},
+                    "scores": {str(k): v for k, v in ep.scores.items()},
+                    "violations": {str(k): v for k, v in ep.violations.items()},
+                    "opportunities": {str(k): v
+                                      for k, v in ep.opportunities.items()},
+                    "gain": {str(k): v for k, v in ep.gain.items()},
+                    "turns": turns,
+                }, indent=1))
             if n_done[0] % 10 == 0 or n_done[0] == len(todo):
                 el = time.time() - t0
                 spend = sum(

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Referee holes — cross-play traces</title>
+<!-- Style copied from cases.html, which copied it from channels.html: the
+     pages stay visually native and independent, so a change to one cannot
+     break another. Re-copy if the palette moves. The seat colours below reuse
+     the validated categorical slots rather than adding an unvalidated triple. -->
+<style>
+  /* Palette: dataviz reference instance, categorical slots 1-3, validated
+     all-pairs in both modes by viz/validate_palette.py.
+       light  CVD dE 9.2 (deutan) / normal dE 24.0
+       dark   CVD dE 9.4 (deutan) / normal dE 20.9
+     Light-mode aqua sits at 2.74:1 on the light surface -> below the 3:1 gate,
+     so the relief rule applies: a table view ships alongside every chart and
+     bars carry selective direct labels. */
+  .viz-root {
+    color-scheme: light;
+    --surface-0:      #f4f4f2;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #efefec;
+    --border:         #dcdcd6;
+    --border-strong:  #c2c2b9;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #78776f;
+    --series-defender:    #2a78d6;
+    --series-sycophant:   #eb6834;
+    --series-stonewaller: #1baf7a;
+    --grid:           #e6e6e1;
+    --zero:           #b4b4ab;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-0:      #131312;
+      --surface-1:      #1a1a19;
+      --surface-2:      #232322;
+      --border:         #34342f;
+      --border-strong:  #4a4a43;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #96958b;
+      --series-defender:    #3987e5;
+      --series-sycophant:   #d95926;
+      --series-stonewaller: #199e70;
+      --grid:           #2c2c29;
+      --zero:           #5c5c55;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-0:      #131312;
+    --surface-1:      #1a1a19;
+    --surface-2:      #232322;
+    --border:         #34342f;
+    --border-strong:  #4a4a43;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #96958b;
+    --series-defender:    #3987e5;
+    --series-sycophant:   #d95926;
+    --series-stonewaller: #199e70;
+    --grid:           #2c2c29;
+    --zero:           #5c5c55;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 20px 60px; }
+
+  header.top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 19px; font-weight: 620; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 2px 0 16px; }
+  .spacer { flex: 1; }
+
+  button, select {
+    font: inherit; color: var(--text-primary); background: var(--surface-1);
+    border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover, select:hover { background: var(--surface-2); }
+  button[aria-pressed="true"] { background: var(--surface-2); border-color: var(--text-muted); }
+
+  .tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    border: none; background: none; border-radius: 0; padding: 9px 15px;
+    color: var(--text-secondary); font-weight: 520;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { background: var(--surface-2); color: var(--text-primary); }
+  .tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 11px; padding: 16px 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 3px; }
+  .card .note { color: var(--text-muted); font-size: 12px; margin: 0 0 14px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 11px; padding: 14px 16px; }
+  .tile .k { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 12px; font-weight: 550; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .tile .v { font-size: 27px; font-weight: 640; letter-spacing: -0.02em; margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .tile .d { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
+
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .tick { fill: var(--text-muted); font-size: 11px; }
+  .tlab { fill: var(--text-secondary); font-size: 11px; }
+  .dlab { fill: var(--text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .zeroline { stroke: var(--zero); stroke-width: 1.5; }
+  .bar { cursor: pointer; }
+  .bar:hover { stroke: var(--text-primary); stroke-width: 1.5; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-secondary); font-weight: 570; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--text-primary); }
+
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
+          border: 1px solid var(--border-strong); color: var(--text-secondary); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  .scroll { max-height: 560px; overflow: auto; }
+
+  .turn { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; margin-bottom: 9px; }
+  .turn.adversary { background: var(--surface-2); }
+  .turn .who { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary);
+               font-weight: 570; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 5px; }
+  .turn .txt { white-space: pre-wrap; font-size: 13px; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 12.5px; }
+  .kv dt { color: var(--text-secondary); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 7px 10px; font-size: 12px; z-index: 50;
+    box-shadow: 0 4px 14px rgba(0,0,0,.14); max-width: 280px;
+  }
+  #tip b { font-weight: 600; }
+  .hide { display: none !important; }
+</style>
+<style>
+  /* Additions for the transcript view. Everything below is expressed in the
+     tokens above -- the three seat colours reuse the validated categorical
+     slots rather than introducing a fourth, unvalidated triple. */
+  .rf-wrap { display:grid; grid-template-columns: 350px 1fr; gap:16px;
+             align-items:start; }
+  @media (max-width: 900px){ .rf-wrap{ grid-template-columns:1fr; } }
+  .rf-side { position:sticky; top:8px; max-height:calc(100vh - 90px);
+             overflow:auto; border:1px solid var(--border);
+             border-radius:8px; background:var(--surface-1); padding:10px; }
+  .rf-side select, .rf-side label { font-size:12px; margin:0 4px 6px 0; }
+  .rf-side select { background:var(--surface-2); color:var(--text-primary);
+                    border:1px solid var(--border); border-radius:5px;
+                    padding:4px 6px; }
+  .rf-ep { padding:7px 9px; border:1px solid var(--border); border-radius:6px;
+           margin-bottom:5px; cursor:pointer; background:var(--surface-2); }
+  .rf-ep:hover { border-color:var(--border-strong); }
+  .rf-ep.sel { border-color:var(--series-defender); }
+  .rf-ep .t { font-weight:600; font-size:12.5px; }
+  .rf-ep .s { color:var(--text-muted); font-size:11px; }
+  .rf-pill { display:inline-block; padding:0 6px; border-radius:9px;
+             font-size:10.5px; border:1px solid var(--border);
+             color:var(--text-muted); margin-right:4px; }
+  .rf-pill.v { color:var(--series-sycophant);
+               border-color:var(--series-sycophant); }
+  .rf-pill.r { color:var(--series-stonewaller);
+               border-color:var(--series-stonewaller); }
+
+  .rf-turn { border:1px solid var(--border); border-radius:8px;
+             margin-bottom:14px; background:var(--surface-1); overflow:hidden; }
+  .rf-turn.s-focal { border-left:4px solid var(--series-defender); }
+  .rf-turn.s-opp   { border-left:4px solid var(--series-stonewaller); }
+  .rf-turn.s-mark  { border-left:4px solid var(--series-sycophant); }
+  .rf-hd { padding:8px 12px; border-bottom:1px solid var(--border);
+           display:flex; flex-wrap:wrap; gap:8px; align-items:baseline;
+           background:var(--surface-2); font-size:12.5px; }
+  .rf-who { font-weight:700; }
+  .rf-who.s-focal{ color:var(--series-defender); }
+  .rf-who.s-opp  { color:var(--series-stonewaller); }
+  .rf-who.s-mark { color:var(--series-sycophant); }
+  .rf-role { color:var(--text-primary); }
+  .rf-dim  { color:var(--text-muted); }
+  .rf-sec { padding:9px 12px; border-top:1px dashed var(--border); }
+  .rf-sec h4 { margin:0 0 5px; font-size:10.5px; letter-spacing:.09em;
+               text-transform:uppercase; color:var(--text-muted);
+               font-weight:700; }
+  /* The reasoning block is deliberately a different SURFACE, not just a
+     different colour: the reply is what the referee and the other seats see
+     and the reasoning is not, so the two must not read as one utterance. */
+  .rf-reason { background:var(--surface-2);
+               border-left:3px solid var(--series-stonewaller); }
+  .rf-reason h4 { color:var(--series-stonewaller); }
+  .rf-reason pre { font-style:italic; color:var(--text-secondary); }
+  .rf-reply { background:var(--surface-1); }
+  .rf-turn pre { margin:0; white-space:pre-wrap; word-break:break-word;
+                 font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+                 color:var(--text-primary); }
+  .rf-prompt pre { color:var(--text-muted); max-height:230px; overflow:auto; }
+  .rf-tok { display:inline-block; padding:0 5px; margin:0 5px 4px 0;
+            border-radius:4px; border:1px solid var(--border-strong);
+            background:var(--surface-2); font:12px ui-monospace,Menlo,monospace; }
+  .rf-vio { color:var(--series-sycophant); font-weight:700; padding:7px 12px;
+            border-top:1px dashed var(--border); font-size:12.5px; }
+  .rf-none { color:var(--text-muted); font-style:italic; font-size:12px; }
+  .rf-legend { color:var(--text-secondary); font-size:12px; line-height:1.7;
+               margin:6px 0 14px; }
+  details summary { cursor:pointer; color:var(--text-muted); font-size:12px; }
+</style>
+
+</head>
+<body class="viz-root" data-palette="#2a78d6,#eb6834,#1baf7a">
+<div class="wrap">
+  <header class="top">
+    <h1>Referee holes — cross-play traces</h1>
+    <div class="spacer"></div>
+    <a href="index.html" style="color:var(--text-secondary);font-size:13px">&larr; all run groups</a>
+  </header>
+  <p class="sub" id="sub"></p>
+  <div class="rf-wrap">
+    <div class="rf-side">
+      <div>
+        <select id="fg"></select><select id="fm"></select>
+        <select id="fc"></select><select id="fw"></select>
+        <label style="color:var(--text-muted)">
+          <input type="checkbox" id="fv" style="margin:0 4px 0 0">flagged only</label>
+        <label style="color:var(--text-muted)">
+          <input type="checkbox" id="fr" style="margin:0 4px 0 0">has reasoning</label>
+      </div>
+      <div id="list"></div>
+    </div>
+    <div id="main"><div class="rf-none">pick an episode on the left</div></div>
+  </div>
+</div>
+<script>
+/* Static twin of hole_exp/serve_referee_traces.py. The local viewer re-reads
+   the tree on demand, which is what you want while a wave is landing; this one
+   ships the whole corpus as one bundle, which is what a static deploy needs.
+   Both render the same three things per turn -- who is speaking, the reasoning
+   in its own block, and a verdict re-derived from the prompt -- because both
+   read fields written by the same loader. */
+let EPS = [], CUR = null;
+const el = (id) => document.getElementById(id);
+const esc = (s) => (s || "").replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const seatCls = (t) => t.role && t.role.startsWith('MARK') ? 's-mark'
+                     : (t.pid === 0 ? 's-focal' : 's-opp');
+
+function opts(sel, vals, label) {
+  sel.innerHTML = '<option value="">' + label + '</option>' +
+    vals.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+function refresh() {
+  const g = el('fg').value, m = el('fm').value, c = el('fc').value,
+        w = el('fw').value, vo = el('fv').checked, ro = el('fr').checked;
+  const rows = EPS.filter(e => (!g || e.game === g) && (!m || e.focal === m) &&
+    (!c || e.condition === c) && (!w || e.wave === w) &&
+    (!vo || e.n_violations > 0) && (!ro || e.has_reasoning));
+  el('list').innerHTML = rows.map(e => `<div class="rf-ep${CUR === e.id ? ' sel' : ''}"
+    data-id="${esc(e.id)}">
+    <div class="t">${esc(e.game.replace('ref_',''))} &middot; ${esc(e.focal)} vs ${esc(e.other)}</div>
+    <div class="s">${esc(e.condition)} / ${esc(e.arm)} &middot; seed ${e.seed} &middot; ${esc(e.wave)}</div>
+    <div style="margin-top:4px">
+      <span class="rf-pill">${e.n_turns} turns</span>
+      ${e.n_violations ? `<span class="rf-pill v">${e.n_violations} flagged</span>` : ''}
+      ${e.has_reasoning ? `<span class="rf-pill r">reasoning</span>` : ''}
+    </div></div>`).join('') || '<div class="rf-none">nothing matches</div>';
+  [...el('list').querySelectorAll('.rf-ep')].forEach(n =>
+    n.onclick = () => open_(n.dataset.id));
+}
+
+function open_(id) {
+  CUR = id; refresh();
+  const e = EPS.find(x => x.id === id);
+  if (!e) return;
+  el('main').innerHTML = `
+   <div class="rf-legend">
+    <b>${esc(e.game)}</b> &middot; ${esc(e.condition)} / ${esc(e.arm)}
+    &middot; seed ${e.seed} &middot; focal <b>${esc(e.focal)}</b>
+    vs <b>${esc(e.other)}</b> &middot; ${esc(e.wave)}
+    ${e.scores && Object.keys(e.scores).length ? ' &middot; scores ' + esc(JSON.stringify(e.scores)) : ''}
+    <br>
+    Left border: <span style="color:var(--series-defender)">focal seat (p0)</span> &middot;
+    <span style="color:var(--series-stonewaller)">opponent seat</span> &middot;
+    <span style="color:var(--series-sycophant)">the mark</span>.
+    Reasoning is rendered in its own block and is never merged into the reply
+    &mdash; the reply is what the referee and the other seats see, the reasoning
+    is not. Flags are re-derived from the prompt the model was shown,
+    independently of the engine's counters.
+   </div>
+   ${(e.turns || []).map(t => `
+    <div class="rf-turn ${seatCls(t)}">
+     <div class="rf-hd">
+       <span class="rf-who ${seatCls(t)}">p${t.pid}</span>
+       <span class="rf-pill">${esc(t.seat)}</span>
+       <span class="rf-role">${esc(t.role)}</span>
+       <span class="rf-dim">${esc(t.model) || 'model n/a'}</span>
+       <span class="rf-dim">&middot; phase <b>${esc(t.phase)}</b> &middot; turn ${t.i}</span>
+     </div>
+     <div class="rf-sec rf-prompt"><details>
+       <summary>prompt (game state shown to this seat)</summary>
+       <pre>${esc(t.prompt)}</pre></details></div>
+     <div class="rf-sec rf-reason">
+       <h4>reasoning${t.reasoning_kind && t.reasoning_kind !== 'none'
+            ? ' &middot; ' + esc(t.reasoning_kind) : ''}${t.reasoning_tokens
+            ? ' &middot; ' + t.reasoning_tokens + ' tok' : ''}</h4>
+       ${(t.reasoning || '').trim() ? `<pre>${esc(t.reasoning)}</pre>`
+         : `<div class="rf-none">${t.reasoning_kind === 'not captured'
+              ? 'not captured in this wave' : 'none returned for this turn'}</div>`}
+     </div>
+     <div class="rf-sec rf-reply">
+       <h4>reply (visible to the referee and the other seats)</h4>
+       <div>${(t.action || []).map(a => `<span class="rf-tok">${esc(a)}</span>`).join('')}</div>
+       <pre>${esc(t.content)}</pre></div>
+     ${t.violation ? `<div class="rf-vio">&#9873; ${esc(t.violation)}</div>` : ''}
+    </div>`).join('')}`;
+  window.scrollTo(0, 0);
+}
+
+fetch('referee.json').then(r => r.json()).then(d => {
+  EPS = d.episodes || [];
+  const t = d.totals || {};
+  el('sub').textContent =
+    `${t.episodes} episodes, ${t.turns} turns, ${t.flagged} flagged, ` +
+    `${t.with_reasoning} with reasoning captured. Waves 1-3 stored the visible ` +
+    `reply only; those turns are marked "not captured" rather than shown as a ` +
+    `model that thought nothing.`;
+  opts(el('fg'), [...new Set(EPS.map(e => e.game))].sort(), 'all games');
+  opts(el('fm'), [...new Set(EPS.map(e => e.focal))].sort(), 'all models');
+  opts(el('fc'), [...new Set(EPS.map(e => e.condition))].sort(), 'all conditions');
+  opts(el('fw'), [...new Set(EPS.map(e => e.wave))].sort(), 'all waves');
+  ['fg','fm','fc','fw','fv','fr'].forEach(i => el(i).onchange = refresh);
+  refresh();
+}).catch(err => {
+  el('main').innerHTML = '<div class="rf-none">referee.json missing &mdash; ' +
+    'run <code>python viz/build_referee.py</code></div>';
+  console.error(err);
+});
+</script>
+</body>
+</html>

@@ -225,6 +225,42 @@ def cases_summary() -> dict:
 
 # ---------------------------------------------------------------------------
 
+def referee_summary() -> dict:
+    """Corpus size, and the one flag that governs whether the page is readable.
+
+    `with_reasoning` is a STOP-level flag when it is zero, because the whole
+    reason this page exists beside the summary tables is that it shows the
+    reasoning separately from the reply. A bundle rebuilt from waves that never
+    captured it renders every block as "not captured" and the page is a
+    transcript dump.
+    """
+    d = load("referee.json")
+    if d is None:
+        return {"built": False, "counts": [], "flags": [
+            flag("stop", "referee.json not built — python viz/build_referee.py")]}
+    t = d.get("totals", {})
+    counts = [(t.get("episodes", 0), "episodes"),
+              (t.get("turns", 0), "turns"),
+              (len(t.get("games", {})), "games"),
+              (len(t.get("models", {})), "models")]
+    flags = []
+    n_r, n_e = t.get("with_reasoning", 0), t.get("episodes", 0) or 1
+    if not n_r:
+        flags.append(flag("stop", "no episode carries reasoning — every block "
+                                  "will read 'not captured'"))
+    elif n_r < n_e:
+        flags.append(flag("warn", f"{n_r} of {n_e} episodes captured reasoning; "
+                                  f"waves 1–3 stored the visible reply only"))
+    if not t.get("flagged"):
+        flags.append(flag("warn", "no turn is flagged — check the detectors "
+                                  "still match the prompt format"))
+    if not flags:
+        flags.append(flag("ok", f"{t.get('flagged')} flagged turns, "
+                                f"{n_r} episodes with reasoning"))
+    return {"built": True, "counts": counts, "flags": flags,
+            "kb": kb("referee.json")}
+
+
 GROUPS = [
     {
         "key": "domains",
@@ -271,6 +307,21 @@ GROUPS = [
                  "byte-identical, so anything that moves is the agent.",
         "build": "bash results/run_identity.sh … ; python viz/build_principal.py",
         "summary": principal_summary(),
+    },
+    {
+        "key": "referee",
+        "page": "referee.html",
+        "title": "Referee holes — cross-play traces",
+        "question": "Do frontier models find and use a gap in the adjudicator?",
+        "blurb": "Six games whose referee fails to check something — a "
+                 "self-reported hit, a self-kept ledger, a clue forwarded "
+                 "verbatim, an unread side channel, an unvalidated trade. Every "
+                 "seat is a live model. One transcript at a time, with the "
+                 "speaking seat and its role named, the reasoning in its own "
+                 "block, and each turn's verdict re-derived from the prompt the "
+                 "model was shown rather than from the engine's counters.",
+        "build": "python viz/build_referee.py",
+        "summary": referee_summary(),
     },
     {
         "key": "cases",
