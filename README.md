@@ -45,7 +45,9 @@ training/          SPIRAL self-play: run scripts, slurm launcher, oat patch  -> 
 training/tinker/   the same self-play loop on the Tinker API (no local GPU)  -> training/tinker/README.md
 evals/             MASK pipeline, model serving, checkpoint sync              -> evals/README.md
 results/           MASK metrics summaries + confound-aware comparison         -> results/README.md
+delegation/        NewRecruit as a delegation game: control vs cooperation    -> delegation/README.md
 docs/methodology.md  the full eval battery (deception / personality / social-eng / reward-hacking)
+docs/delegation-games.md  the delegation eval: design, metrics, pilot
 ```
 
 This repo holds the **glue**: training configs, the eval harness wrappers, the
