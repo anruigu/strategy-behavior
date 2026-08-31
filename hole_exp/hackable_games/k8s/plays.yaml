@@ -1,0 +1,206 @@
+# Plays -- the study build, public at https://strategy-behavior.flt.build
+#
+#   kubectl apply -f k8s/plays.yaml
+#
+# SHAPE. The same shape witness-plays runs in: a plain Python process bound to
+# localhost, Caddy in front doing TLS, one public address. The differences are
+# that this one is a pod rather than a box, and that Caddy's certificates and
+# the collected plays both live on the shared filesystem, so neither is lost
+# when the pod is replaced.
+#
+# NO IMAGE IS BUILT. There is no docker in the dev pod, and none is needed:
+# the whole engine path is standard-library-only, so stock `python:3.12-slim`
+# runs it directly off the code staged at /shared/allie/plays. Redeploying a
+# code change is a file copy plus a rollout restart -- see PLAYS.md.
+#
+# ARGOCD. Nothing here carries an ArgoCD tracking label. `training-smoke` is
+# the only Application pointed at this namespace and it tracks a single
+# RayJob, so these objects are not in any Application's prune set. They are
+# also therefore not reconciled by anything: if you delete them, they stay
+# deleted.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plays-caddy
+  namespace: fleet-train-jobs
+data:
+  Caddyfile: |
+    {
+        # No admin API. It is unauthenticated by default and this pod is on a
+        # public address; nothing here needs to reconfigure Caddy at runtime.
+        admin off
+    }
+
+    # The site address is an env knob, and it defaults to an unused internal
+    # port ON PURPOSE. Naming a public hostname here makes Caddy immediately
+    # try ACME for it, and while `*.flt.build` still resolves to Vercel every
+    # one of those attempts fails against someone else's server -- which
+    # burns Let's Encrypt's failed-validation budget for the name we actually
+    # want. Set PLAYS_SITE only once the hostname resolves HERE.
+    {$PLAYS_SITE::8081} {
+        encode gzip
+        header {
+            X-Content-Type-Options nosniff
+            Referrer-Policy no-referrer
+            -Server
+        }
+        reverse_proxy 127.0.0.1:8801
+    }
+
+    # Cluster-internal only -- the Service publishes 80 and 443 and nothing
+    # else, so this port is reachable from the kubelet and not from the
+    # internet. It exists so the readiness probe exercises the WHOLE chain,
+    # Caddy in front and the app behind. A probe against Caddy's own socket
+    # would report ready while the app was dead.
+    :8080 {
+        reverse_proxy 127.0.0.1:8801
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plays
+  namespace: fleet-train-jobs
+  labels:
+    app: plays
+spec:
+  # ONE replica, and it is not a placeholder for "scale it later". Runs and
+  # sessions live in the process: a second replica would strand every player
+  # whose next request landed on the other pod, mid-play. Scaling this means
+  # moving run state out of memory first.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: plays
+  template:
+    metadata:
+      labels:
+        app: plays
+    spec:
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command:
+            - python
+            - /shared/allie/plays/hackable_games/play_server.py
+            - --host
+            - 127.0.0.1          # only Caddy can reach it, even inside the pod
+            - --port
+            - "8801"
+          env:
+            - name: HG_SHARED          # closes /api/summary
+              value: "1"
+            - name: HG_DATA_DIR
+              value: /shared/allie/plays_data
+            - name: HG_MAX_RUNS
+              value: "200"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          # uid 1001 is `allie` on the shared filesystem, so collected plays
+          # are owned by the account that has to read them back.
+          securityContext:
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+        - name: caddy
+          image: caddy:2-alpine
+          env:
+            # Certificates on the shared filesystem, not in the container.
+            # Let's Encrypt rate-limits duplicate certificates to five per
+            # week per hostname; a pod that re-issued on every restart would
+            # eventually lock itself out of its own domain.
+            - name: XDG_DATA_HOME
+              value: /shared/allie/plays_caddy
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            # 8080, NOT 80. Caddy only binds 80/443 once PLAYS_SITE names a
+            # real hostname and automatic HTTPS kicks in; with the internal
+            # default it serves 8080 and 8081 only. A probe on 80 therefore
+            # passes in production and fails in every other configuration --
+            # it killed this container every 60s for two hours before anyone
+            # looked. 8080 is served in both modes.
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: caddy-config
+              mountPath: /etc/caddy
+      volumes:
+        - name: shared
+          persistentVolumeClaim:
+            claimName: sfs-shared
+        - name: caddy-config
+          configMap:
+            name: plays-caddy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plays-public
+  namespace: fleet-train-jobs
+  annotations:
+    # external-dns on this cluster owns flt.build in Route53 and watches
+    # Services. It runs --policy=upsert-only, so deleting this Service does
+    # NOT remove the record: retiring the site means deleting the A record by
+    # hand as well.
+    external-dns.alpha.kubernetes.io/hostname: strategy-behavior.flt.build
+    external-dns.alpha.kubernetes.io/ttl: "60"
+spec:
+  # ClusterIP, not LoadBalancer, and not by choice -- see the note at the top
+  # of this file. Flipping this back to LoadBalancer is the whole change once
+  # a public address is available; `externalTrafficPolicy` must then stay at
+  # the default `Cluster`, because Nebius rejects `Local` outright and the
+  # Service sits at <pending> forever with no address for external-dns.
+  type: ClusterIP
+  selector:
+    app: plays
+  ports:
+    # 80/443 are what a LoadBalancer would publish; Caddy only binds them once
+    # PLAYS_SITE names a real hostname. Until then `internal` is the way in --
+    #   kubectl port-forward -n fleet-train-jobs svc/plays-public 8801:8080
+    - name: internal
+      port: 8080
+      targetPort: 8080
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: https
+      port: 443
+      targetPort: 443

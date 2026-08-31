@@ -25,6 +25,19 @@ All eight are `broken_checker`, which is not a coincidence: it is the only hole
 kind whose exploit survives every seat being a real player, because the hole is
 in the referee rather than in a confederate's scripted behaviour.
 
+## Two builds
+
+`server.py` is the arena above: it tells you there is a defect, it will show
+you where, and it prints the detector table when the episode ends. That is
+right for driving the cells yourself and fatal for measuring whether anyone
+else finds them.
+
+`play_server.py` is the **study build** -- same engines, same session driver,
+a page that says none of it, and every play written to disk. Runs of repeated
+play, bespoke boards for battleship / sidebar / hanabi / quiet sonar, and a
+gate suite that fails if a hole ever reaches a payload. See
+[`PLAYS.md`](PLAYS.md).
+
 ## Files
 
 ```
