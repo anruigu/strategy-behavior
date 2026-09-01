@@ -312,6 +312,12 @@ def play_episode(
     turns: List[core.Turn] = []
     offers: List[int] = []
     exploit_steps: List[bool] = []
+    # An unparseable offer is dropped from `exploit_steps` rather than
+    # recorded False, so a position in it is not a round number once one has
+    # been dropped -- and here the gaps are real. The endgame window is cut on
+    # the round axis, so the rounds travel alongside the decisions. Stored
+    # 0-based, like every other env in the package; the board counts from 1.
+    exploit_rounds: List[int] = []
     n_exploit = n_invalid = 0
     fair_offer = pool // 2
     done, steps = False, 0
@@ -321,6 +327,7 @@ def play_episode(
         pid, obs = env.get_observation()
         gs = env.state.game_state
         if pid == 0:
+            rnd = int(gs["round_number"]) - 1
             rendered = render_obs(obs)
             # Hide only the learner-visible horizon disclosure.
             if hide:
@@ -343,6 +350,7 @@ def play_episode(
                 parsed = f"offer:{offer}"
                 greedy = offer < FAIR_SHARE * pool
                 exploit_steps.append(greedy)
+                exploit_rounds.append(rnd)
                 if greedy:
                     n_exploit += 1
             offers.append(offer)
@@ -369,6 +377,7 @@ def play_episode(
         exploit_decisions=n_exploit,
         scored_decisions=max(n_offers - n_invalid, 0),
         invalid_decisions=n_invalid, exploit_steps=exploit_steps,
+        exploit_rounds=exploit_rounds,
         stats={
             # The graded readout the atlas actually plots: mean share of the pot
             # kept, on [0, 1]. `exploit_rate` is its thresholded twin.

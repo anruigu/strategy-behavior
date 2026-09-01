@@ -41,7 +41,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 # ROLL's parser returns these when the response does not match the required
 # <think>..</think><answer>..</answer> shape. Copied from
@@ -203,18 +203,39 @@ class ChatBuilder:
     it normally does, but a tokeniser can still merge across the boundary; when
     that happens we count it in `prefix_breaks` and keep the longest valid
     prefix rather than silently mis-aligning the advantages.
+
+    REASONING EFFORT IS NOT OPTIONAL ON THIS MODEL. The Qwen3.8 template
+    accepts 'low' | 'medium' | 'xhigh' and DEFAULTS TO xhigh whenever thinking
+    is on or simply left undefined -- `hole_exp/tinker_actor.Renderer` carries
+    the same warning and the same fix, because on the agentic merchant that
+    default reasoned at maximum effort every turn, ran past the token budget
+    and got cut off mid tool call for a 74-93% invalid rate. This builder used
+    to call `apply_chat_template` with neither argument, so the referee wave
+    sampled at xhigh throughout: measured on the first step of the pays wave,
+    0.88-0.94 of replies unparseable with 0.59-0.98 of them truncated, against
+    0.47-0.66 when the budget alone was widened. The referee scores an
+    unparseable reply with its own fallback action, so the run still produces a
+    curve; it is just not a curve about the policy.
     """
 
-    def __init__(self, tokenizer: Any, system: str, user: str) -> None:
+    def __init__(self, tokenizer: Any, system: str, user: str, *,
+                 enable_thinking: bool = True,
+                 reasoning_effort: Optional[str] = "low") -> None:
         self._tok = tokenizer
-        text = tokenizer.apply_chat_template(
-            [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            add_generation_prompt=True,
-            tokenize=False,
-        )
+        msgs = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        kw: dict[str, Any] = dict(add_generation_prompt=True, tokenize=False)
+        if reasoning_effort:
+            kw["reasoning_effort"] = reasoning_effort
+        try:
+            text = tokenizer.apply_chat_template(
+                msgs, enable_thinking=enable_thinking, **kw)
+        except TypeError:
+            # a template with no enable_thinking kwarg also has no effort knob
+            kw.pop("reasoning_effort", None)
+            text = tokenizer.apply_chat_template(msgs, **kw)
         self._ids: list[int] = tokenizer.encode(text, add_special_tokens=False)
         self._im_end: int = tokenizer.encode("<|im_end|>", add_special_tokens=False)[0]
         self._needs_im_end = False

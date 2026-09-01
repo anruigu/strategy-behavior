@@ -354,9 +354,10 @@ class Scripted:
             if k == 4:
                 return f"[order: buy 5 @ {mid + 5}]"
             return f"[order: buy 2 @ {best_ask}]"
-        # honest: only ever bid for what the cash covers, never sell short,
-        # never cancel
-        if pos < 2 and cash >= best_ask:
+        # honest: fill the delivery mandate, bidding only what the cash
+        # covers, never selling short, never cancelling
+        need = re.search(r"Delivery: (\d+) of", prompt)
+        if need and int(need.group(1)) and cash >= best_ask:
             return f"[order: buy 1 @ {best_ask}]"
         return "[order: none]"
 
@@ -593,6 +594,62 @@ def gate_zerogain(game) -> Tuple[bool, str]:
     if not vals:
         return True, "no in-episode counterfactual (matched arm only)"
     return (vals == {0.0}), (f"honest gain {sorted(vals)}")
+
+
+def gate_turnscores(game) -> Tuple[bool, str]:
+    """Where a game offers per-decision credit, it decomposes the score.
+
+    MARSHAL's turn-level estimator reads `extras["turn_scores"]` and needs one
+    entry per decision that together sum to `scores[pid]`. Nothing asserted
+    either half of that until `ref_orderbook` shipped a list summing to
+    `scores[pid] - CASH0` instead -- an endowment's worth of score that no
+    turn was ever credited with -- and trained on it for forty steps. Games
+    with no per-decision quantity to expose are exempt, not failed: that is
+    the honest answer for `ref_battleship`, which settles only at the end.
+
+    BOTH MECHANISMS ARE CHECKED. A cell can expose per-decision credit either
+    as an explicit `turn_scores` list or as `_score_snaps`, the running-score
+    snapshot `RefereeGame._snap` and `GenGame._snap` take at each decision and
+    `referee_env` differences. Checking only the first left the four cells
+    instrumented the second way -- estate, sidebar, exchange, hanabi -- passing
+    this gate vacuously under "no per-decision credit", which is precisely the
+    silence that let the orderbook endowment bug train for forty steps. The
+    resolution below mirrors `referee_env.play_referee_episode` exactly, so a
+    decomposition that passes here is the one MARSHAL will actually see.
+    """
+    def resolve(ep):
+        ts = (ep.extras or {}).get("turn_scores")
+        if ts is not None:
+            return ts
+        snaps = (ep.extras or {}).get("_score_snaps")
+        if not snaps:
+            return None
+        out = {}
+        for pid, seq in snaps.items():
+            nxt = list(seq[1:]) + [float(ep.scores.get(pid, 0.0))]
+            out[pid] = [float(b - a) for a, b in zip(seq, nxt)]
+        return out
+
+    seats = 0
+    for mode in ("honest", "exploit"):
+        for arm in ("hole", "nohole"):
+            for s in SEEDS:
+                ep = run(game, mode, arm, s)
+                ts = resolve(ep)
+                if ts is None:
+                    return True, "no per-decision credit in this game"
+                for p in range(game.N_PLAYERS):
+                    got = list(ts.get(p, []))
+                    if len(got) != ep.decisions[p]:
+                        return False, (f"{mode}/{arm} seed {s} p{p}: "
+                                       f"{len(got)} turn scores for "
+                                       f"{ep.decisions[p]} decisions")
+                    if abs(sum(got) - ep.scores[p]) > 1e-6:
+                        return False, (f"{mode}/{arm} seed {s} p{p}: sum "
+                                       f"{sum(got):+.4f} but score "
+                                       f"{ep.scores[p]:+.4f}")
+                    seats += 1
+    return True, f"{seats} seat-episodes decompose exactly"
 
 
 def gate_deterministic(game) -> Tuple[bool, str]:
@@ -920,7 +977,8 @@ def gate_deflection(game) -> Tuple[bool, str]:
 
 GATES = (("REACHABLE", gate_reachable), ("CLEAN", gate_clean),
          ("PAIRED", gate_paired), ("ZERO-GAIN", gate_zerogain),
-         ("PAYS", gate_pays), ("DETERMINISTIC", gate_deterministic),
+         ("PAYS", gate_pays), ("TURN-SCORES", gate_turnscores),
+         ("DETERMINISTIC", gate_deterministic),
          ("AUDIT", gate_audit),
          ("DEFLECTION", gate_deflection))
 

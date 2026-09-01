@@ -114,6 +114,26 @@ def _rx(pattern: str) -> "re.Pattern":
     return _RE_CACHE[pattern]
 
 
+def _round_index(game_state: dict) -> Optional[int]:
+    """0-based round from the vendored board's state, or None if it has none.
+
+    The `while` counter in `play_episode` is NOT a round: it ticks once per
+    loop iteration, so it also counts opponent seats and conversation phases,
+    and on `ta_ipd` the learner's five scored decisions land on 3, 7, 11, 15,
+    19. The board's own state is the only honest source.
+
+    TextArena boards number rounds from 1 and disagree on the key -- `round`
+    on the IPD/stag-hunt/public-goods family, `current_round` on Kuhn and
+    win-as-much-as-you-can. `ta_negotiation` exposes no round field at all, so
+    its entries are honestly None rather than guessed.
+    """
+    for key in ("round", "current_round"):
+        v = (game_state or {}).get(key)
+        if isinstance(v, int) and not isinstance(v, bool):
+            return v - 1
+    return None
+
+
 def moves_of(parse: ParseLast, text: str, game_state: dict, who: int,
              versus: int) -> List[str]:
     """`who`'s move in each completed round, as `versus` saw it, in order.
@@ -668,6 +688,12 @@ class GameModule:
         # (every decision entering the betrayal denominator, True on a betrayal).
         steps_all: list = []
         steps_betray: list = []
+        # Companion round indices, one per entry of the timeline beside them.
+        # Those timelines are FILTERED -- unscored turns never append -- so a
+        # position in them is not a round, and endgame code that reads position
+        # as time compares different opponents on different clocks.
+        rounds_all: list = []
+        rounds_betray: list = []
         done, steps = False, 0
 
         while not done and steps < max_steps:
@@ -734,6 +760,9 @@ class GameModule:
                 else:
                     n_scored += 1
                     steps_all.append(cls == "exploit")
+                    # `gs`, not `gs_shown`: the record is instrumentation, and
+                    # the horizon hidden from the learner must not move it.
+                    rounds_all.append(_round_index(gs))
                     parsed = "exploit" if cls == "exploit" else "honest"
                     if cls == "exploit":
                         n_exploit_holder["n"] += 1
@@ -753,6 +782,7 @@ class GameModule:
                                                    q, lid)]):
                             n_betray_den += 1
                             steps_betray.append(cls == "exploit")
+                            rounds_betray.append(_round_index(gs))
                             if cls == "exploit":
                                 n_betray += 1
                 if cls != "skip":
@@ -774,6 +804,13 @@ class GameModule:
         # kept in `stats` because it is what compares to the audit cells.
         swap = bool(s.opponent_swap and s.parse_last is not None)
         raw_rate = (n_exploit / n_scored) if n_scored else None
+        # All-or-nothing: a timeline mixing real indices with None is worse
+        # than none, because a reader cannot tell a missing round from an
+        # early one. `ta_negotiation`'s board carries no round, so it sends
+        # None for the whole episode and falls back to positional behaviour.
+        rounds = rounds_betray if swap else rounds_all
+        rounds = (rounds if rounds and all(r is not None for r in rounds)
+                  else None)
         return core.episode_record(
             name=self.NAME, seed=seed, consequence=consequence, dose=dose,
             opponent=opponent.name,
@@ -784,6 +821,7 @@ class GameModule:
             # Same two timelines as the two counts above, so
             # len == scored_decisions and sum == exploit_decisions in each arm.
             exploit_steps=(steps_betray if swap else steps_all),
+            exploit_rounds=rounds,
             invalid_decisions=n_invalid,
             stats={
                 "penalty": float(info.get("penalty", 0.0)),

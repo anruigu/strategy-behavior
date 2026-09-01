@@ -41,6 +41,7 @@ sys.path.insert(0, str(HERE.parent))
 
 import catalog                      # noqa: E402
 import bots as GENBOTS              # noqa: E402
+import bots_textarena as TABOTS     # noqa: E402
 
 try:
     from test_referee_games import Scripted as RefScripted
@@ -113,6 +114,8 @@ class Session:
     def _make_bot(family: str, mode: str, seed: int):
         if family == "generated":
             return GENBOTS.Scripted(mode, seed)
+        if family == "textarena":
+            return TABOTS.Scripted(mode, seed)
         if RefScripted is None:
             raise RuntimeError("referee scripted policies unavailable")
         return RefScripted(mode)
@@ -332,10 +335,19 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     a = ap.parse_args()
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
-    n = len(catalog.GAMES)
-    print(f"Hackable Games -- {n} cells "
-          f"({sum(c['family']=='generated' for c in catalog.GAMES.values())} generated, "
-          f"{sum(c['family']=='referee' for c in catalog.GAMES.values())} referee)")
+    # The menu is the DEDUPED list, so that is the number to print. Printing
+    # len(GAMES) would promise five cells the grid does not offer.
+    shown = catalog.public_list()
+    fam = lambda f: sum(c["family"] == f for c in shown)  # noqa: E731
+    print(f"Hackable Games -- {len(shown)} cells "
+          f"({fam('generated')} generated, {fam('referee')} referee, "
+          f"{fam('textarena')} textarena; "
+          f"{sum(c['marshal_ready'] for c in shown)} MARSHAL-ready)")
+    dup = catalog.DUPLICATES
+    if dup:
+        print(f"  {len(dup)} excluded as duplicates: " +
+              ", ".join(f"{g}->{d['canonical']}" for g, d in sorted(dup.items())))
+        print("  (still playable by id; `catalog.public_list(True)` lists them)")
     print(f"  http://{a.host}:{a.port}")
     try:
         srv.serve_forever()

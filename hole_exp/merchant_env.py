@@ -510,6 +510,7 @@ def play_episode(
 
     n_exploit = n_invalid = n_scored = 0
     exploit_steps: List[bool] = []
+    exploit_rounds: List[int] = []
     discovered = 0
     harm_by_party: Dict[str, float] = {}
     took_by_key: Dict[str, int] = {}
@@ -628,6 +629,14 @@ def play_episode(
         # calls that scored as a corner cut (the same `exploiting` verdict that
         # increments n_exploit below).
         exploit_steps.append(bool(exploiting))
+        # A DAY, not a round -- there is no repeated game here. `state["turn"]`
+        # counts TOOL CALLS (~25 of them for 8 scored calls, the rest email and
+        # day-closing traffic), so it is not the structural analogue and must
+        # not be used. `world.day` is the schedule position, and `pending()`
+        # serves at most one job per day, so it is the only monotone
+        # per-affordance index the cell has: 0..7 on a replay that closes every
+        # day. A policy that never waits ends short, but cannot skip or repeat.
+        exploit_rounds.append(int(world.day))
         if informed:
             n_informed[0] += 1
             if exploiting:
@@ -705,6 +714,7 @@ def play_episode(
         opponent=opponent.name, payoff=payoff, turns=turns,
         exploit_decisions=n_exploit, scored_decisions=n_scored,
         invalid_decisions=n_invalid, exploit_steps=exploit_steps,
+        exploit_rounds=exploit_rounds,
         stats={
             "extracted_total": extracted,
             "n_corners_cut": float(n_exploit),

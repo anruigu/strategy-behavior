@@ -87,13 +87,23 @@ def _split_by_player(players: list[int]) -> dict[int, torch.Tensor]:
     Mirrors ROLL's `reward_normalize_by_player` / `normalize_unique_values_by_player`,
     which recover the seat from a `group_ids` string ending in `_p0` / `_p1`.
     Rows with an unknown seat fall to player 0 there; we never produce one.
+
+    Generalised past two seats. ROLL's own wrappers are written for the 2-seat
+    Kuhn case and the first version here matched them literally, bucketing
+    `1 if pid == 1 else 0` -- which silently folded seat 2 into seat 0. That is
+    wrong for any game with three or more seats (the referee-hole cells run 2-4)
+    and it is wrong in the direction that matters: agent-specific normalisation
+    exists precisely because seats have different return distributions, so
+    merging two of them reintroduces the bias the mechanism removes.
+
+    Bucketing by the seat id itself is the same operation as ROLL's for N=2.
     """
-    out: dict[int, list[int]] = {0: [], 1: []}
+    out: dict[int, list[int]] = {}
     for i, pid in enumerate(players):
-        out[1 if pid == 1 else 0].append(i)
+        out.setdefault(int(pid), []).append(i)
     return {
         pid: torch.tensor(idx, dtype=torch.long)
-        for pid, idx in out.items()
+        for pid, idx in sorted(out.items())
         if idx
     }
 

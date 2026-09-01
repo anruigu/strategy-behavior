@@ -259,6 +259,21 @@ PANELS = [
      "direction-aware: negated forms (\"I will not defect in\n"
      "the final round\") are excluded, they score as hold",
      lambda ax, f, s, x, y: marker_panel(ax, f, s, A.MARKERS["endgame_defect_plan"], x, y)),
+    # D2. `endgame_hold` was computed and exported and never plotted. It sits
+    # next to E because the two regexes were built as a DIRECTIONAL PAIR --
+    # the comment block above them records that an earlier version scored
+    # "defecting in the last round" as a plan to hold -- so reading either
+    # alone is reading half a question.
+    #
+    # The finding was already in the committed JSON: pooled over the two
+    # finite cells, tft 0.114 against grim 0.063, a ratio of 1.8x. The
+    # policies trained against tit-for-tat talk about HOLDING THE LINE at the
+    # end nearly twice as often as the grim-trained ones -- the reasoning-side
+    # analogue of the S4 behavioural claim, in the same direction.
+    ("G · Endgame reasoning that RESOLVES to holding", "share of reasoning blocks",
+     "the other direction of E.  pooled over the two finite\n"
+     "cells: tft 0.114 vs grim 0.063, a ratio of 1.8x",
+     lambda ax, f, s, x, y: marker_panel(ax, f, s, A.MARKERS["endgame_hold"], x, y)),
     ("F · Does the hidden-horizon arm LEARN the length?", "share of reasoning blocks",
      "solid = says the length is unknown; dotted = supplies\na total anyway.",
      lambda ax, f, s, x, y: horizon_panel(ax, f, s, x, y)),
@@ -374,12 +389,24 @@ def main() -> int:
     for key in found:
         tbl[key] = {m: {str(s): round(v[0], 4) for s, v in
                         rates(found[key], rx).items()}
-                    for m, rx in (("shaping_awareness", A.MARKERS["shaping_awareness"]),
-                                  ("backward_induction", A.MARKERS["backward_induction"]),
-                                  ("endgame_defect_plan", A.MARKERS["endgame_defect_plan"]),
-                                  ("endgame_hold", A.MARKERS["endgame_hold"]),
-                                  ("notices_unknown", A.HORIZON_MARKERS["notices_unknown"]),
-                                  ("assumes_finite", A.HORIZON_MARKERS["assumes_finite"]))}
+                    # D3 + D4. Was an explicit six-tuple, and the audit that
+                    # motivated this change found TWO markers missing from it:
+                    # `infinite_logic` (the third branch of the inf arm's own
+                    # question -- notices_unknown says it spotted the missing
+                    # fact, assumes_finite says it hallucinated a total anyway,
+                    # and infinite_logic says it reached the shadow-of-the-
+                    # future argument) and `in_game_penalty` (the false-
+                    # positive floor that makes `shaping_awareness ~ 0`
+                    # interpretable: a null is a much stronger claim when the
+                    # floor marker is NOT null on the same blocks).
+                    #
+                    # Iterating over the marker dicts rather than listing
+                    # names means no future marker can be silently unexported.
+                    # `in_game_penalty` stays out of the EXCERPTS, where a
+                    # floor marker's hits are noise -- that exclusion in
+                    # endgame_awareness.py is sound and is left alone. This
+                    # changes the scope of the JSON, not the intent of that.
+                    for m, rx in {**A.MARKERS, **A.HORIZON_MARKERS}.items()}
         tbl[key]["n_blocks"] = {str(s): len(v) for s, v in found[key].items()}
     for key, run in RUNS.items():
         try:

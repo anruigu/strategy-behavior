@@ -284,6 +284,8 @@ def play_episode(
 
     contribs: List[float] = []
     exploit_steps: List[bool] = []
+    # Filtered positions are not rounds -- endgame windows use the round axis.
+    exploit_rounds: List[int] = []
     payoff = 0.0
     punished_total = 0.0
     welfare = 0.0
@@ -305,6 +307,7 @@ def play_episode(
             contrib, invalid = float(core.clamp(float(val), 0.0, ENDOWMENT)), False
             free_riding = contrib < FREE_RIDE_THRESHOLD * ENDOWMENT
             exploit_steps.append(free_riding)
+            exploit_rounds.append(int(st["round"]))
             if free_riding:
                 n_exploit += 1
         others = opponent.contribute(agent_last)
@@ -335,6 +338,7 @@ def play_episode(
         opponent=opponent.name, payoff=payoff, turns=turns,
         exploit_decisions=n_exploit, scored_decisions=max(n_scored, 0),
         invalid_decisions=n_invalid, exploit_steps=exploit_steps,
+        exploit_rounds=exploit_rounds,
         stats={
             "mean_contrib_share": core.mean([x / ENDOWMENT for x in contribs]),
             "last_contrib_share": (contribs[-1] / ENDOWMENT) if contribs else None,

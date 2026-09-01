@@ -1,0 +1,1884 @@
+{
+ "figure": "fig2_unreachable_difference",
+ "question": "grim trigger and tit-for-tat are behaviourally identical until the model defects with rounds still to play. Where in the game does the policy defect, and how often does it walk the defect -> punished -> return -> forgiven path that is the only place the two opponents differ?",
+ "answer": "Essentially never. Defection is confined to the last one or two rounds: rounds 1-7 of the 10-round training episodes carry a hazard of exactly 0.000 in every seed of both arms, and the same spike sits at the true end of the game for frozen step-35 adapters replayed at N = 6, 10, 14. The opponent therefore defects in under 1.3% of rounds, and the share of rounds played after an opponent defection peaks at 0.0023 (tft/base); both of those are late-window numbers, steps >= 25. The repair path that alone separates grim from tit-for-tat -- defect early, be punished, return to cooperating, see whether the opponent forgives -- completes 1 time in 616 ipd episodes taken over EVERY TRAINED STEP, steps >= 5, which is a wider window than the other train panels and the larger denominator for the claim. Restricted to the late window the same cells hold 328 episodes and can contain at most the same 1 completion. That is the mechanistic explanation for the crossplay null: the training signal distinguishing grim from tit-for-tat was almost never delivered.",
+ "windows": {
+  "_what": "The train panels do NOT share a window. Every bound here is read from train_strategy.json['meta']; none is written as a literal.",
+  "A_hazard_by_round_index_train": "steps >= 25 (late window)",
+  "B_hazard_by_rounds_from_end_eval": "frozen step-35 adapters replayed at N = 6, 10, 14",
+  "C_exposure": "steps >= 25 (late window)",
+  "D_repair_funnel": "steps >= 5 (every trained step)",
+  "why_panel_D_is_wider": "The cache builds the repair funnel over steps >= 5 and at no other floor, so that is the window panel D reports. It is also the conservative denominator for a 'this path is almost never walked' claim: narrowing to steps >= 25 would roughly halve the number of episodes the claim has to survive. Panel D therefore keeps the wider window and states it, and carries the late-window counts as a secondary check."
+ },
+ "error_bar_definitions": {
+  "all_panels": "BETWEEN TRAINING SEED. Each training seed (checkpoint lineage) is collapsed to one number over its episodes first, then the spread is taken across seeds: sample sd (ddof=1) / sqrt(n_seeds).",
+  "null_policy": "n_seeds < 2 carries se = null and draws NO bar. A drawn bar of length 0.0 is a real between-seed spread of zero on >= 2 seeds, not a missing value.",
+  "train_window_panels_A_C": "training traces pooled over steps >= 25, env = ipd only",
+  "train_window_panel_D": "training traces pooled over steps >= 5, every trained step, env = ipd only",
+  "eval_window": "frozen step-35 adapters replayed at N = 6, 10, 14"
+ },
+ "provenance": {
+  "train_strategy": {
+   "path": "/home/allie/strategy-behavior/results/0830_grim_vs_tft/train_strategy.json",
+   "bytes": 1185807,
+   "mtime_utc": "2026-08-30T22:26:53Z"
+  },
+  "eval_strategy": {
+   "path": "/home/allie/strategy-behavior/results/0830_grim_vs_tft/eval_strategy.json",
+   "bytes": 343212,
+   "mtime_utc": "2026-08-30T22:26:37Z"
+  },
+  "train_cache_meta": {
+   "late_step": 25,
+   "trained_step": 5,
+   "shape_env": "ipd",
+   "trace_sampling_note": "Trace dumps are the FIRST 24 episodes of every 5th training step (0, 5, 10, ...), covering exactly 4 envs at 6 episodes each: ipd, public_goods, dond, trust. So there are ~6 ipd episodes per step per seed, and the other three trained envs -- ipd3, staghunt, winasmuch -- NEVER appear in the traces even though they do contribute to the pooled train/* metrics in metrics_curves. Trace-derived and metrics-derived numbers therefore have different denominators and must not be divided by one another.",
+   "episodes_kept_ipd": {
+    "grim/base/s0": 60,
+    "grim/base/s1": 65,
+    "grim/base/s2": 42,
+    "grim/eg/s0": 54,
+    "grim/eg/s1": 48,
+    "grim/eg/s2": 48,
+    "grim/inf/s0": 24,
+    "grim/inf/s1": 30,
+    "tft/base/s0": 78,
+    "tft/base/s1": 54,
+    "tft/base/s2": 54,
+    "tft/eg/s0": 59,
+    "tft/eg/s1": 60,
+    "tft/eg/s2": 66,
+    "tft/inf/s0": 24,
+    "tft/inf/s1": 84
+   },
+   "invalid_rate_rule": "episode dropped when stats.invalid_rate > threshold"
+  },
+  "eval_cache_meta": {
+   "what": "Frozen step-35 checkpoint evidence on whether grim-trained and tft-trained policies differ.",
+   "wave": "think4, Qwen3.8-27B LoRA, step 35 adapters replayed",
+   "error_bars": "EVERY SE in this file is BETWEEN TRAINING SEED: each checkpoint is collapsed to one number over its episode seeds first, then the spread is taken across checkpoints (sample std, ddof=1, divided by sqrt(n_seeds)). Pooling episode seeds treats 8 rollouts of one LoRA as 8 independent draws; that is what produced the sign flip in 0826-endgame-by-opponent.md section 4 which three seeds later contradicted. Cells with fewer than 2 seeds carry se: null, never se: 0. Differences taken WITHIN a checkpoint are paired and get the SE of the per-seed difference; differences taken ACROSS arms are unpaired (train_seed 0/1/2 index different checkpoints in the grim and tft arms) and get sqrt(se_a^2 + se_b^2).",
+   "restriction": "arms grim/nohole, grim/eg, tft/nohole, tft/eg only. grim/inf has NO episodes in this file, and the 96 tft/inf rows are a known-contaminated second copy of a single train seed (train_seed 1, 32 rows per length where every other cell has 16) -- see results/0830_endgame_traces/README.md. Excluding `inf` sidesteps both problems.",
+   "diagonal_only": "Every row satisfies opponent == arm.split('/')[0], verified on all 672 rows. Each arm plays ONLY the opponent it trained against, so this file cannot separate the policy from the environment. It can only characterise each arm in its own condition. The policy-vs-environment separation lives in crossplay.trained_vs_contrast.",
+   "flagged_cell": "grim/nohole train_seed 1 emits an empty decision answer on the majority of turns while its invalid_rate reads 0.000, so the repo's gate does not see it. Every statistic is computed twice: `all_seeds` and `excl_grim_nohole_s1`.",
+   "nohole_is_base": "this file names the baseline arm `nohole`; the training cache names it `base`"
+  }
+ },
+ "caveat": "1) grim/nohole train_seed 1 in the eval cache emits an empty decision answer on 60% of turns (578 empty answers over 960 turns) while its invalid_rate reads 0.000, so the repo's gate is blind to it. Panel B therefore shows the all_seeds series AND the excl_grim_nohole_s1 final-round point; the endgame spike survives the exclusion (0.660 -> 0.844). 2) The whole f_opp_forgave cell rests on ONE episode, in tft/base train_seed 2. It carries se = null and no error bar, and it must not be read as a rate. 3) grim/base's f_opp_forgave is n/a by construction, not a measured null: grim never forgives by definition of the opponent. 4) Training-trace numbers come from the first 24 episodes of every 5th step and are a sample of training, not the dense training log; they share no denominator with the eval panel and are never divided by it. 5) THE TRAIN PANELS DO NOT SHARE A WINDOW. A and C are steps >= 25; D is steps >= 5, because that is the only floor at which the cache builds the repair funnel. Counts from the two windows are never divided by one another, and panel D reports the late-window denominator alongside its own.",
+ "panels": {
+  "A_hazard_by_round_index_train": {
+   "what": "P(model defects in round r), training traces, base arm, steps >= 25 (late window)",
+   "window": "steps >= 25",
+   "x": "round index, 1-based",
+   "series": {
+    "grim/base": {
+     "round_index": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      7.0,
+      8.0,
+      9.0,
+      10.0
+     ],
+     "hazard_mean": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.12142857142857143,
+      0.7936507936507936
+     ],
+     "se": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.07225709954996913,
+      0.10408632578257145
+     ],
+     "n_episodes_per_point": [
+      77,
+      77,
+      77,
+      77,
+      77,
+      77,
+      77,
+      77,
+      77,
+      77
+     ],
+     "per_seed": {
+      "0": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.6666666666666666
+      ],
+      "1": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.11428571428571428,
+       0.7142857142857143
+      ],
+      "2": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.25,
+       1.0
+      ]
+     },
+     "n_seeds": 3
+    },
+    "tft/base": {
+     "round_index": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      7.0,
+      8.0,
+      9.0,
+      10.0
+     ],
+     "hazard_mean": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.020833333333333332,
+      0.08333333333333333,
+      0.9236111111111112
+     ],
+     "se": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.012028130608117204,
+      0.02405626121623441,
+      0.07638888888888888
+     ],
+     "n_episodes_per_point": [
+      96,
+      96,
+      96,
+      96,
+      96,
+      96,
+      96,
+      96,
+      96,
+      96
+     ],
+     "per_seed": {
+      "0": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.020833333333333332,
+       0.041666666666666664,
+       0.7708333333333334
+      ],
+      "1": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.041666666666666664,
+       0.125,
+       1.0
+      ],
+      "2": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.08333333333333333,
+       1.0
+      ]
+     },
+     "n_seeds": 3
+    }
+   },
+   "rounds_exactly_zero_both_arms": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+   ]
+  },
+  "B_hazard_by_rounds_from_end_eval": {
+   "what": "P(model defects | rounds_from_end = k), frozen step-35 adapters, pooled over N = 6, 10, 14 (lengths never trained on)",
+   "window": "frozen step-35 adapters at N = 6, 10, 14",
+   "x": "rounds from the end of the episode (0 = final round)",
+   "block": "all_seeds",
+   "series": {
+    "grim/nohole": {
+     "rounds_from_end": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "hazard_mean": [
+      0.6595744680851063,
+      0.03516548463356974,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "se": [
+      0.19982893548542274,
+      0.01871059824855405,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "n_decisions": [
+      143,
+      143,
+      143,
+      143,
+      143,
+      143,
+      95,
+      95,
+      95,
+      95,
+      48,
+      48,
+      48,
+      48
+     ],
+     "n_seeds": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+     ],
+     "per_seed_at_final_round": {
+      "0": 0.708333,
+      "1": 0.291667,
+      "2": 0.978723
+     },
+     "frac_defect_before_last": {
+      "mean": 0.03516548463356974,
+      "se": 0.01871059824855405,
+      "n_seeds": 3,
+      "per_seed": {
+       "0": 0.041667,
+       "1": 0.0,
+       "2": 0.06383
+      },
+      "n_episodes": 143,
+      "n_episodes_defined": 143,
+      "n_episodes_per_seed": {
+       "0": 48,
+       "1": 48,
+       "2": 47
+      },
+      "denominator": "episodes in cell"
+     }
+    },
+    "tft/nohole": {
+     "rounds_from_end": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "hazard_mean": [
+      0.9652777777777778,
+      0.1388888888888889,
+      0.020833333333333332,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "se": [
+      0.03472222222222221,
+      0.042241406460404314,
+      0.012028130608117204,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "n_decisions": [
+      144,
+      144,
+      144,
+      144,
+      144,
+      144,
+      96,
+      96,
+      96,
+      96,
+      48,
+      48,
+      48,
+      48
+     ],
+     "n_seeds": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+     ],
+     "per_seed_at_final_round": {
+      "0": 0.895833,
+      "1": 1.0,
+      "2": 1.0
+     },
+     "frac_defect_before_last": {
+      "mean": 0.15277777777777776,
+      "se": 0.04861111111111111,
+      "n_seeds": 3,
+      "per_seed": {
+       "0": 0.0625,
+       "1": 0.166667,
+       "2": 0.229167
+      },
+      "n_episodes": 144,
+      "n_episodes_defined": 144,
+      "n_episodes_per_seed": {
+       "0": 48,
+       "1": 48,
+       "2": 48
+      },
+      "denominator": "episodes in cell"
+     }
+    },
+    "grim/eg": {
+     "rounds_from_end": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "hazard_mean": [
+      0.6319444444444445,
+      0.04861111111111111,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "se": [
+      0.16017448048153884,
+      0.03027013155236579,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "n_decisions": [
+      144,
+      144,
+      144,
+      144,
+      144,
+      144,
+      96,
+      96,
+      96,
+      96,
+      48,
+      48,
+      48,
+      48
+     ],
+     "n_seeds": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+     ],
+     "per_seed_at_final_round": {
+      "0": 0.8125,
+      "1": 0.770833,
+      "2": 0.3125
+     },
+     "frac_defect_before_last": {
+      "mean": 0.04861111111111111,
+      "se": 0.03027013155236579,
+      "n_seeds": 3,
+      "per_seed": {
+       "0": 0.104167,
+       "1": 0.041667,
+       "2": 0.0
+      },
+      "n_episodes": 144,
+      "n_episodes_defined": 144,
+      "n_episodes_per_seed": {
+       "0": 48,
+       "1": 48,
+       "2": 48
+      },
+      "denominator": "episodes in cell"
+     }
+    },
+    "tft/eg": {
+     "rounds_from_end": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "hazard_mean": [
+      0.548611111111111,
+      0.0625,
+      0.006944444444444444,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "se": [
+      0.2552496659651265,
+      0.043368041655544434,
+      0.006944444444444445,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "n_decisions": [
+      144,
+      144,
+      144,
+      144,
+      144,
+      144,
+      96,
+      96,
+      96,
+      96,
+      48,
+      48,
+      48,
+      48
+     ],
+     "n_seeds": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+     ],
+     "per_seed_at_final_round": {
+      "0": 0.75,
+      "1": 0.854167,
+      "2": 0.041667
+     },
+     "frac_defect_before_last": {
+      "mean": 0.06944444444444445,
+      "se": 0.042241406460404314,
+      "n_seeds": 3,
+      "per_seed": {
+       "0": 0.0625,
+       "1": 0.145833,
+       "2": 0.0
+      },
+      "n_episodes": 144,
+      "n_episodes_defined": 144,
+      "n_episodes_per_seed": {
+       "0": 48,
+       "1": 48,
+       "2": 48
+      },
+      "denominator": "episodes in cell"
+     }
+    }
+   },
+   "sensitivity_excl_grim_nohole_s1": {
+    "grim/nohole": {
+     "hazard_final_round": {
+      "mean": 0.8435283687943262,
+      "se": 0.13519503546099287,
+      "n_seeds": 2,
+      "per_seed": {
+       "0": 0.708333,
+       "2": 0.978723
+      },
+      "n_decisions": 95,
+      "denominator": "episodes reaching this rounds_from_end, per seed then across seeds"
+     },
+     "hazard_1_from_end": {
+      "mean": 0.05274822695035461,
+      "se": 0.01108156028368794,
+      "n_seeds": 2,
+      "per_seed": {
+       "0": 0.041667,
+       "2": 0.06383
+      },
+      "n_decisions": 95,
+      "denominator": "episodes reaching this rounds_from_end, per seed then across seeds"
+     },
+     "n_episodes": 95,
+     "frac_defect_before_last": {
+      "mean": 0.05274822695035461,
+      "se": 0.01108156028368794,
+      "n_seeds": 2,
+      "per_seed": {
+       "0": 0.041667,
+       "2": 0.06383
+      },
+      "n_episodes": 95,
+      "n_episodes_defined": 95,
+      "n_episodes_per_seed": {
+       "0": 48,
+       "2": 47
+      },
+      "denominator": "episodes in cell"
+     }
+    }
+   },
+   "lengths": [
+    6,
+    10,
+    14
+   ]
+  },
+  "C_exposure": {
+   "what": "share of ipd rounds played in each regime, training traces, steps >= 25 (late window)",
+   "window": "steps >= 25",
+   "statistics": {
+    "rounds_in_punishment": "share of rounds played AFTER the opponent has defected at least once -- the only regime in which grim and tit-for-tat behave differently",
+    "opp_defect_share": "1 - opp_coop_rate: share of rounds in which the opponent defected at all"
+   },
+   "cells": {
+    "grim/base": {
+     "rounds_in_punishment": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 270,
+       "1": 315,
+       "2": 108
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 77
+     },
+     "opp_coop_rate": {
+      "per_seed": {
+       "0": 1.0,
+       "1": 0.9885714285714287,
+       "2": 0.975
+      },
+      "per_seed_n": {
+       "0": 30,
+       "1": 35,
+       "2": 12
+      },
+      "mean": 0.9878571428571429,
+      "se": 0.007225709954996921,
+      "n_seeds": 3,
+      "n_episodes": 77
+     },
+     "opp_defect_share_mean": 0.012142857142857122,
+     "opp_defect_share_se": 0.007225709954996921,
+     "defect_before_last": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.11428571428571428,
+       "2": 0.25
+      },
+      "per_seed_n": {
+       "0": 30,
+       "1": 35,
+       "2": 12
+      },
+      "mean": 0.12142857142857143,
+      "se": 0.07225709954996913,
+      "n_seeds": 3,
+      "n_episodes": 77
+     },
+     "c_given_own_d": {
+      "per_seed": {
+       "0": null,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 4,
+       "2": 3
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 2,
+      "n_episodes": 77
+     },
+     "copies_opp_last": {
+      "per_seed": {
+       "0": 0.9259259259259259,
+       "1": 0.9079365079365079,
+       "2": 0.8611111111111112
+      },
+      "per_seed_n": {
+       "0": 270,
+       "1": 315,
+       "2": 108
+      },
+      "mean": 0.8983245149911817,
+      "se": 0.019317805785987827,
+      "n_seeds": 3,
+      "n_episodes": 77
+     },
+     "n_episodes": 77,
+     "n_seeds": 3,
+     "rounds_in_punishment_pooled_all_steps": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 486,
+       "1": 531,
+       "2": 324
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 149
+     }
+    },
+    "tft/base": {
+     "rounds_in_punishment": {
+      "per_seed": {
+       "0": 0.0023148148148148147,
+       "1": 0.004629629629629629,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 432,
+       "1": 216,
+       "2": 216
+      },
+      "mean": 0.0023148148148148147,
+      "se": 0.001336458956457467,
+      "n_seeds": 3,
+      "n_episodes": 96
+     },
+     "opp_coop_rate": {
+      "per_seed": {
+       "0": 0.99375,
+       "1": 0.9833333333333334,
+       "2": 0.9916666666666667
+      },
+      "per_seed_n": {
+       "0": 48,
+       "1": 24,
+       "2": 24
+      },
+      "mean": 0.9895833333333334,
+      "se": 0.003182344232608211,
+      "n_seeds": 3,
+      "n_episodes": 96
+     },
+     "opp_defect_share_mean": 0.01041666666666663,
+     "opp_defect_share_se": 0.003182344232608211,
+     "defect_before_last": {
+      "per_seed": {
+       "0": 0.0625,
+       "1": 0.16666666666666666,
+       "2": 0.08333333333333333
+      },
+      "per_seed_n": {
+       "0": 48,
+       "1": 24,
+       "2": 24
+      },
+      "mean": 0.10416666666666667,
+      "se": 0.03182344232608222,
+      "n_seeds": 3,
+      "n_episodes": 96
+     },
+     "c_given_own_d": {
+      "per_seed": {
+       "0": 0.3333333333333333,
+       "1": 0.25,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 3,
+       "1": 4,
+       "2": 2
+      },
+      "mean": 0.19444444444444442,
+      "se": 0.10015420209622192,
+      "n_seeds": 3,
+      "n_episodes": 96
+     },
+     "copies_opp_last": {
+      "per_seed": {
+       "0": 0.9097222222222222,
+       "1": 0.875,
+       "2": 0.8796296296296297
+      },
+      "per_seed_n": {
+       "0": 432,
+       "1": 216,
+       "2": 216
+      },
+      "mean": 0.8881172839506174,
+      "se": 0.010884827144803917,
+      "n_seeds": 3,
+      "n_episodes": 96
+     },
+     "n_episodes": 96,
+     "n_seeds": 3,
+     "rounds_in_punishment_pooled_all_steps": {
+      "per_seed": {
+       "0": 0.0030864197530864196,
+       "1": 0.0023148148148148147,
+       "2": 0.016203703703703703
+      },
+      "per_seed_n": {
+       "0": 648,
+       "1": 432,
+       "2": 432
+      },
+      "mean": 0.007201646090534979,
+      "se": 0.004506536900189103,
+      "n_seeds": 3,
+      "n_episodes": 168
+     }
+    },
+    "grim/eg": {
+     "rounds_in_punishment": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 216,
+       "1": 162,
+       "2": 162
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 60
+     },
+     "opp_coop_rate": {
+      "per_seed": {
+       "0": 1.0,
+       "1": 1.0,
+       "2": 1.0
+      },
+      "per_seed_n": {
+       "0": 24,
+       "1": 18,
+       "2": 18
+      },
+      "mean": 1.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 60
+     },
+     "opp_defect_share_mean": 0.0,
+     "opp_defect_share_se": 0.0,
+     "defect_before_last": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 24,
+       "1": 18,
+       "2": 18
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 60
+     },
+     "c_given_own_d": {
+      "per_seed": {
+       "0": null,
+       "1": null,
+       "2": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0,
+       "2": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 60
+     },
+     "copies_opp_last": {
+      "per_seed": {
+       "0": 0.9166666666666666,
+       "1": 0.9259259259259259,
+       "2": 0.9506172839506173
+      },
+      "per_seed_n": {
+       "0": 216,
+       "1": 162,
+       "2": 162
+      },
+      "mean": 0.9310699588477366,
+      "se": 0.010132569754934274,
+      "n_seeds": 3,
+      "n_episodes": 60
+     },
+     "n_episodes": 60,
+     "n_seeds": 3,
+     "rounds_in_punishment_pooled_all_steps": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 432,
+       "1": 378,
+       "2": 378
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 132
+     }
+    },
+    "tft/eg": {
+     "rounds_in_punishment": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 261,
+       "1": 270,
+       "2": 324
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 95
+     },
+     "opp_coop_rate": {
+      "per_seed": {
+       "0": 1.0,
+       "1": 0.9933333333333334,
+       "2": 1.0
+      },
+      "per_seed_n": {
+       "0": 29,
+       "1": 30,
+       "2": 36
+      },
+      "mean": 0.9977777777777778,
+      "se": 0.0022222222222221997,
+      "n_seeds": 3,
+      "n_episodes": 95
+     },
+     "opp_defect_share_mean": 0.0022222222222222365,
+     "opp_defect_share_se": 0.0022222222222221997,
+     "defect_before_last": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.06666666666666667,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 29,
+       "1": 30,
+       "2": 36
+      },
+      "mean": 0.022222222222222223,
+      "se": 0.022222222222222223,
+      "n_seeds": 3,
+      "n_episodes": 95
+     },
+     "c_given_own_d": {
+      "per_seed": {
+       "0": null,
+       "1": 0.0,
+       "2": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 2,
+       "2": 0
+      },
+      "mean": 0.0,
+      "se": null,
+      "n_seeds": 1,
+      "n_episodes": 95
+     },
+     "copies_opp_last": {
+      "per_seed": {
+       "0": 0.9233716475095786,
+       "1": 0.9074074074074074,
+       "2": 0.9814814814814815
+      },
+      "per_seed_n": {
+       "0": 261,
+       "1": 270,
+       "2": 324
+      },
+      "mean": 0.9374201787994892,
+      "se": 0.022507502719726975,
+      "n_seeds": 3,
+      "n_episodes": 95
+     },
+     "n_episodes": 95,
+     "n_seeds": 3,
+     "rounds_in_punishment_pooled_all_steps": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0,
+       "2": 0.0
+      },
+      "per_seed_n": {
+       "0": 477,
+       "1": 486,
+       "2": 540
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 3,
+      "n_episodes": 167
+     }
+    },
+    "grim/inf": {
+     "rounds_in_punishment": {
+      "per_seed": {
+       "0": null,
+       "1": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 0
+     },
+     "opp_coop_rate": {
+      "per_seed": {
+       "0": null,
+       "1": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 0
+     },
+     "opp_defect_share_mean": null,
+     "opp_defect_share_se": null,
+     "defect_before_last": {
+      "per_seed": {
+       "0": null,
+       "1": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 0
+     },
+     "c_given_own_d": {
+      "per_seed": {
+       "0": null,
+       "1": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 0
+     },
+     "copies_opp_last": {
+      "per_seed": {
+       "0": null,
+       "1": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 0
+     },
+     "n_episodes": 0,
+     "n_seeds": 0,
+     "rounds_in_punishment_pooled_all_steps": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0
+      },
+      "per_seed_n": {
+       "0": 162,
+       "1": 216
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 2,
+      "n_episodes": 42
+     }
+    },
+    "tft/inf": {
+     "rounds_in_punishment": {
+      "per_seed": {
+       "0": null,
+       "1": 0.0
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 486
+      },
+      "mean": 0.0,
+      "se": null,
+      "n_seeds": 1,
+      "n_episodes": 54
+     },
+     "opp_coop_rate": {
+      "per_seed": {
+       "0": null,
+       "1": 1.0
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 54
+      },
+      "mean": 1.0,
+      "se": null,
+      "n_seeds": 1,
+      "n_episodes": 54
+     },
+     "opp_defect_share_mean": 0.0,
+     "opp_defect_share_se": null,
+     "defect_before_last": {
+      "per_seed": {
+       "0": null,
+       "1": 0.0
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 54
+      },
+      "mean": 0.0,
+      "se": null,
+      "n_seeds": 1,
+      "n_episodes": 54
+     },
+     "c_given_own_d": {
+      "per_seed": {
+       "0": null,
+       "1": null
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 0
+      },
+      "mean": null,
+      "se": null,
+      "n_seeds": 0,
+      "n_episodes": 54
+     },
+     "copies_opp_last": {
+      "per_seed": {
+       "0": null,
+       "1": 0.9794238683127572
+      },
+      "per_seed_n": {
+       "0": 0,
+       "1": 486
+      },
+      "mean": 0.9794238683127572,
+      "se": null,
+      "n_seeds": 1,
+      "n_episodes": 54
+     },
+     "n_episodes": 54,
+     "n_seeds": 1,
+     "rounds_in_punishment_pooled_all_steps": {
+      "per_seed": {
+       "0": 0.0,
+       "1": 0.0
+      },
+      "per_seed_n": {
+       "0": 162,
+       "1": 702
+      },
+      "mean": 0.0,
+      "se": 0.0,
+      "n_seeds": 2,
+      "n_episodes": 96
+     }
+    }
+   },
+   "cells_with_no_data": [
+    "grim/inf"
+   ],
+   "largest_value_on_panel": {
+    "value": 0.012142857142857122,
+    "cell": "grim/base",
+    "statistic": "1 - opp_coop_rate"
+   },
+   "largest_rounds_in_punishment": {
+    "value": 0.0023148148148148147,
+    "cell": "tft/base",
+    "same_cell_pooled_all_steps": 0.007201646090534979
+   }
+  },
+  "D_repair_funnel": {
+   "what": "the repair path -- the only sequence of events that can tell grim apart from tit-for-tat -- counted in training traces over EVERY trained step, steps >= 5. This is a WIDER window than panels A and C (steps >= 25): the cache builds the funnel at this floor only, and it is the conservative denominator for the claim that the path is almost never walked.",
+   "window": "steps >= 5 (every trained step)",
+   "window_is_not_the_late_window": "Panels A and C use steps >= 25. Panel D uses steps >= 5. The counts here are NOT late-window counts and the headline denominator is a steps >= 5 figure.",
+   "stage_denominators": {
+    "all": "episodes in the cell; the rate is trivially 1.0 by definition and is recorded as 1.0 in every cell",
+    "f_defect_before_last": "all episodes",
+    "f_opp_retaliated": "episodes that defected before the final round",
+    "f_model_returned": "episodes in which the opponent retaliated",
+    "f_opp_forgave": "episodes in which the model returned to cooperating -- STRUCTURALLY IMPOSSIBLE under grim by definition of the opponent, so a zero there is the opponent's definition, not a fact about the policy"
+   },
+   "cells": {
+    "grim/base": {
+     "n_episodes_all": 149,
+     "window": "steps >= 5",
+     "stages": {
+      "all": {
+       "num": 149,
+       "den": 149,
+       "pooled_rate": 1.0,
+       "se": null,
+       "n_seeds": null,
+       "per_seed": null,
+       "structurally_impossible": false
+      },
+      "f_defect_before_last": {
+       "num": 14,
+       "den": 149,
+       "pooled_rate": 0.09395973154362416,
+       "se": 0.02962699912544454,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 2,
+         "den": 54,
+         "rate": 0.037037037037037035
+        },
+        "1": {
+         "num": 8,
+         "den": 59,
+         "rate": 0.13559322033898305
+        },
+        "2": {
+         "num": 4,
+         "den": 36,
+         "rate": 0.1111111111111111
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_retaliated": {
+       "num": 14,
+       "den": 14,
+       "pooled_rate": 1.0,
+       "se": 0.0,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 2,
+         "den": 2,
+         "rate": 1.0
+        },
+        "1": {
+         "num": 8,
+         "den": 8,
+         "rate": 1.0
+        },
+        "2": {
+         "num": 4,
+         "den": 4,
+         "rate": 1.0
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_model_returned": {
+       "num": 0,
+       "den": 14,
+       "pooled_rate": 0.0,
+       "se": 0.0,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 2,
+         "rate": 0.0
+        },
+        "1": {
+         "num": 0,
+         "den": 8,
+         "rate": 0.0
+        },
+        "2": {
+         "num": 0,
+         "den": 4,
+         "rate": 0.0
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_forgave": {
+       "num": 0,
+       "den": 0,
+       "pooled_rate": null,
+       "se": null,
+       "n_seeds": 0,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "1": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "2": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        }
+       },
+       "structurally_impossible": true
+      }
+     }
+    },
+    "tft/base": {
+     "n_episodes_all": 168,
+     "window": "steps >= 5",
+     "stages": {
+      "all": {
+       "num": 168,
+       "den": 168,
+       "pooled_rate": 1.0,
+       "se": null,
+       "n_seeds": null,
+       "per_seed": null,
+       "structurally_impossible": false
+      },
+      "f_defect_before_last": {
+       "num": 22,
+       "den": 168,
+       "pooled_rate": 0.13095238095238096,
+       "se": 0.03674654598700821,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 6,
+         "den": 72,
+         "rate": 0.08333333333333333
+        },
+        "1": {
+         "num": 6,
+         "den": 48,
+         "rate": 0.125
+        },
+        "2": {
+         "num": 10,
+         "den": 48,
+         "rate": 0.20833333333333334
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_retaliated": {
+       "num": 22,
+       "den": 22,
+       "pooled_rate": 1.0,
+       "se": 0.0,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 6,
+         "den": 6,
+         "rate": 1.0
+        },
+        "1": {
+         "num": 6,
+         "den": 6,
+         "rate": 1.0
+        },
+        "2": {
+         "num": 10,
+         "den": 10,
+         "rate": 1.0
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_model_returned": {
+       "num": 1,
+       "den": 22,
+       "pooled_rate": 0.045454545454545456,
+       "se": 0.03333333333333334,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 6,
+         "rate": 0.0
+        },
+        "1": {
+         "num": 0,
+         "den": 6,
+         "rate": 0.0
+        },
+        "2": {
+         "num": 1,
+         "den": 10,
+         "rate": 0.1
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_forgave": {
+       "num": 1,
+       "den": 1,
+       "pooled_rate": 1.0,
+       "se": null,
+       "n_seeds": 1,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "1": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "2": {
+         "num": 1,
+         "den": 1,
+         "rate": 1.0
+        }
+       },
+       "structurally_impossible": false
+      }
+     }
+    },
+    "grim/eg": {
+     "n_episodes_all": 132,
+     "window": "steps >= 5",
+     "stages": {
+      "all": {
+       "num": 132,
+       "den": 132,
+       "pooled_rate": 1.0,
+       "se": null,
+       "n_seeds": null,
+       "per_seed": null,
+       "structurally_impossible": false
+      },
+      "f_defect_before_last": {
+       "num": 3,
+       "den": 132,
+       "pooled_rate": 0.022727272727272728,
+       "se": 0.01206897327440123,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 2,
+         "den": 48,
+         "rate": 0.041666666666666664
+        },
+        "1": {
+         "num": 1,
+         "den": 42,
+         "rate": 0.023809523809523808
+        },
+        "2": {
+         "num": 0,
+         "den": 42,
+         "rate": 0.0
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_retaliated": {
+       "num": 3,
+       "den": 3,
+       "pooled_rate": 1.0,
+       "se": 0.0,
+       "n_seeds": 2,
+       "per_seed": {
+        "0": {
+         "num": 2,
+         "den": 2,
+         "rate": 1.0
+        },
+        "1": {
+         "num": 1,
+         "den": 1,
+         "rate": 1.0
+        },
+        "2": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_model_returned": {
+       "num": 0,
+       "den": 3,
+       "pooled_rate": 0.0,
+       "se": 0.0,
+       "n_seeds": 2,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 2,
+         "rate": 0.0
+        },
+        "1": {
+         "num": 0,
+         "den": 1,
+         "rate": 0.0
+        },
+        "2": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_forgave": {
+       "num": 0,
+       "den": 0,
+       "pooled_rate": null,
+       "se": null,
+       "n_seeds": 0,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "1": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "2": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        }
+       },
+       "structurally_impossible": true
+      }
+     }
+    },
+    "tft/eg": {
+     "n_episodes_all": 167,
+     "window": "steps >= 5",
+     "stages": {
+      "all": {
+       "num": 167,
+       "den": 167,
+       "pooled_rate": 1.0,
+       "se": null,
+       "n_seeds": null,
+       "per_seed": null,
+       "structurally_impossible": false
+      },
+      "f_defect_before_last": {
+       "num": 12,
+       "den": 167,
+       "pooled_rate": 0.0718562874251497,
+       "se": 0.020050601621759114,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 5,
+         "den": 53,
+         "rate": 0.09433962264150944
+        },
+        "1": {
+         "num": 5,
+         "den": 54,
+         "rate": 0.09259259259259259
+        },
+        "2": {
+         "num": 2,
+         "den": 60,
+         "rate": 0.03333333333333333
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_retaliated": {
+       "num": 12,
+       "den": 12,
+       "pooled_rate": 1.0,
+       "se": 0.0,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 5,
+         "den": 5,
+         "rate": 1.0
+        },
+        "1": {
+         "num": 5,
+         "den": 5,
+         "rate": 1.0
+        },
+        "2": {
+         "num": 2,
+         "den": 2,
+         "rate": 1.0
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_model_returned": {
+       "num": 0,
+       "den": 12,
+       "pooled_rate": 0.0,
+       "se": 0.0,
+       "n_seeds": 3,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 5,
+         "rate": 0.0
+        },
+        "1": {
+         "num": 0,
+         "den": 5,
+         "rate": 0.0
+        },
+        "2": {
+         "num": 0,
+         "den": 2,
+         "rate": 0.0
+        }
+       },
+       "structurally_impossible": false
+      },
+      "f_opp_forgave": {
+       "num": 0,
+       "den": 0,
+       "pooled_rate": null,
+       "se": null,
+       "n_seeds": 0,
+       "per_seed": {
+        "0": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "1": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        },
+        "2": {
+         "num": 0,
+         "den": 0,
+         "rate": null
+        }
+       },
+       "structurally_impossible": false
+      }
+     }
+    }
+   },
+   "late_window_check": {
+    "_what": "the same four cells restricted to steps >= 25, the window panels A and C use. The cache builds the funnel only at steps >= 5, so stages 3-5 are not available here; stage 2 is a plain per-episode boolean and is recovered exactly from pooled_late.",
+    "window": "steps >= 25",
+    "per_cell": {
+     "grim/base": {
+      "n_episodes": 77,
+      "f_defect_before_last_num": 7
+     },
+     "tft/base": {
+      "n_episodes": 96,
+      "f_defect_before_last_num": 9
+     },
+     "grim/eg": {
+      "n_episodes": 60,
+      "f_defect_before_last_num": 0
+     },
+     "tft/eg": {
+      "n_episodes": 95,
+      "f_defect_before_last_num": 2
+     }
+    },
+    "n_episodes_all_four_cells": 328,
+    "f_defect_before_last_num_all_four_cells": 18,
+    "completions_upper_bound": 1,
+    "why_an_upper_bound": "steps >= 25 is a subset of steps >= 5, so the late-window completion count cannot exceed the 1 completion(s) the panel draws. The claim therefore holds in both windows."
+   },
+   "the_whole_signal": {
+    "cell": "tft/base",
+    "train_seed": [
+     "2"
+    ],
+    "window": "steps >= 5",
+    "f_opp_forgave": {
+     "per_seed": {
+      "0": {
+       "num": 0,
+       "den": 0,
+       "rate": null
+      },
+      "1": {
+       "num": 0,
+       "den": 0,
+       "rate": null
+      },
+      "2": {
+       "num": 1,
+       "den": 1,
+       "rate": 1.0
+      }
+     },
+     "num": 1,
+     "den": 1,
+     "pooled_rate": 1.0,
+     "mean_of_seed_rates": 1.0,
+     "se": null,
+     "n_seeds": 1
+    },
+    "episodes_that_completed_the_repair_path": 1,
+    "episodes_across_all_four_base_and_eg_cells": 616
+   }
+  }
+ }
+}

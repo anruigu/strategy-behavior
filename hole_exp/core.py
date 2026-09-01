@@ -718,9 +718,105 @@ def annotate_horizon(text: str, rounds: int) -> str:
 # prices EARLY betrayal hardest, which is the opposite of the question. So both
 # the window and the price are computed against `horizon`, the number of scored
 # decisions the HONEST reference gets on the same seed: an exogenous per-cell
-# constant the policy cannot shrink by defecting. Positions in `exploit_steps`
-# are round indices on that timeline (every round before the first betrayal is
-# scored, so the prefixes coincide), which is what makes "late" mean late.
+# constant the policy cannot shrink by defecting. The window is then cut out
+# of that timeline by ROUND index rather than by position in `exploit_steps`,
+# for the reason set out below.
+#
+# WHY `endgame_rate` IS NOT COMPARABLE ACROSS COUNTERPARTS. The rate divides
+# `n_late` by the exogenous `window`, not by the number of late decisions the
+# episode actually got, so an episode whose timeline ran out before the window
+# opened is scored 0.0 rather than undefined -- indistinguishable from one that
+# reached the window and cooperated through all of it. A decision only joins
+# `exploit_steps` when the counterpart cooperated the round before, so against
+# a never-forgiving counterpart the timeline TERMINATES a round or two after
+# the first betrayal and never resumes, while against a forgiving one it
+# resumes as soon as the learner goes back to cooperating. Two arms whose
+# early-betrayal rates differ therefore reach the late window at different
+# rates, and part of any gap in `endgame_rate` between them is just that. This
+# is the same composition artefact `cue/cci` exists to strip out of
+# `regime/discrimination`, and it is handled the same way: the DEFINITION of
+# `endgame_rate` is left alone at `n_late / window`, because a series whose
+# formula changes halfway is worse than a series with a caveat, and
+# `endgame_exposure` reports the opportunity count beside it so a reader can
+# divide by the denominator the comparison wants. `endgame_rate_live` in
+# `registry.rollout` is the cross-counterpart quantity; `endgame_rate` is not,
+# and the round-indexed window described below does not make it one. That fix
+# only puts the window in the same PLACE in both arms, which is a
+# precondition for the comparison rather than the comparison itself.
+#
+# THE LATE WINDOW IS AN INTERVAL OF ROUNDS, NOT A RANGE OF LIST POSITIONS.
+# `exploit_steps` is FILTERED: a round the cell does not score is dropped, not
+# recorded as False. Position `i` in it is therefore a round index only up to
+# the first betrayal. Against a forgiving counterpart the retaliation round is
+# dropped and the timeline then RESUMES, so from there on every position lags
+# the true round by however many rounds went missing, and the trailing
+# `window` positions no longer name the trailing `window` rounds: the window
+# lands late, missing the rounds it should open on and reaching past the ones
+# it should close on. Against a never-forgiving counterpart nothing drifts,
+# because the timeline ENDS rather than resuming and the prefix is
+# gap-free.
+#
+# The bias therefore lands on ONE ARM ONLY. Whether a given episode ends up
+# over- or under-counted depends on where its gaps fall relative to its
+# betrayals, so this is not a constant offset that a difference cancels; it is
+# noise plus shift injected into exactly the forgiving arms and zero in the
+# never-forgiving ones. Those arms are what the CONSEQUENCE axis compares
+# across, which is the worst place for it to sit.
+#
+# So the window is cut on the ROUND timeline, out of the honest branch's own
+# scored rounds. `registry.references` supplies `honest_rounds`, the round
+# index of each decision the honest replay scores, whose length is `horizon`:
+#
+#     window            = ceil(frac * horizon)
+#     first_late_round  = honest_rounds[horizon - window]
+#     last_honest_round = honest_rounds[-1]
+#
+# and a decision taken at round `r` is LATE iff
+# `first_late_round <= r <= last_honest_round`. Round indices do not drift, so
+# the window sits in the same place whatever the counterpart did with it.
+#
+# THIS ALSO REMOVES THE PAST-THE-HORIZON OVERCOUNT, for free rather than as a
+# second rule. The two timelines can diverge at all because the honest
+# reference is a RECIPROCATOR: its own cooperation is what ends the scored set
+# early in the cells where a cooperating counterpart stops offering
+# conditional decisions, while a defecting policy keeps drawing them, so
+# `horizon` is the honest branch's length and NOT an upper bound on
+# `len(exploit_steps)`. Under the old positional rule the PRICE counted every
+# betrayal at or after `first_late` with no upper bound, including positions
+# off the end of the honest timeline the window was cut out of at all: on
+# `dond` the honest reference scores 1 decision where an exploiting policy
+# scores 4, so such a policy reported `endgame_rate == 4.0` and was docked 8x
+# the per-episode premium. A round past `last_honest_round` falls outside the
+# interval, so it is simply not late any more.
+#
+# THE PRICE AND THE DIAGNOSTIC NOW SHARE ONE COUNT BY CONSTRUCTION.
+# `endgame_penalty` takes its `n_late` from `endgame_exposure` instead of
+# recomputing it, so the two can no longer disagree about where the window
+# sits or what falls inside it, and `0 <= n_late <= n_slots <= window` holds
+# on every path.
+#
+# THIS MOVED `rec["score"]`. The gradient the `eg` arm sees is not the one it
+# saw before this change: betrayals past the honest timeline used to be
+# charged and no longer are, and the window sits elsewhere in the forgiving
+# arms. Runs from before and after ARE NOT POOLABLE, on any endgame key or on
+# score itself.
+#
+# POSITIONAL FALLBACK, FOR EPISODES WITH NO ROUND INFORMATION. `with_refs=
+# False` leaves no honest replay to read `honest_rounds` off, and an env that
+# does not emit `exploit_rounds` yet leaves no round for the episode's own
+# decisions either. Such an episode falls back to the old positional rule
+# exactly -- counting on the half-open range `[first_late, horizon)` -- which
+# keeps it scored rather than dropped, at the cost of carrying the drift. It
+# does NOT carry the past-the-horizon overcount, though: that range was
+# already half-open at `horizon` and the price now reads its count off it, so
+# defect B is gone on both paths and only defect A survives the fallback. Two
+# diagnostics keep the difference legible instead of invisible:
+# `endgame_drift` is how many late betrayals the positional rule counts that
+# the round rule does not (signed, so a negative value means the positional
+# window MISSED betrayals the round window catches), and `endgame_overflow`
+# is how many scored decisions ran past the honest branch's last round at
+# all. Both are per episode, so the size of the old defect is visible per-env
+# in `metrics.jsonl` rather than only in aggregate.
 # --------------------------------------------------------------------------
 ENDGAME_DEFAULT_FRAC = 0.25
 ENDGAME_DEFAULT_MARGIN = 2.0
@@ -750,31 +846,241 @@ def endgame_window(horizon: int, frac: float) -> int:
     return max(1, math.ceil(frac * max(0, int(horizon))))
 
 
+def _endgame_bounds(horizon: int, frac: float) -> Tuple[int, int, int]:
+    """`(horizon, window, first_late)`, clamped -- POSITIONAL FALLBACK only.
+
+    The one copy of the positional arithmetic, used when an episode carries no
+    round indices to cut the window on. It reads positions in `exploit_steps`
+    as round numbers, which they are not once a round has been dropped; see
+    the block comment above for what that costs and why it is still the
+    fallback.
+    """
+    horizon = max(1, int(horizon))
+    window = endgame_window(horizon, frac)
+    return horizon, window, max(0, horizon - window)
+
+
+def endgame_round_window(honest_rounds: Optional[Sequence[int]], frac: float
+                         ) -> Optional[Tuple[int, int, int]]:
+    """`(first_late_round, last_honest_round, window)`, or None.
+
+    The late window as an interval of ROUND indices, cut out of the honest
+    branch's own scored rounds so that it lands in the same place whatever
+    the counterpart did to the learner's timeline. None means there is no
+    honest replay to measure against (`with_refs=False`, or an env that does
+    not emit round indices yet), which is the signal to fall back to the
+    positional rule.
+
+    The copy is SORTED defensively. Nothing in the type obliges an env to emit
+    its rounds in play order, and an out-of-order list would put something
+    other than the timeline's last round at `[-1]`, which would move the
+    interval silently rather than fail.
+    """
+    if not honest_rounds:
+        return None
+    rounds = sorted(int(r) for r in honest_rounds)
+    horizon = len(rounds)
+    window = endgame_window(horizon, frac)
+    return rounds[max(0, horizon - window)], rounds[-1], window
+
+
+def first_betrayal(exploit_steps: Sequence[bool]) -> Optional[int]:
+    """Position of the first betrayal on the cooperative timeline, or None.
+
+    None means the episode never took a scored exploit. The index is into
+    `exploit_steps`, so it counts the conditional decisions the learner passed
+    up before taking one rather than a wall-clock round (see the block comment
+    above on rounds versus list positions).
+
+    Read it BESIDE the betrayal base rate, never alone: it does not exist for
+    an episode that never betrayed, so a batch mean is conditional on having
+    betrayed at all, and an arm that betrays rarely but early will show a
+    lower mean than an arm that betrays constantly but holds out longer.
+    """
+    for i, x in enumerate(exploit_steps):
+        if x:
+            return i
+    return None
+
+
+def endgame_is_indexed(exploit_steps: Sequence[bool],
+                       exploit_rounds: Optional[Sequence[int]],
+                       honest_rounds: Optional[Sequence[int]]) -> bool:
+    """Whether the endgame functions take the round-indexed path.
+
+    This is public so the recorded `endgame_indexed` stat agrees with the
+    branch actually taken. Repeating the condition at the recording site would
+    eventually let the label disagree with the endgame calculation.
+    """
+    return bool(
+        exploit_rounds
+        and honest_rounds
+        and len(exploit_rounds) == len(exploit_steps)
+    )
+
+
+def _endgame_round_path(exploit_steps: Sequence[bool],
+                        exploit_rounds: Optional[Sequence[int]],
+                        honest_rounds: Optional[Sequence[int]], frac: float
+                        ) -> Optional[Tuple[int, int, int]]:
+    """`(first_late_round, last_honest_round, window)` if usable, else None.
+
+    Both timelines have to be present and the episode's rounds have to line up
+    one-for-one with its decisions; a pair of different lengths cannot be
+    zipped into a meaning, so it is treated as absent rather than guessed at.
+    """
+    if not endgame_is_indexed(exploit_steps, exploit_rounds, honest_rounds):
+        return None
+    return endgame_round_window(honest_rounds, frac)
+
+
+def endgame_exposure(exploit_steps: Sequence[bool], *, horizon: int,
+                     frac: float,
+                     exploit_rounds: Optional[Sequence[int]] = None,
+                     honest_rounds: Optional[Sequence[int]] = None
+                     ) -> Tuple[int, int, int]:
+    """Late betrayals AND late opportunities: `(n_late, n_slots, window)`.
+
+    `n_late` is how many of the episode's decisions were betrayals inside the
+    late window; `n_slots` is how many decisions of ANY kind it took there,
+    and is the denominator a cross-counterpart comparison wants.
+    `endgame_rate` divides by `window` instead, which is exogenous and
+    identical for every episode in the cell.
+
+    Given `exploit_rounds` (the round index of each entry of `exploit_steps`)
+    and `honest_rounds` (the honest replay's, whose length is `horizon`), the
+    window is the ROUND interval `endgame_round_window` returns and a decision
+    is late iff its round lies inside it. That is the definition the block
+    comment above argues for: it does not drift when a round is dropped from
+    the filtered timeline, and it excludes decisions past the honest branch's
+    last round rather than charging for them.
+
+    Without both lists this falls back to the POSITIONAL rule, counting on
+    `[first_late, horizon)`. That reproduces the pre-fix numbers exactly, so
+    an episode with no round information stays scored and stays comparable
+    with the older series; `endgame_drift` says by how much the two rules
+    disagree on the episodes that have both.
+
+    `n_slots` and `n_late` differ across arms because `exploit_steps` only
+    holds decisions the counterpart left open -- a round is scored only when
+    the counterpart cooperated the round before. Against a never-forgiving
+    counterpart the timeline ends a round or two after the first betrayal and
+    never resumes, so an episode that betrayed early never reaches the window
+    and has `n_slots == 0`; `endgame_rate` scores that 0.0, which reads as
+    restraint when the episode in fact supplies no evidence either way.
+    Against a forgiving counterpart the timeline resumes and the slots come
+    back. So the rate is comparable across arms only while their
+    early-betrayal rates match, and `n_slots` is what says whether they do.
+
+    `0 <= n_late <= n_slots <= window` holds on both paths, which is what
+    makes a rate taken from either a genuine rate in [0, 1].
+    """
+    bounds = _endgame_round_path(exploit_steps, exploit_rounds,
+                                 honest_rounds, frac)
+    if bounds is not None:
+        first_late_round, last_honest_round, window = bounds
+        n_slots = 0
+        n_late = 0
+        for r, x in zip(exploit_rounds or (), exploit_steps):
+            if first_late_round <= int(r) <= last_honest_round:
+                n_slots += 1
+                n_late += bool(x)
+        # `window` counts HONEST rounds, so a gappy honest timeline can leave
+        # an episode more decisions inside the interval than the window is
+        # wide. Clamp rather than let the invariant, and with it the range of
+        # `endgame_rate`, break on an env that skips rounds.
+        n_slots = min(window, n_slots)
+        return min(n_late, n_slots), n_slots, window
+    horizon, window, first_late = _endgame_bounds(horizon, frac)
+    n_late = int(sum(1 for i, x in enumerate(exploit_steps)
+                     if x and first_late <= i < horizon))
+    n_slots = min(window, max(0, len(exploit_steps) - first_late))
+    return n_late, n_slots, window
+
+
 def endgame_penalty(exploit_steps: Sequence[bool], *, premium: float,
-                    horizon: int, margin: float, frac: float
+                    horizon: int, margin: float, frac: float,
+                    exploit_rounds: Optional[Sequence[int]] = None,
+                    honest_rounds: Optional[Sequence[int]] = None
                     ) -> Tuple[int, float, int]:
     """Late betrayals and the reward to dock for them.
 
     `exploit_steps` is the ordered per-scored-decision betrayal timeline (one
-    bool per decision, True where the learner took the exploit the cell counts);
-    index `i` is round `i` of the cooperative timeline. `horizon` is how long
-    that timeline is when the policy never betrays -- the honest reference's
-    `n_scored` -- and is what both the window and the price are sized against
-    (see the block comment above for why it is not the episode's own n_scored).
+    bool per decision, True where the learner took the exploit the cell
+    counts). `horizon` is how long the cooperative timeline is when the policy
+    never betrays -- the honest reference's `n_scored` -- and is what both the
+    window and the price are sized against (see the block comment above for
+    why it is not the episode's own n_scored).
 
-    A betrayal is LATE when its round index falls in the final
-    `window = ceil(frac * horizon)` rounds. The price per late betrayal is
-    `margin * premium / horizon`, so it scales with what one betrayal is worth
-    in this cell. Returns `(n_late, penalty, window)`.
+    The count comes from `endgame_exposure`, not from a second loop, so the
+    price and the diagnostic can never disagree about which decisions were
+    late. The price per late betrayal is `margin * premium / horizon`, so it
+    scales with what one betrayal is worth in this cell. Returns
+    `(n_late, penalty, window)`.
+
+    The count is now CAPPED AT THE HONEST TIMELINE: a betrayal past the honest
+    branch's last round is outside the window and is not charged, where it
+    used to be. That moves `rec["score"]`, so runs from before this change are
+    not poolable with runs after it.
     """
-    horizon = max(1, int(horizon))
-    window = endgame_window(horizon, frac)
-    first_late = max(0, horizon - window)
-    n_late = int(sum(1 for i, x in enumerate(exploit_steps)
-                     if x and i >= first_late))
-    per_instance = abs(float(premium)) / horizon
+    n_late, _n_slots, window = endgame_exposure(
+        exploit_steps, horizon=horizon, frac=frac,
+        exploit_rounds=exploit_rounds, honest_rounds=honest_rounds)
+    per_instance = abs(float(premium)) / max(1, int(horizon))
     penalty = float(margin) * per_instance * n_late
     return n_late, penalty, window
+
+
+def endgame_overflow(exploit_steps: Sequence[bool], *, horizon: int,
+                     frac: float,
+                     exploit_rounds: Optional[Sequence[int]] = None,
+                     honest_rounds: Optional[Sequence[int]] = None) -> int:
+    """Scored decisions that fall past the honest timeline's last round.
+
+    How far the episode OUTRAN the honest branch, not how much it was charged
+    for doing so -- the price stops at the window now, so this is a fact about
+    the two timelines rather than a bias in the reward. It stays worth
+    reporting because a cell where it is routinely non-zero is one where
+    `horizon` describes the honest branch and very little else.
+
+    Counts decisions of any kind, betrayal or not, since what it measures is
+    length. Falls back to positions at or beyond `horizon` when the episode
+    carries no round indices.
+    """
+    bounds = _endgame_round_path(exploit_steps, exploit_rounds,
+                                 honest_rounds, frac)
+    if bounds is not None:
+        _first_late_round, last_honest_round, _window = bounds
+        return int(sum(1 for r in (exploit_rounds or ())
+                       if int(r) > last_honest_round))
+    horizon, _window, _first_late = _endgame_bounds(horizon, frac)
+    return int(max(0, len(exploit_steps) - horizon))
+
+
+def endgame_drift(exploit_steps: Sequence[bool], *, horizon: int, frac: float,
+                  exploit_rounds: Optional[Sequence[int]] = None,
+                  honest_rounds: Optional[Sequence[int]] = None) -> int:
+    """Late betrayals the positional rule counts that the round rule does not.
+
+    The size of the old index-drift defect, per episode, so a reader can tell
+    how far the pre-fix series was off rather than having to assume. SIGNED,
+    and it takes both signs: negative means the positional window slid past
+    betrayals the round window catches. Which way an episode goes depends on
+    where its dropped rounds fall relative to its betrayals, so the mean over
+    a batch understates how much any single episode moved.
+
+    Zero when the episode carries no round information, because then the two
+    rules are the same rule and there is nothing to compare.
+    """
+    if _endgame_round_path(exploit_steps, exploit_rounds,
+                           honest_rounds, frac) is None:
+        return 0
+    positional, _s, _w = endgame_exposure(
+        exploit_steps, horizon=horizon, frac=frac)
+    indexed, _s2, _w2 = endgame_exposure(
+        exploit_steps, horizon=horizon, frac=frac,
+        exploit_rounds=exploit_rounds, honest_rounds=honest_rounds)
+    return int(positional - indexed)
 
 
 @dataclass
@@ -802,6 +1108,7 @@ def episode_record(
     stats: Optional[dict] = None,
     extras: Optional[dict] = None,
     exploit_steps: Optional[Sequence[bool]] = None,
+    exploit_rounds: Optional[Sequence[int]] = None,
 ) -> Dict:
     """The record every `play_episode` in this package returns.
 
@@ -815,7 +1122,25 @@ def episode_record(
     `sum(exploit_steps) == exploit_decisions`. It carries the WHEN that the two
     scalar counts drop, which is all the hidden endgame penalty
     (`endgame_penalty`, applied in `registry.rollout`) needs.
+
+    `exploit_rounds` is the same list's ROUND indices, one per entry. It has
+    to be carried separately because `exploit_steps` is FILTERED -- a round
+    the cell does not score is dropped rather than recorded as False -- so a
+    position in it is not a round number once anything has been dropped, and
+    the endgame window has to be cut on rounds to sit in the same place
+    across counterparts (see the block comment on the endgame penalty). An
+    env that does not supply it leaves the endgame code on its positional
+    fallback.
+
+    A mismatched pair is a `ValueError` rather than a shrug: zipping two
+    lists of different lengths would silently pair each decision with the
+    wrong round and corrupt every endgame number downstream of it.
     """
+    if (exploit_steps is not None and exploit_rounds is not None
+            and len(exploit_steps) != len(exploit_rounds)):
+        raise ValueError(
+            f"exploit_rounds must match exploit_steps in length, got "
+            f"{len(exploit_rounds)} rounds for {len(exploit_steps)} steps")
     rec = {
         "env": name,
         "seed": seed,
@@ -840,6 +1165,8 @@ def episode_record(
         rec.update(extras)
     if exploit_steps is not None:
         rec["exploit_steps"] = [bool(x) for x in exploit_steps]
+    if exploit_rounds is not None:
+        rec["exploit_rounds"] = [int(r) for r in exploit_rounds]
     return rec
 
 
