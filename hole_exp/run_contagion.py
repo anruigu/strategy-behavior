@@ -127,6 +127,20 @@ FOLLOWERS: Tuple[str, ...] = FOLLOWERS3
 LEADERS = ("honest", "exploit")
 
 
+# Onset SCHEDULE, as a fraction of the cell rather than a fixed round number.
+# The cells run 5 to 12 rounds, so a literal "onset 5" would be the midpoint of
+# `nat_seam_ledger` and the last round but one of `nat_meridian_convoy` -- the
+# same integer would mean a different experiment in each cell and the arm could
+# not be pooled. Scaling keeps the pre/post SPLIT comparable across cells and
+# guarantees at least two rounds after onset everywhere.
+ONSETS = {"early": 0.0, "mid": 1 / 3, "late": 2 / 3}
+
+
+def onset_round(game, name: str) -> int:
+    """The round the scripted leader switches to the exploit line."""
+    return int(game.ROUNDS * ONSETS[name]) + 1
+
+
 def live_of(game) -> List[int]:
     """The seats an ask() actually reaches.
 
@@ -178,21 +192,33 @@ def cells(a) -> List[Dict]:
                                 "seats": seating(row, live)})
             else:
                 for lead in LEADERS:
+                    # Onset only means anything for a leader that exploits: an
+                    # honest leader plays the same line all episode, so
+                    # sampling it three times over would spend a third of the
+                    # arm re-measuring one control.
+                    onsets = a.onsets if lead == "exploit" else ["early"]
                     for f in FOLLOWERS:
-                        # The scripted leader takes the FIRST live seat, which
-                        # is seat 0 everywhere except a cell whose seat 0 the
-                        # engine drives.
-                        out.append({"game": g, "design": "seed", "seed": s,
-                                    "latin": -1, "leader": lead,
-                                    "follower": f,
-                                    "seats": {p: ("scripted" if p == lead_seat
-                                                  else f) for p in live}})
+                        for on in onsets:
+                            # The scripted leader takes the FIRST live seat,
+                            # which is seat 0 everywhere except a cell whose
+                            # seat 0 the engine drives.
+                            out.append({"game": g, "design": "seed", "seed": s,
+                                        "latin": -1, "leader": lead,
+                                        "follower": f, "onset": on,
+                                        "onset_round": onset_round(
+                                            RG.BY_NAME[g], on),
+                                        "seats": {p: ("scripted" if p == lead_seat
+                                                      else f) for p in live}})
     return out
 
 
 def key(r: Dict) -> Tuple:
+    # `onset` defaults to "early" so rows written before the onset arm existed
+    # -- which were all onset 1, i.e. early -- match the jobs that reproduce
+    # them and are not resampled.
     return (r["game"], r["design"], r["seed"], r["latin"], r["leader"],
-            r.get("follower", ""), a_condition(r), r.get("arm", "hole"))
+            r.get("follower", ""), a_condition(r), r.get("arm", "hole"),
+            r.get("onset", "early"))
 
 
 def a_condition(r: Dict) -> str:
@@ -268,6 +294,8 @@ def row_of(ep, tape, game, cell: Dict, models: Dict[int, str]) -> Dict:
     return {
         **{k: cell[k] for k in ("game", "design", "seed", "latin", "leader")},
         **({"follower": cell["follower"]} if "follower" in cell else {}),
+        **({"onset": cell["onset"], "onset_round": cell["onset_round"]}
+           if "onset" in cell else {}),
         "condition": "neutral", "arm": "hole",
         "n_players": n, "hole_type": game.HOLE_TYPE,
         "hard_kinds": list(game.HARD),
@@ -304,6 +332,14 @@ def main() -> int:
                     help="3 = the frozen claude/gpt/gemini Latin square that "
                          "cg1 was sampled against; 4 = the Youden design that "
                          "adds grok")
+    ap.add_argument("--onsets", nargs="+", default=["early"],
+                    choices=["early", "mid", "late"],
+                    help="rounds at which the scripted leader switches to the "
+                         "exploit line, as a fraction of the cell. `early` is "
+                         "round 1 and reproduces the original always-on "
+                         "leader; adding `mid`/`late` decorrelates round "
+                         "number from time-since-onset and buys a real "
+                         "pre-window inside each episode.")
     ap.add_argument("--native9", action="store_true",
                     help="sample the 2026-09-01 collaborative-hole corpus, "
                          "gated by results/contagion_screen_native9.json")
@@ -377,10 +413,32 @@ def main() -> int:
     key_ = XP.load_key()
     price = XP.pricing(key_)
     from openai import OpenAI
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key_,
-                    timeout=180.0, max_retries=0)
-    actors = {m: XP.Actor(client, XP.MODELS[m], a.temperature, a.max_tokens)
-              for m in set(FOLLOWERS) | set(sum(LATIN, ()))}
+    # ONE CLIENT PER MODEL, VIA `XP.endpoint_for`, NOT ONE SHARED OPENROUTER
+    # CLIENT. This file used to build the OpenRouter client itself and pass
+    # `XP.MODELS[m]`, which silently bypassed `run_referee_crossplay.DIRECT`
+    # -- the table that routes `claude` to api.anthropic.com. The cost of that
+    # bypass was not subtle: in the 2026-09-01 `nat_cg1` seed arm, 716 of
+    # claude's 2016 turns came back `finish_reason=content_filter` from
+    # OpenRouter's moderation layer (432 of them in `nat_sealed_ante` alone),
+    # against 0 for the other three models. `act_full` deliberately does not
+    # retry a moderation refusal, so every one of those turns fell back to the
+    # HONEST move and deflated claude's rates by a third.
+    #
+    # The failure reads as a disposition result and is not one, which is the
+    # reason to route round it rather than caveat it. `DIRECT` also carries
+    # the per-endpoint `temperature` flag, since claude-opus-5 rejects the
+    # field outright.
+    models_needed = set(FOLLOWERS) | set(sum(LATIN, ()))
+    eps = {m: XP.endpoint_for(m) for m in models_needed}
+    clients = {m: OpenAI(base_url=e.base_url, api_key=e.api_key,
+                         timeout=180.0, max_retries=0)
+               for m, e in eps.items()}
+    actors = {m: XP.Actor(clients[m], eps[m].model_id,
+                          a.temperature if eps[m].temperature else None,
+                          a.max_tokens)
+              for m in models_needed}
+    for m in sorted(models_needed):
+        print(f"[cg]   {m:8s} -> {eps[m].model_id} @ {eps[m].base_url}")
     if a.traces:
         (out / "traces").mkdir(exist_ok=True)
 
@@ -396,7 +454,11 @@ def main() -> int:
         scripted = {}
         if any(m == "scripted" for m in models.values()):
             Sc, _ = bot_for(j["game"])
-            pol = Sc(j["leader"], j["seed"])
+            # Only the native9 policies take an onset; `bot_for` hands back
+            # the referee/textarena Scripted shims for the other families and
+            # they have no such argument.
+            pol = (Sc(j["leader"], j["seed"], j["onset_round"])
+                   if "onset_round" in j else Sc(j["leader"], j["seed"]))
             scripted = {p: pol for p, m in models.items() if m == "scripted"}
         ep, tape, trace, turns = play(game, live, scripted,
                                       RG.SYSTEMS["neutral"], j["seed"], "hole")
@@ -411,6 +473,9 @@ def main() -> int:
                 (out / "traces" / f"{stem}.json").write_text(json.dumps({
                     **{k: j[k] for k in ("game", "design", "seed", "latin",
                                          "leader")},
+                    "arm": j.get("arm", "hole"),
+                    "onset": j.get("onset", "early"),
+                    "onset_round": j.get("onset_round", 1),
                     "seats": {str(p): m for p, m in models.items()},
                     "hard": list(game.HARD), "soft": list(game.SOFT),
                     "scores": {str(k): v for k, v in ep.scores.items()},

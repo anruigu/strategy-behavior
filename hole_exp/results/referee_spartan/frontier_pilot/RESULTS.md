@@ -119,6 +119,38 @@ involves the hole.
   and gain vectors for R1-R3 across all three seeds. Episode spread there is
   seed variance, not behavioural noise.
 
+## Figures
+
+`~/strategy-behavior/results/0901_frontier_pilot/`, each with the JSON of every
+number drawn beside it. `_pilot_data.py` is the shared loader, so the pooling
+rule cannot drift between them.
+
+| figure | reads |
+|---|---|
+| `fig1_exploit_by_game.png` | Exploit rate against reflection round, one panel per cell, all four models on each; panels ordered by what the hole pays. The abandonment cases read as descending curves. |
+| `fig2_benefit_vs_rate.png` | Benefit magnitude against exploit rate as one pooled scatter, every (cell, model, round) a point; marker grows with the round, dashed rule per cell at `hole_gain`. |
+| `fig3_rate_vs_gain_by_model.png` | Same space faceted by MODEL, y normalised to the share of the hole's value captured so four cells can share a panel. |
+
+All three carry the round dimension, by three different means. fig1 puts round
+on the x-axis, because only one quantity is plotted there. figs 2 and 3 cannot:
+rate and gain are different quantities on different scales, and putting both
+against round means two y-axes on one panel, whose crossing point is an
+artefact of the scales chosen. fig2 scatters the rounds as points and grows the
+marker with the round; fig3 joins them into a PATH through (rate, gain) space,
+hollow marker R0, filled R3, arrowhead on the last leg.
+
+COLOUR MEANS THE MODEL. Reference-palette slots 1-4 are claude / gemini / gpt /
+grok in fig1 and fig2 and nowhere else. fig3 facets BY model, so its colour
+dimension is the cell, and it takes slots 5-8 rather than reusing 1-4 -- a hue
+must not change what it refers to between two figures a reader sees side by
+side. Shape is redundant with both, and every series is direct-labelled.
+
+Where series coincide exactly, fig1 separates them by a hairline (+-0.014,
+one-sided at the 0 and 1 bounds) rather than letting the topmost hide the rest:
+on `seven_seal` all four models sit at 1.00 from R1 and three would be
+invisible. fig2 cannot do that -- it is a pooled scatter -- so it states the
+count instead: 30 of its 64 points are stacked at the origin.
+
 ## Provenance
 
 `quarantine/` holds 48 claude rows and 12 playbooks from the first attempt at

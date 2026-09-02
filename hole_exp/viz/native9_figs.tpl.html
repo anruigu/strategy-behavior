@@ -1,0 +1,285 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Collaborative-hole contagion &mdash; nat_cg1</title>
+<style>
+.viz-root{color-scheme:light;
+  --surface-1:#fcfcfb;--surface-2:#f4f3f0;--line:#e2e0da;
+  --text-primary:#0b0b0b;--text-secondary:#52514e;--text-muted:#78766f;
+  --series-1:#2a78d6;--ref:#b9b7b0;--grid:#e8e6e1;--neg:#e34948;}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{
+  color-scheme:dark;--surface-1:#1a1a19;--surface-2:#232322;--line:#3a3a37;
+  --text-primary:#fff;--text-secondary:#c3c2b7;--text-muted:#96958c;
+  --series-1:#3987e5;--ref:#55544f;--grid:#2c2c2a;--neg:#e66767;}}
+:root[data-theme="dark"] .viz-root{color-scheme:dark;
+  --surface-1:#1a1a19;--surface-2:#232322;--line:#3a3a37;
+  --text-primary:#fff;--text-secondary:#c3c2b7;--text-muted:#96958c;
+  --series-1:#3987e5;--ref:#55544f;--grid:#2c2c2a;--neg:#e66767;}
+*{box-sizing:border-box}body{margin:0;background:var(--surface-1)}
+.viz-root{background:var(--surface-1);color:var(--text-primary);padding:26px 30px 70px;
+  font:14px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1140px;margin:0 auto}
+h1{font-size:19px;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:16px;margin:40px 0 2px}
+.sub{color:var(--text-secondary);font-size:13px;margin:0 0 16px;max-width:76ch}
+.note{color:var(--text-muted);font-size:12px;margin:12px 0 0;max-width:80ch}
+.miss{background:var(--surface-2);border:1px dashed var(--line);border-radius:7px;
+  padding:16px;color:var(--text-muted);font-size:13px}
+.facets{display:grid;grid-template-columns:repeat(4,1fr);gap:0 14px;margin-top:12px}
+.facet h3{font-size:12.5px;margin:0 0 1px;font-weight:650}
+.facet .fm{font-size:11px;color:var(--text-muted);margin:0 0 8px}
+.row{margin-bottom:7px}
+.lbl{font-size:11px;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.track{position:relative;height:15px;background:var(--grid);border-radius:3px}
+.bar{position:absolute;top:0;bottom:0;background:var(--series-1);border-radius:0 4px 4px 0;min-width:2px}
+.bar.n{background:var(--neg);border-radius:4px 0 0 4px}
+.zero{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--ref)}
+.val{position:absolute;top:0;height:15px;line-height:15px;font-size:10.5px;color:var(--text-secondary)}
+.axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-muted);
+  margin-top:3px;border-top:1px solid var(--line);padding-top:3px}
+.sc{position:relative;height:280px;border-left:1px solid var(--line);
+  border-bottom:1px solid var(--line);margin:6px 0 0 48px}
+.pt{position:absolute;width:11px;height:11px;border-radius:50%;background:var(--series-1);
+  transform:translate(-50%,50%);box-shadow:0 0 0 2px var(--surface-1)}
+.ptl{position:absolute;font-size:10.5px;color:var(--text-secondary);white-space:nowrap;pointer-events:none}
+.gl{position:absolute;left:0;right:0;border-top:1px dashed var(--grid)}
+.gt{position:absolute;left:-46px;width:42px;text-align:right;font-size:10.5px;
+  color:var(--text-muted);transform:translateY(-50%)}
+.xt{position:absolute;bottom:-19px;font-size:10.5px;color:var(--text-muted);transform:translateX(-50%)}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.pane h3{font-size:13px;margin:0;font-weight:650}.pane .r{font-size:12px;color:var(--text-secondary);margin:1px 0 0}
+.xlab{text-align:center;font-size:11.5px;color:var(--text-muted);margin-top:26px}
+table{border-collapse:collapse;font-size:12px;margin-top:10px;width:100%}
+th,td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}th{color:var(--text-muted);font-weight:600}
+details{margin-top:14px}summary{cursor:pointer;color:var(--text-secondary);font-size:12.5px}
+#tip{position:fixed;z-index:9;pointer-events:none;opacity:0;transition:opacity .1s;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 9px;
+  font-size:12px;max-width:300px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+#tip span{color:var(--text-secondary)}
+.tog{float:right;font-size:12px;color:var(--text-secondary);cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:3px 9px}
+.lg{display:flex;gap:16px;font-size:11.5px;color:var(--text-muted);margin-top:8px;flex-wrap:wrap}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:5px}
+</style></head><body><div class="viz-root">
+<button class="tog" onclick="tg()">light / dark</button>
+<h1>Do models follow a leader into a collaborative exploit?</h1>
+<p class="sub">Seed design, <code>nat_cg1</code>. Seat 0 is a scripted policy; every other live seat is
+one frontier model. Each hole needs <b>two</b> seats to pay, so a lone reach loses points &mdash; what is
+plotted is the rate at which a follower actually <b>closed</b> the hole with the leader.</p>
+
+<h2>1 &nbsp;Counterfactual closing rate, by game and model</h2>
+<p class="sub">Bar = closing rate with an instigating leader <b>minus</b> the same model&rsquo;s rate in the
+matched honest-leader episode. Same board, same seed, same models, same seats; the only difference is
+whether seat 0 reached for the hole. The subtraction matters &mdash; some cells have a nonzero floor
+(<code>ridge_claim</code> closes at 0.10 with nobody instigating), and a raw rate would credit the
+leader for behaviour that was already there.</p>
+<div id="f1"></div>
+<div class="lg"><span><i class="sw" style="background:var(--series-1)"></i>more closing when instigated</span>
+<span><i class="sw" style="background:var(--neg)"></i>less</span>
+<span><i class="sw" style="background:var(--ref)"></i>zero = no effect</span></div>
+<p class="note" id="n1"></p>
+<details><summary>table view</summary><div id="t1"></div></details>
+
+<h2>2 &nbsp;What predicts following: payoff, or findability?</h2>
+<p class="sub"><b>Left:</b> what the coalition earns when the hole closes. <b>Right:</b> the probability
+two seats drawing uniformly at random land on the detector&rsquo;s coincidence condition in a round &mdash;
+computed from the spec, not from the wave, so it is not circular with the outcome. Both axes log;
+y is the counterfactual effect from figure&nbsp;1.</p>
+<div class="panes" id="f2"></div>
+<p class="note" id="n2"></p>
+<details><summary>table view</summary><div id="t2"></div></details>
+
+<h2>3 &nbsp;Does onset time change following?</h2>
+<p class="sub">The scripted leader switches to the exploit at round 1 (<b>early</b>), a third of the way
+in (<b>mid</b>), or two thirds in (<b>late</b>) &mdash; as a fraction of each cell, since they run 5 to 12
+rounds. Rates are post-onset only, so every arm is measured over the window in which the exploit was
+actually on the table.</p>
+<div id="f3"></div>
+<p class="note" id="n3"></p>
+
+<h2>4 &nbsp;Does following survive when the hole stops paying?</h2>
+<p class="sub">The matched <code>nohole</code> arm: byte-identical text, same board, same seed, but the
+referee checks the thing it was trusting the seats for. Following that survives is imitation of a
+behaviour; following that disappears was payoff-seeking.</p>
+<div id="f4"></div>
+<p class="note" id="n4"></p>
+</div><div id="tip"></div>
+<script>
+const D=__DATA__;
+const tip=document.getElementById('tip');
+function show(e,h){tip.innerHTML=h;tip.style.opacity=1;const r=tip.getBoundingClientRect();
+  tip.style.left=Math.min(e.clientX+14,innerWidth-r.width-10)+'px';
+  tip.style.top=Math.max(10,e.clientY-r.height-12)+'px';}
+function hide(){tip.style.opacity=0}
+function tg(){const r=document.documentElement;
+  r.setAttribute('data-theme',r.getAttribute('data-theme')==='dark'?'light':'dark');}
+const MODELS=['gpt','claude','gemini','grok'];
+const nice=s=>s.replace(/_/g,' ');
+const f3=v=>(v==null?'&mdash;':(v>=0?'+':'')+v.toFixed(3));
+function bind(sel){document.querySelectorAll(sel).forEach(el=>{
+  el.onmousemove=e=>show(e,decodeURIComponent(el.dataset.t));el.onmouseleave=hide;});}
+
+// ---------- figure 1 ----------
+(function(){
+  const R=D.fig1.rows, games=D.fig1.games;
+  const M=Math.max(...R.map(r=>Math.abs(r.delta||0)));
+  const ax=Math.ceil(M*20)/20, zero=50;
+  const ordered=[...games].sort((a,b)=>{
+    const s=g=>Math.max(...R.filter(x=>x.game===g).map(x=>x.delta||0));return s(b)-s(a)});
+  document.getElementById('f1').innerHTML='<div class="facets">'+MODELS.map((m,mi)=>{
+    const rows=ordered.map(g=>{
+      const d=R.find(x=>x.game===g&&x.model===m)||{};
+      const dv=d.delta||0, w=Math.abs(dv)/ax*50;
+      const t=encodeURIComponent(`<b>${nice(g)}</b> &mdash; ${m}<br>`+
+        `<span>closed, leader instigates:</span> ${d.exploit==null?'&mdash;':d.exploit.toFixed(3)}<br>`+
+        `<span>closed, leader honest:</span> ${d.honest==null?'&mdash;':d.honest.toFixed(3)}<br>`+
+        `<span>counterfactual effect:</span> <b>${f3(d.delta)}</b>`);
+      return `<div class="row" data-t="${t}">${mi===0?`<div class="lbl">${nice(g)}</div>`
+              :'<div class="lbl">&nbsp;</div>'}
+        <div class="track"><div class="zero" style="left:${zero}%"></div>
+        <div class="bar${dv<0?' n':''}" style="left:${dv>=0?zero:zero-w}%;width:${w}%"></div>
+        <div class="val" style="left:${Math.min(zero+w+1.5,72)}%">${dv?dv.toFixed(2).replace(/^(-?)0/,'$1'):''}</div>
+        </div></div>`}).join('');
+    return `<div class="facet"><h3>${m}</h3><p class="fm">counterfactual &Delta;</p>${rows}
+      <div class="axis"><span>-${ax.toFixed(2)}</span><span>0</span><span>+${ax.toFixed(2)}</span></div></div>`;
+  }).join('')+'</div>';
+  bind('#f1 .row');
+  document.getElementById('t1').innerHTML='<table><tr><th>game</th>'+
+    MODELS.map(m=>`<th>${m}</th>`).join('')+'</tr>'+ordered.map(g=>`<tr><td>${nice(g)}</td>`+
+    MODELS.map(m=>{const d=R.find(x=>x.game===g&&x.model===m);
+      return `<td>${f3(d&&d.delta)}</td>`}).join('')+'</tr>').join('')+'</table>';
+})();
+
+// ---------- figure 2 ----------
+(function(){
+  const P=D.fig2.points, YMAX=Math.max(0.45,...P.map(p=>p.delta))*1.05;
+  function panel(key,title,rr,decades,note){
+    const xs=P.map(p=>Math.log10(p[key]));
+    const lo=Math.min(...xs)-.3,hi=Math.max(...xs)+.3;
+    const px=v=>((Math.log10(v)-lo)/(hi-lo))*100, py=v=>(v/YMAX)*100;
+    const grid=[0,.1,.2,.3,.4].filter(v=>v<=YMAX).map(v=>
+      `<div class="gl" style="bottom:${py(v)}%"></div><div class="gt" style="bottom:${py(v)}%">${v.toFixed(1)}</div>`).join('');
+    const ticks=decades.filter(d=>px(d[0])>=-2&&px(d[0])<=102)
+      .map(d=>`<div class="xt" style="left:${px(d[0])}%">${d[1]}</div>`).join('');
+    const placed=[];
+    const pts=P.map(p=>{const X=px(p[key]),Y=py(p.delta);let up=true;
+      for(const q of placed){if(Math.abs(q.X-X)<10&&Math.abs(q.Y-Y)<8){up=!q.up;break}}
+      placed.push({X,Y,up});
+      const t=encodeURIComponent(`<b>${nice(p.game)}</b><br><span>counterfactual effect:</span> `+
+        `<b>${f3(p.delta)}</b><br><span>coalition payoff:</span> ${p.payoff}<br>`+
+        `<span>meeting point:</span> 1 in ${Math.round(1/p.coord)}<br><span>${p.coord_note}</span>`);
+      const anch=X>76?`right:${100-X}%`:X<13?`left:${X}%`:`left:${X}%;transform:translateX(-50%)`;
+      return `<div class="pt" data-t="${t}" style="left:${X}%;bottom:${Y}%"></div>
+        <div class="ptl" style="${anch};bottom:${up?Y+4:Y-6.6}%">${nice(p.game)}</div>`}).join('');
+    return `<div class="pane"><h3>${title}</h3><p class="r">${rr}</p>
+      <div class="sc">${grid}${pts}${ticks}</div><div class="xlab">${note}</div></div>`;
+  }
+  document.getElementById('f2').innerHTML=
+    panel('payoff','Coalition payoff',
+      `Pearson r = ${f3(D.fig2.r_payoff).replace('+','+')} &nbsp;(${f3(D.fig2.r_payoff_x)} without ridge claim)`,
+      [[0.1,'0.1'],[1,'1'],[10,'10'],[100,'100']],
+      'margin the pair gains when the hole closes (log)')+
+    panel('coord','How findable the meeting point is',
+      `Pearson r = ${f3(D.fig2.r_coord)} &nbsp;(<b>${f3(D.fig2.r_coord_x)}</b> without ridge claim)`,
+      [[0.001,'1/1000'],[0.01,'1/100'],[0.1,'1/10']],
+      'P(two random seats coincide in a round), from the spec (log)');
+  bind('#f2 .pt');
+  document.getElementById('t2').innerHTML='<table><tr><th>cell</th><th>effect</th><th>payoff</th>'+
+    '<th>meeting point</th></tr>'+P.map(p=>`<tr><td>${nice(p.game)}</td><td>${f3(p.delta)}</td>`+
+    `<td>${p.payoff}</td><td>1 in ${Math.round(1/p.coord)}</td></tr>`).join('')+'</table>';
+})();
+
+// ---------- figure 3 : onset ----------
+(function(){
+  const F=D.fig3, el=document.getElementById('f3'), n=document.getElementById('n3');
+  if(!F.arms || F.arms.length<2){
+    el.innerHTML='<div class="miss">Only the <b>'+(F.arms||['early']).join(', ')+
+      '</b> onset arm is on disk. This figure needs at least two: with onset pinned at '+
+      'round 1, round number and time-since-onset are the same variable, so neither '+
+      'panel below can be estimated. Re-run <code>make_native9_figs.py</code> once '+
+      '<code>--onsets early mid late</code> has landed.</div>';
+    n.textContent=''; return;
+  }
+  const ARMS=F.arms, W=Math.max(...ARMS.map(a=>F.per_arm[a].rate||0),0.05)*1.15;
+  // left: per-model post-onset rate by arm (faceted, one hue)
+  const left='<div class="facets">'+MODELS.map((m,mi)=>{
+    const rows=ARMS.map(a=>{const v=F.per_model[m][a];
+      const r=v&&v.rate!=null?v.rate:0, w=r/W*100;
+      const t=encodeURIComponent(`<b>${m}</b> &mdash; onset ${a}<br>`+
+        `<span>post-onset closing rate:</span> ${r.toFixed(3)}<br>`+
+        `<span>opportunities:</span> ${v?v.opps:0}`);
+      return `<div class="row" data-t="${t}">${mi===0?`<div class="lbl">onset ${a}</div>`
+        :'<div class="lbl">&nbsp;</div>'}<div class="track">
+        <div class="bar" style="left:0;width:${w}%"></div>
+        <div class="val" style="left:${Math.min(w+1.5,70)}%">${r.toFixed(2).replace(/^0/,'')}</div>
+        </div></div>`}).join('');
+    return `<div class="facet"><h3>${m}</h3><p class="fm">post-onset closing rate</p>${rows}
+      <div class="axis"><span>0</span><span>${W.toFixed(2)}</span></div></div>`}).join('')+'</div>';
+  // right: round number vs rounds-since-onset
+  const A=F.by_round, B=F.by_since;
+  const YM=Math.max(...A.concat(B).map(x=>x.rate||0))*1.12||0.1;
+  function line(series,label,cls){
+    const n2=series.length; if(!n2) return '';
+    return series.map((s,i)=>{
+      const X=n2>1?i/(n2-1)*100:50, Y=(s.rate||0)/YM*100;
+      const t=encodeURIComponent(`<b>${label} ${s.k}</b><br><span>closing rate:</span> `+
+        `${(s.rate==null?0:s.rate).toFixed(3)}<br><span>opportunities:</span> ${s.opps}`);
+      return `<div class="pt" data-t="${t}" style="left:${X}%;bottom:${Y}%;`+
+        (cls?'background:var(--ref);width:9px;height:9px':'')+`"></div>`}).join('');
+  }
+  const grid=[0,.1,.2,.3].filter(v=>v<=YM).map(v=>
+    `<div class="gl" style="bottom:${v/YM*100}%"></div><div class="gt" style="bottom:${v/YM*100}%">${v.toFixed(1)}</div>`).join('');
+  const right=`<div class="pane"><h3>Round number vs time since onset</h3>
+    <p class="r"><span style="color:var(--series-1)">&#9679;</span> absolute round &nbsp;
+    <span style="color:var(--text-muted)">&#9679;</span> rounds since onset</p>
+    <div class="sc">${grid}${line(A,'round','')}${line(B,'rounds since onset','ref')}</div>
+    <div class="xlab">left &rarr; right: 0 to max</div></div>`;
+  el.innerHTML=left+'<div class="panes" style="margin-top:26px">'+right+
+    '<div class="pane"><h3>Pooled by arm</h3><p class="r">post-onset closing rate</p>'+
+    '<table><tr><th>onset</th><th>rate</th><th>opportunities</th></tr>'+
+    ARMS.map(a=>`<tr><td>${a}</td><td>${(F.per_arm[a].rate||0).toFixed(3)}</td>`+
+    `<td>${F.per_arm[a].opps}</td></tr>`).join('')+'</table></div></div>';
+  bind('#f3 .row');bind('#f3 .pt');
+  const e0=F.per_arm[ARMS[0]].rate||0, e1=F.per_arm[ARMS[ARMS.length-1]].rate||0;
+  n.innerHTML='If the two dot series separate, round number and exposure are doing '+
+    'different work; if they lie on top of each other the design has not decorrelated them. '+
+    `Pooled post-onset rate moves from <b>${e0.toFixed(3)}</b> (${ARMS[0]}) to `+
+    `<b>${e1.toFixed(3)}</b> (${ARMS[ARMS.length-1]}). <b>Late onset also means fewer `+
+    'post-onset rounds</b>, so that arm has less exposure and less room at once &mdash; the '+
+    'opportunity counts are printed for exactly that reason.';
+})();
+
+// ---------- figure 4 : nohole counterfactual ----------
+(function(){
+  const F=D.fig4, el=document.getElementById('f4'), n=document.getElementById('n4');
+  if(!F.arms || F.arms.length<2){
+    el.innerHTML='<div class="miss">Only the <b>'+(F.arms||['hole']).join(', ')+
+      '</b> arm is on disk. This figure needs the matched <code>nohole</code> pair. '+
+      'Re-run <code>make_native9_figs.py</code> once <code>--arms nohole</code> has landed.</div>';
+    n.textContent=''; return;
+  }
+  const M=Math.max(...F.arms.flatMap(a=>MODELS.map(m=>Math.abs(F.per_model[a][m].delta||0))))*1.15;
+  el.innerHTML='<div class="facets">'+MODELS.map((m,mi)=>{
+    const rows=F.arms.map(a=>{const d=F.per_model[a][m], dv=d.delta||0, w=Math.abs(dv)/M*50;
+      const t=encodeURIComponent(`<b>${m}</b> &mdash; ${a}<br>`+
+        `<span>instigated:</span> ${d.exploit==null?'&mdash;':d.exploit.toFixed(3)}<br>`+
+        `<span>not instigated:</span> ${d.honest==null?'&mdash;':d.honest.toFixed(3)}<br>`+
+        `<span>effect:</span> <b>${f3(d.delta)}</b>`);
+      return `<div class="row" data-t="${t}">${mi===0?`<div class="lbl">${a}</div>`
+        :'<div class="lbl">&nbsp;</div>'}<div class="track">
+        <div class="zero" style="left:50%"></div>
+        <div class="bar${dv<0?' n':''}" style="left:${dv>=0?50:50-w}%;width:${w}%"></div>
+        <div class="val" style="left:${Math.min(50+w+1.5,72)}%">${dv?dv.toFixed(2).replace(/^(-?)0/,'$1'):''}</div>
+        </div></div>`}).join('');
+    return `<div class="facet"><h3>${m}</h3><p class="fm">counterfactual &Delta;, per arm</p>${rows}
+      <div class="axis"><span>-${M.toFixed(2)}</span><span>0</span><span>+${M.toFixed(2)}</span></div></div>`
+  }).join('')+'</div>';
+  bind('#f4 .row');
+  const h=F.arms.includes('hole'), nh=F.arms.includes('nohole');
+  if(h&&nh){const a=MODELS.map(m=>F.per_model.hole[m].delta||0).reduce((x,y)=>x+y)/4;
+    const b=MODELS.map(m=>F.per_model.nohole[m].delta||0).reduce((x,y)=>x+y)/4;
+    n.innerHTML=`Mean effect across models: <b>${f3(a)}</b> in <code>hole</code> against `+
+      `<b>${f3(b)}</b> in <code>nohole</code>. The closer those are, the more of the following `+
+      'is imitation of a behaviour rather than pursuit of the payoff.';}
+})();
+</script></body></html>

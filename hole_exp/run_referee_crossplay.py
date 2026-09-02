@@ -105,6 +105,17 @@ MODELS = {
     # change the sampling path for all four), so this wave is still a sample
     # mean; it is the obvious next improvement for a training baseline.
     "qwen": "qwen/qwen3.8-27b",
+    # The single-model tuning target (0901-single-model.md). A CHEAP FLASH
+    # TIER, deliberately: the eval-setting sweeps below vary one knob at a
+    # time over 29 cells, so the wave is re-run once per knob value and the
+    # per-token price is what decides how many values fit in a night.
+    #
+    # NOT the same family as the `gemini` key above, which is
+    # `gemini-3.1-pro-preview`. Two Google entries under names one letter
+    # apart is exactly the confusion the `grok` comment warns about, so the
+    # tier is in the key: any row, trace filename or figure legend saying
+    # `gemini-flash` is 3.7-flash and never the pro model.
+    "gemini-flash": "google/gemini-3.7-flash",
 }
 
 ENV_FILE = pathlib.Path.home() / ".research_env"
@@ -140,6 +151,22 @@ DIRECT: Dict[str, Endpoint] = {
     # for this model" -- so this endpoint sends none.
     "claude": Endpoint("https://api.anthropic.com/v1", "ANTHROPIC_API_KEY",
                        "claude-opus-5", False),
+    # EVERY Google model is 404 on this account's OpenRouter key: "No
+    # endpoints available matching your guardrail restrictions and data
+    # policy". That is an account-level privacy setting, not a bad slug --
+    # `google/gemini-3.7-flash` is in the price list, and gpt/grok/qwen answer
+    # the same probe fine. So the same reasoning that routes claude direct
+    # applies here: the block is a property of the roster, not a flag a caller
+    # can remember to pass, and a model that answers nothing scores `invalid`
+    # and falls back to the HONEST move -- which would read as a model that
+    # declines to exploit.
+    #
+    # Google ships an OpenAI-compatible surface, so `Actor` needs no changes;
+    # the ids there are un-namespaced (`gemini-3.7-flash`, not
+    # `google/gemini-3.7-flash`).
+    "gemini-flash": Endpoint(
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "GEMINI_API_KEY", "gemini-3.7-flash", True),
 }
 
 
@@ -225,6 +252,35 @@ def _reasoning_of(msg) -> Dict:
                 dict.fromkeys(kinds + ([kind] if kind else []))) or "none"}
 
 
+def reasoning_body(base_url: str) -> Dict[str, Any]:
+    """The `reasoning: low` request field, in the form THIS endpoint accepts.
+
+    `{"reasoning": {"effort": "low"}}` is an OpenRouter extension. Google's
+    OpenAI-compatible surface rejects it outright -- 400 `Unknown name
+    "reasoning": Cannot find field` -- and takes the flat `reasoning_effort`
+    instead. That 400 is caught by the retry loop, so without this the model
+    returns empty on every attempt, and an empty reply is scored `invalid` and
+    falls back to the HONEST move: a routing bug that reads as a model that
+    declines to exploit. Exactly the artefact `DIRECT` and `preflight` exist
+    for, one layer further in.
+
+    Keyed on the resolved base_url rather than on the roster key, because it
+    is a property of the ENDPOINT: the same model behind OpenRouter and behind
+    the vendor wants two different payloads. Defaults to the OpenRouter form,
+    which is what OpenRouter, the local vLLM servers and api.anthropic.com all
+    accept today -- so adding a vendor route cannot silently change the
+    request every existing wave was sampled with.
+
+    The effort level is NOT a knob. It is held at `low` across the roster
+    because a wave that varied thinking budget by endpoint would be comparing
+    models at different amounts of deliberation and calling the difference
+    disposition.
+    """
+    if "generativelanguage.googleapis.com" in base_url:
+        return {"reasoning_effort": "low"}
+    return {"reasoning": {"effort": "low"}}
+
+
 class Actor:
     """One OpenRouter chat completion per decision, with the usual retries.
 
@@ -240,6 +296,10 @@ class Actor:
         self.client, self.model = client, model
         self.temperature, self.max_tokens, self.retries = (
             temperature, max_tokens, retries)
+        # Resolved once from the client's own base_url, so every caller --
+        # crossplay, spartan, contagion -- gets the right payload without a
+        # new constructor argument to forget at one of the three sites.
+        self.reasoning = reasoning_body(str(getattr(client, "base_url", "")))
         self.usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
                       "reasoning_tokens": 0, "errors": 0, "empty": 0,
                       "truncated": 0, "widened": 0, "filtered": 0}
@@ -270,7 +330,7 @@ class Actor:
                 r = self.client.chat.completions.create(
                     model=self.model, messages=msgs,
                     max_tokens=cap,
-                    extra_body={"reasoning": {"effort": "low"}},
+                    extra_body=self.reasoning,
                     **({} if self.temperature is None
                        else {"temperature": self.temperature}))
                 u = getattr(r, "usage", None)

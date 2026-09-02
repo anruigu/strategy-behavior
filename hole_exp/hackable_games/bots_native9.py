@@ -81,16 +81,48 @@ def which(prompt: str) -> Tuple[str, int]:
 
 
 class Scripted:
-    """One seat's policy. `mode` is `honest` or `exploit`."""
+    """One seat's policy. `mode` is `honest` or `exploit`.
 
-    def __init__(self, mode: str = "honest", seed: int = 0):
+    `onset` is the first round the exploit policy is used; before it the seat
+    plays the honest line. It defaults to 1, which reproduces the original
+    always-on behaviour exactly.
+
+    WHY THE DEFAULT IS A PROBLEM AND THE ARGUMENT IS THE FIX. With onset 1 the
+    exploit is not something the leader DISCOVERS partway through -- it is
+    installed before the first decision and held constant, identically in every
+    episode. Measured on the 2026-09-01 seed arm, six of seven cells had
+    exactly ONE onset value across all 224 episodes (`nat_seam_ledger` was the
+    accidental exception: a crew has to form before a tally can be inflated, so
+    its onset drifts with the deal).
+
+    Two consequences follow, and the second is why this argument exists.
+
+      * There is no BEFORE window. Only 17.4% of follower opportunities fell
+        before the leader's first violation, and most of that is round 1's
+        simultaneous stages. The pre/post difference-in-differences that
+        `analyze_contagion` reading 3 is built on has nothing to stand on.
+      * ROUND NUMBER AND TIME-SINCE-ONSET ARE THE SAME VARIABLE. A follower
+        that defects more by round 5 cannot be told apart from one that
+        defects more after four rounds of exposure, so endgame effects and
+        contagion are perfectly confounded.
+
+    Varying `onset` across episodes decorrelates the two and buys a real
+    pre-window inside each episode.
+    """
+
+    def __init__(self, mode: str = "honest", seed: int = 0, onset: int = 1):
         self.mode = mode
+        self.onset = int(onset)
         self.rng = random.Random(seed)
+        # the round of the decision currently being made, set by __call__ so
+        # every handler's `self.ex` is evaluated against it
+        self._rd = 0
         # per-round scratch, keyed by (game, pid)
         self.mem: Dict = {}
 
     def __call__(self, pid: int, phase: str, prompt: str) -> str:
         game, rd = which(prompt)
+        self._rd = rd
         fn = getattr(self, f"_{game}_{phase}", None)
         if fn is None:
             return "[noop: 0]"
@@ -98,7 +130,8 @@ class Scripted:
 
     @property
     def ex(self) -> bool:
-        return self.mode == "exploit"
+        """Exploit only from `onset` onward; play the honest line before it."""
+        return self.mode == "exploit" and self._rd >= self.onset
 
     # -- 1. MIRROR MANIFEST ------------------------------------------------
     # Honest files its stock. The exploit pledges and claims the maximum, which
@@ -317,9 +350,11 @@ class Mixed:
     and the web driver can treat this corpus like any other.
     """
 
-    def __init__(self, focal: int, fmode: str, omode: str, seed: int = 0):
+    def __init__(self, focal: int, fmode: str, omode: str, seed: int = 0,
+                 onset: int = 1):
         self.focal = focal
-        self.pol = {True: Scripted(fmode, seed), False: Scripted(omode, seed)}
+        self.pol = {True: Scripted(fmode, seed, onset),
+                    False: Scripted(omode, seed)}
 
     def __call__(self, pid: int, phase: str, prompt: str) -> str:
         return self.pol[pid == self.focal](pid, phase, prompt)
@@ -334,9 +369,9 @@ class Coalition:
     """
 
     def __init__(self, seats: Sequence[int], cmode: str, omode: str,
-                 seed: int = 0):
+                 seed: int = 0, onset: int = 1):
         self.seats = set(seats)
-        self.inside = {p: Scripted(cmode, seed + p) for p in self.seats}
+        self.inside = {p: Scripted(cmode, seed + p, onset) for p in self.seats}
         self.outside = Scripted(omode, seed)
 
     def __call__(self, pid: int, phase: str, prompt: str) -> str:

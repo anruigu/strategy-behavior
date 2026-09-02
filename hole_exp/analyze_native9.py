@@ -112,6 +112,23 @@ def follower_seats(r: Dict) -> List[Dict]:
     return [s for s in r["seats"] if not s["scripted"]]
 
 
+# The CANONICAL slice for every headline in this file: the defective referee
+# and the always-on leader.
+#
+# THIS FILTER IS LOAD-BEARING AND WAS ADDED AFTER IT BIT. The module originally
+# took every `design == "seed"` row, which was correct while `hole`/`early` was
+# the only thing sampled. Once `--arms nohole` and `--onsets mid late` existed
+# the same code silently pooled them into the headline and the closing effect
+# fell from +0.131 to +0.107 -- not a finding, just three different experiments
+# averaged together. Arms are compared by `analyze_onset` and figure 4, never
+# by summing them here.
+def canonical(rows: List[Dict], design: str = "seed") -> List[Dict]:
+    return [r for r in rows
+            if r["design"] == design
+            and r.get("arm", "hole") == "hole"
+            and r.get("onset", "early") == "early"]
+
+
 def leader_cost(rows: List[Dict]) -> Dict:
     """What the scripted leader's invitation visibly cost it, per cell.
 
@@ -120,9 +137,7 @@ def leader_cost(rows: List[Dict]) -> Dict:
     """
     out: Dict[str, Dict[str, List[float]]] = defaultdict(
         lambda: {"exploit": [], "honest": []})
-    for r in rows:
-        if r["design"] != "seed":
-            continue
+    for r in canonical(rows):
         for s in r["seats"]:
             if s["scripted"] and s["score"] is not None:
                 out[r["game"]][r["leader"]].append(float(s["score"]))
@@ -135,7 +150,7 @@ def leader_cost(rows: List[Dict]) -> Dict:
 # --------------------------------------------------------------------------
 
 def leadership(rows: List[Dict]) -> Dict:
-    obs = [r for r in rows if r["design"] == "observe"]
+    obs = canonical(rows, "observe")
     invite_by_model: Dict[str, int] = defaultdict(int)
     invite_by_seat: Dict[int, int] = defaultdict(int)
     joint_by_model: Dict[str, int] = defaultdict(int)
@@ -195,7 +210,7 @@ def effect(rows: List[Dict], which: str, rng) -> Dict:
     thing the seed design holds fixed: same board, same seed, same model in
     the same seats, and the only difference is what the scripted seat did.
     """
-    seed_rows = [r for r in rows if r["design"] == "seed"]
+    seed_rows = canonical(rows)
     by: Dict[Tuple, Dict[str, List[Tuple[float, float]]]] = defaultdict(
         lambda: {"exploit": [], "honest": []})
     for r in seed_rows:
@@ -246,7 +261,7 @@ def conversion(rows: List[Dict]) -> Dict:
         lambda: {"invite": 0.0, "joint": 0.0})
     by_cell: Dict[str, Dict[str, float]] = defaultdict(
         lambda: {"invite": 0.0, "joint": 0.0})
-    for r in rows:
+    for r in canonical(rows) + canonical(rows, "observe"):
         inv, jnt = kinds_of(r["game"])
         for s in follower_seats(r):
             iv, _ = counts(s, inv)

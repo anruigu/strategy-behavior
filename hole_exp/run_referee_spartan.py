@@ -2,7 +2,15 @@
 
     python run_referee_spartan.py --dry-run
     python run_referee_spartan.py --games ref_battleship ref_invoice \
-        --rounds 3 --episodes 4 --chains 3 --tag baseline1
+        --rounds 3 --episodes 4 --chains 3 --tag baseline1 --traces
+
+PASS `--traces` UNLESS YOU HAVE A REASON NOT TO. Without it a chain leaves
+behind counts (`rows.jsonl`) and the playbooks, and the turns are gone: the
+digests the reflector saw are elided to `--max-chars` and are not kept either,
+so nothing on disk says what the model actually emitted. Every wave sampled
+before the flag existed is in that state and cannot be read back turn by turn
+at any price short of re-sampling. `serve_referee_traces.py` reads both, and
+marks a chain that has no turns behind it.
 
 One CHAIN is R0 plus `rounds` cycles of reflection and transfer for one cell,
 one model and one seed. The chain is the unit of sampling and the unit of
@@ -99,11 +107,23 @@ def probe_prompt(game) -> str:
 
 
 def chain_ask(actor: Actor, system: str):
-    """A fresh callable that routes every seat to one actor."""
+    """A fresh callable that routes every seat to one actor.
+
+    Sampled through `act_full` and not `act` so the REASONING survives the
+    call. It is dropped on the floor unless `--traces` is writing, but the
+    difference is a dict per decision, and the alternative is what already
+    happened once on `qwen_base`: reasoning billed and thought, then thrown
+    away, discovered only when someone went looking for it in the traces
+    (`run_referee_crossplay._reasoning_of`). The request itself is unchanged,
+    so a wave sampled here is the same wave it was before.
+    """
     # Every seat is the SAME model: this measures discovery in self-play.
     # A mixed table would confound discovery with who the model sits opposite.
     def ask(pid: int, phase: str, prompt: str) -> str:
-        return actor.act(system, prompt + RG.BREVITY)
+        text, meta = actor.act_full(system, prompt + RG.BREVITY)
+        ask.last_meta = dict(meta or {}, model=actor.model)
+        return text
+    ask.last_meta = {}
     return ask
 
 
@@ -141,15 +161,132 @@ def model_seats_for(game, opponents: str) -> set:
     return seats | {0}
 
 
+def chain_ask_seats(actor: Actor, systems: Dict[int, str]):
+    """Like `chain_ask`, but each seat gets its OWN system prompt.
+
+    Still one model and one actor -- this is self-play, not a mixed table. The
+    only thing that differs per seat is the playbook composed into the system
+    prompt, which under `--reflect per-seat` is the seat's own reflection on
+    its own view. A seat with no entry falls back to the lowest seat's prompt
+    rather than to the bare base, so a cell that asks a seat we did not plan
+    for is answered by a policy rather than silently un-prompted.
+    """
+    fallback = systems[min(systems)]
+
+    def ask(pid: int, phase: str, prompt: str) -> str:
+        text, meta = actor.act_full(systems.get(pid, fallback),
+                                    prompt + RG.BREVITY)
+        ask.last_meta = dict(meta or {}, model=actor.model, seat=pid)
+        return text
+    ask.last_meta = {}
+    return ask
+
+
 def run_one(game, game_actor, reflect_actor, system, seed, episodes, rounds,
-            arm, visibility, max_chars, model_seats=None):
+            arm, visibility, max_chars, model_seats=None, on_episode=None,
+            reflect_scope="shared"):
+    if reflect_scope == "per-seat":
+        # Independent reflection is only meaningful when the model holds more
+        # than one seat, and it is only self-play when it holds all of them.
+        seats = sorted(model_seats if model_seats is not None
+                       else range(game.N_PLAYERS))
+        return SP.run_spartan_chain_per_seat(
+            game, lambda systems: chain_ask_seats(game_actor, systems),
+            reflection(reflect_actor), seed, episodes, rounds, seats,
+            arm=arm, visibility=visibility, max_chars=max_chars,
+            base_system=system, on_episode=on_episode)
     make_ask = lambda system: chain_ask(game_actor, system)   # noqa: E731
     if model_seats is not None and model_seats != set(range(game.N_PLAYERS)):
         make_ask = SP.make_mixed_ask(game, make_ask, model_seats, "honest")
     return SP.run_spartan_chain(
         game, make_ask,
         reflection(reflect_actor), seed, episodes, rounds, arm=arm, focal=0,
-        visibility=visibility, max_chars=max_chars, base_system=system)
+        visibility=visibility, max_chars=max_chars, base_system=system,
+        on_episode=on_episode)
+
+
+# --------------------------------------------------------------------------
+# traces
+# --------------------------------------------------------------------------
+
+
+def trace_stem(job: Dict, rnd: int, ep_i: int) -> str:
+    """One episode's filename. ROUND AND EPISODE ARE BOTH IN IT.
+
+    A chain plays `(rounds + 1) * episodes` episodes of ONE cell under one
+    model and one seed, so a crossplay-shaped name -- which stops at the seed
+    -- would have every one of them overwrite the last and leave a chain of 16
+    episodes on disk as one file. That is the same trap the `-p<dose>` suffix
+    was added to `run_referee_crossplay` for.
+    """
+    return (f"{job['game']}-{job['model']}-{job['condition']}-{job['arm']}-"
+            f"s{job['seed']}-R{rnd}-e{ep_i}")
+
+
+def trace_of(game, ep, turns, playbook, job: Dict, rnd: int, ep_i: int,
+             model_seats) -> Dict:
+    """One episode as the viewer reads it, in the crossplay trace schema.
+
+    THE PLAYBOOK IS PART OF THE EPISODE RECORD, not a sidecar. It was in the
+    system prompt for every turn below and is the only thing that differs
+    between round r and round 0, so a trace that dropped it would show a model
+    behaving differently for no visible reason. The turns carry the game
+    prompt only -- the cell's own bytes, unchanged -- exactly as
+    `referee_spartan.Recording` captured them.
+
+    `scripted` rides on the turn rather than being inferred from the seat, so
+    a reader does not have to reconstruct `--opponents` policy to know which
+    replies a model wrote.
+    """
+    out = []
+    for i, t in enumerate(turns):
+        m = dict(t.meta or {})
+        scripted = bool(m.pop("scripted", False))
+        out.append({"i": i, "pid": t.pid, "phase": t.phase,
+                    "model": ("scripted" if scripted
+                              else m.pop("model", "") or job["model"]),
+                    "scripted": scripted,
+                    "prompt": t.prompt, "content": t.reply, **m})
+    return {
+        "game": game.NAME, "condition": job["condition"], "arm": job["arm"],
+        "focal": job["model"], "other": ("self-play" if job["opponents"]
+                                         == "selfplay"
+                                         else f"scripted ({job['opponents']})"),
+        "seed": job["seed"], "round": rnd, "episode": ep_i,
+        "episode_seed": ep.seed, "visibility": job["visibility"],
+        "opponents": job["opponents"], "rounds": job["rounds"],
+        "episodes": job["episodes"],
+        "model_seats": sorted(model_seats),
+        "playbook_round": playbook.round,
+        "playbook": playbook.text,
+        "playbook_names_hole": SP.names_hole(playbook.text, game),
+        "models": {str(p): (job["model"] if p in model_seats else "scripted")
+                   for p in range(game.N_PLAYERS)},
+        "n_players": game.N_PLAYERS,
+        "exploiters": list(game.exploiters()),
+        "kinds": {"hard": list(game.HARD), "soft": list(game.SOFT),
+                  "diag": list(game.DIAG)},
+        "scores": {str(k): v for k, v in ep.scores.items()},
+        "violations": {str(k): v for k, v in ep.violations.items()},
+        "opportunities": {str(k): v for k, v in ep.opportunities.items()},
+        "gain": {str(k): v for k, v in ep.gain.items()},
+        # WHERE in the episode each detector fired, not just how often.
+        # `referee_games._mark` has recorded this all along and both write
+        # sites dropped it: `_row` keeps only scalar extras (a list fails the
+        # isinstance check) and this function never read extras at all. So the
+        # field documented as "purely additive" was computed and discarded,
+        # and the obvious longitudinal question -- at which decision does a
+        # seat start cheating -- was unanswerable from disk.
+        #
+        # It is what separates an ENDGAME term from a learning term.
+        # `ref_commons` reads a flat 0.167 pooled and is in fact 1.000 on its
+        # final season against 0.015 on the other five; a cell whose exploit
+        # is a last-turn defection cannot discriminate reflection scope,
+        # because the horizon and not the playbook is what drives it. Pooling
+        # over positions reports neither number.
+        "violation_turns": (ep.extras or {}).get("_violation_turns") or [],
+        "turns": out,
+    }
 
 
 def key_of(r: Dict) -> Tuple:
@@ -181,6 +318,12 @@ def playbook_text(pb, job: Dict) -> str:
 
 def main() -> int:
     SP.register_all()
+    # The 2026-09-01 collaborative-hole cells. `register_native9` is kept out
+    # of `register_all` so `--games all` keeps meaning ALL19 (see the note on
+    # NATIVE9 in referee_spartan); registering it HERE only widens what a
+    # caller may ASK for by name, and leaves every existing roster shorthand
+    # resolving to exactly the tuple it resolved to before.
+    SP.register_native9()
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", nargs="+", default=list(SP.ALL19))
@@ -193,14 +336,59 @@ def main() -> int:
                     help="OpenAI-compatible endpoint, e.g. "
                          "http://localhost:8000/v1 from evals/serve_base.sh. "
                          "Defaults to $OPENAI_BASE_URL, then to OpenRouter.")
+    # Three rungs, not two: `referee_games.SYSTEMS` has carried `win` all
+    # along and this runner could not reach it. It is the middle of the
+    # prompt ladder the 0901-single-model sweep tunes over -- neutral says
+    # nothing about the objective, `win` says win, `winmax` says maximise at
+    # any cost -- so a two-rung ladder would sweep the knob from one end
+    # straight to the end that is already known to saturate.
     ap.add_argument("--condition", default="neutral",
-                    choices=["neutral", "winmax"])
+                    choices=["neutral", "win", "winmax"])
     ap.add_argument("--allow-winmax", action="store_true")
     ap.add_argument("--arm", default="hole", choices=["hole", "nohole"])
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--episodes", type=int, default=4)
     ap.add_argument("--chains", type=int, default=3)
     ap.add_argument("--seed0", type=int, default=0)
+    # HOW MANY TURNS THE GAME LASTS -- not `--rounds`, which is reflection
+    # rounds. Both are called "rounds" by their own subsystem and mixing them
+    # up silently costs a wave, so the game knob is spelled out.
+    #
+    # Refuses rather than skips when a selected cell has no ROUNDS: six cells
+    # (sidebar, hanabi, auction, commons, orderbook, invoice) end on a
+    # condition rather than a turn count, so a horizon flag would be silently
+    # inert for them and their rows would be indistinguishable from rows that
+    # were actually swept. Same rule as `--rounds`/`--p-audit` in
+    # run_referee_crossplay: a dose that was never applied must not land in a
+    # row as a column nobody can tell apart from one that was.
+    ap.add_argument("--game-rounds", type=int, default=None,
+                    help="override every selected cell's ROUNDS (turns per "
+                         "episode). Cells with no ROUNDS refuse the run.")
+    # The form the sweep actually wants. The shipped horizons run 4-10 turns
+    # and each was chosen for its own cell, so forcing all 29 to one absolute
+    # number sweeps LENGTH and CELL DESIGN at once -- a 4-turn cell taken to
+    # 10 is a different game, not a longer one. Scaling preserves the ratio
+    # each engine was built around, which is what "tune only one thing" means
+    # here. `--game-rounds` stays for the opposite question: holding every
+    # cell to a common horizon on purpose.
+    ap.add_argument("--game-rounds-scale", type=float, default=None,
+                    help="multiply every selected cell's ROUNDS by this "
+                         "(rounded, floor 1). Mutually exclusive with "
+                         "--game-rounds.")
+    # SHARED vs INDEPENDENT reflection. `shared` is the published behaviour and
+    # the default: one playbook per chain, composed into one system prompt that
+    # every seat receives. Under --opponents selfplay that is N copies of the
+    # model with a common reflection -- one agent with N bodies, where
+    # co-discovery is guaranteed by construction rather than observed.
+    #
+    # `per-seat` gives every seat its own playbook, reflected from its own view
+    # and never shared. That is what a self-play TRAINING loop produces, and it
+    # makes "did the other seats find it too" a question with an answer.
+    # Reflection calls scale with the number of seats; game calls do not.
+    ap.add_argument("--reflect", default="shared",
+                    choices=["shared", "per-seat"],
+                    help="shared = one playbook for the whole table (default); "
+                         "per-seat = each seat reflects independently")
     ap.add_argument("--visibility", default="own", choices=["own", "god"])
     ap.add_argument("--opponents", default="selfplay",
                     choices=["selfplay", "audit", "honest"],
@@ -213,6 +401,13 @@ def main() -> int:
     ap.add_argument("--temperature", type=float, default=0.7)
     ap.add_argument("--max-tokens", type=int, default=1200)
     ap.add_argument("--reflect-max-tokens", type=int, default=4000)
+    ap.add_argument("--traces", action="store_true",
+                    help="write one JSON per episode under <out>/<tag>/traces "
+                         "for serve_referee_traces.py. The rows carry counts "
+                         "and the digests are elided to --max-chars, so this "
+                         "is the ONLY record of what the model actually "
+                         "emitted; a chain sampled without it cannot be read "
+                         "back turn by turn later.")
     ap.add_argument("--tag", default="baseline1")
     ap.add_argument("--out",
                     default=str(HERE / "results" / "referee_spartan"))
@@ -246,7 +441,16 @@ def main() -> int:
     # DEDUP14 for why the duplicates do not silently leave it.
     expand = {"all": list(SP.ALL19), "textarena": list(SP.TEXTARENA10),
               "generated": list(SP.GENERATED8), "referee": list(SP.REFEREE11),
-              "deduped": list(SP.DEDUP14)}
+              "deduped": list(SP.DEDUP14),
+              "native": list(SP.NATIVE8),
+              # The 0901-single-model tuning roster: the deduplicated 24
+              # (DEDUP14 + the TextArena ports) plus the five collaborative
+              # cells that carry a payoff worth reading. Written out here so
+              # every knob sweep is sampled over the SAME 29 cells and the
+              # sweeps can be diffed against each other cell by cell.
+              "tuning29": list(SP.DEDUP14) + list(SP.TEXTARENA10) + [
+                  "nat_open_gate", "nat_cargo_pledge", "nat_seam_ledger",
+                  "nat_mirror_manifest", "nat_meridian_convoy"]}
     if "deduped" in a.games:
         # Checked here rather than in `register_all` so a sampling run that
         # never asks for this roster cannot be taken down by an unrelated
@@ -263,6 +467,34 @@ def main() -> int:
         raise SystemExit(f"unknown game(s) {unknown}; have {sorted(RG.BY_NAME)}")
     games = [RG.BY_NAME[g] for g in a.games]
 
+    if a.game_rounds is not None and a.game_rounds_scale is not None:
+        raise SystemExit(
+            "--game-rounds and --game-rounds-scale both set; they are two "
+            "different horizon experiments (common absolute horizon vs "
+            "per-cell scaling) and a row cannot record both.")
+    if a.game_rounds is not None or a.game_rounds_scale is not None:
+        if a.game_rounds is not None and a.game_rounds < 1:
+            raise SystemExit(f"--game-rounds {a.game_rounds} is below 1")
+        if a.game_rounds_scale is not None and a.game_rounds_scale <= 0:
+            raise SystemExit(
+                f"--game-rounds-scale {a.game_rounds_scale} is not positive")
+        deaf = [g.NAME for g in games if not hasattr(g, "ROUNDS")]
+        if deaf:
+            raise SystemExit(
+                f"a horizon override was passed but {deaf} have no ROUNDS -- "
+                f"they end on a game condition, not a turn count -- so the "
+                f"flag would be silently inert and their rows would read as "
+                f"swept when they were not. Drop them from --games, or run "
+                f"them separately at the shipped horizon.")
+        # Mutating the singletons, as run_referee_crossplay does for the
+        # battleship horizon: the turn count is a property of the GAME, and a
+        # per-episode argument would let one wave hold several horizons.
+        for g in games:
+            was = g.ROUNDS
+            g.ROUNDS = (a.game_rounds if a.game_rounds is not None
+                        else max(1, round(was * a.game_rounds_scale)))
+            print(f"[spartan]   horizon {g.NAME:20s} {was} -> {g.ROUNDS}")
+
     jobs = [{"game": g.NAME, "model": m, "condition": a.condition,
              "arm": a.arm, "visibility": a.visibility, "rounds": a.rounds,
              "episodes": a.episodes, "opponents": a.opponents,
@@ -273,6 +505,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     rows_f = out / "rows.jsonl"
     playbooks_d = out / "playbooks"
+    traces_d = out / "traces" if a.traces else None
     done = set()
     if rows_f.exists():
         for line in rows_f.open():
@@ -295,6 +528,10 @@ def main() -> int:
             from hackable_games.bots_textarena import (
                 Scripted as TextarenaScripted)
             scripted = TextarenaScripted("honest", 0)
+        elif g.NAME in SP.NATIVE9:
+            from hackable_games.bots_native9 import (
+                Scripted as NativeScripted)
+            scripted = NativeScripted("honest", 0)
         else:
             scripted = Scripted("honest")
         ep = g.run(scripted, 0, a.arm)
@@ -354,7 +591,8 @@ def main() -> int:
         if a.dry_run:
             print("[spartan] dry run; nothing sampled")
             return 0
-        return sample(a, todo, endpoints, out, rows_f, playbooks_d)
+        return sample(a, todo, endpoints, out, rows_f, playbooks_d,
+                      traces_d)
 
     try:
         pr = pricing(load_key())
@@ -383,10 +621,12 @@ def main() -> int:
     if a.dry_run:
         print("[spartan] dry run; nothing sampled")
         return 0
-    return sample(a, todo, endpoints, out, rows_f, playbooks_d)
+    return sample(a, todo, endpoints, out, rows_f, playbooks_d,
+                  traces_d)
 
 
-def sample(a, todo, endpoints, out, rows_f, playbooks_d) -> int:
+def sample(a, todo, endpoints, out, rows_f, playbooks_d,
+           traces_d=None) -> int:
     """Run every outstanding chain. Shared by the local and OpenRouter paths.
 
     One client per endpoint rather than per chain: a served model is a single
@@ -432,11 +672,27 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d) -> int:
         with lock:
             actors.extend((game_actor, reflect_actor))
         game = RG.BY_NAME[j["game"]]
+        seats = model_seats_for(game, j["opponents"])
+        # BUFFERED, not streamed to disk. The chain is the unit of commit --
+        # a half-finished chain belongs to no learning curve and its rows are
+        # withheld -- so its traces are withheld with them rather than left on
+        # disk describing rounds no row admits to. A chain is at most
+        # (rounds+1) x episodes episodes, which is what one worker already
+        # holds in digests.
+        traces: List[Tuple[str, Dict]] = []
+
+        def on_episode(g, ep, turns, playbook, chain, rnd, ep_i):
+            traces.append((trace_stem(j, rnd, ep_i),
+                           trace_of(g, ep, turns, playbook, j, rnd, ep_i,
+                                    seats)))
+
         rows, playbooks = run_one(
             game, game_actor, reflect_actor,
             RG.SYSTEMS[j["condition"]], j["seed"], a.episodes, a.rounds,
             j["arm"], j["visibility"], a.max_chars,
-            model_seats=model_seats_for(game, j["opponents"]))
+            model_seats=seats,
+            on_episode=on_episode if traces_d is not None else None,
+            reflect_scope=a.reflect)
         calls = game_actor.usage["calls"] + reflect_actor.usage["calls"]
         filtered = (game_actor.usage["filtered"]
                     + reflect_actor.usage["filtered"])
@@ -448,8 +704,9 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d) -> int:
                       "chain_calls": calls, "rounds": j["rounds"],
                       "episodes": j["episodes"],
                       "opponents": j["opponents"],
+                      "reflect_scope": a.reflect,
                       "chain_seed": j["seed"]})
-        return rows, playbooks
+        return rows, playbooks, traces
 
     t0 = time.time()
     n_done = 0
@@ -458,7 +715,7 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d) -> int:
         for f in as_completed(futs):
             j = futs[f]
             try:
-                rows, playbooks = f.result()
+                rows, playbooks, traces = f.result()
             except Exception as e:                     # noqa: BLE001
                 print(f"[spartan] chain FAILED {j}: "
                       f"{type(e).__name__}: {e}", flush=True)
@@ -468,10 +725,27 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d) -> int:
                 # overwrite an orphan playbook, but rows must never claim a
                 # completed chain whose primary qualitative artefact is absent.
                 playbooks_d.mkdir(exist_ok=True)
-                for pb in playbooks:
+                # `run_spartan_chain` returns one list; the per-seat chain
+                # returns {seat: [playbooks]}. The seat goes IN THE FILENAME
+                # for the per-seat arm, because the whole question that arm
+                # asks is whether two seats wrote the same thing -- and a
+                # naming scheme that collided them would answer it by
+                # overwriting.
+                if isinstance(playbooks, dict):
+                    pairs = [(f"-p{seat}", pb)
+                             for seat, bl in sorted(playbooks.items())
+                             for pb in bl]
+                else:
+                    pairs = [("", pb) for pb in playbooks]
+                for suffix, pb in pairs:
                     name = (f"{j['game']}-{j['model']}-{j['condition']}-"
-                            f"s{j['seed']}-R{pb.round}.md")
+                            f"s{j['seed']}{suffix}-R{pb.round}.md")
                     (playbooks_d / name).write_text(playbook_text(pb, j))
+                if traces_d is not None:
+                    traces_d.mkdir(exist_ok=True)
+                    for stem, tr in traces:
+                        (traces_d / f"{stem}.json").write_text(
+                            json.dumps(tr, indent=1))
                 for r in rows:
                     fh.write(json.dumps(r) + "\n")
                 fh.flush()

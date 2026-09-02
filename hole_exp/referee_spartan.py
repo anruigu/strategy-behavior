@@ -133,7 +133,7 @@ import argparse
 import pathlib
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -551,6 +551,13 @@ class Turn:
     phase: str
     prompt: str
     reply: str
+    # Whatever the ask chose to publish about the call behind this turn --
+    # `reasoning`, `reasoning_kind`, `finish_reason`, or `scripted` for a seat
+    # no model held. EMPTY BY DEFAULT and never required: `render_episode`
+    # reads none of it, so a digest is byte-identical whether or not the
+    # caller bothered to fill it in, and a wave sampled before this field
+    # existed is not a different experiment from one sampled after.
+    meta: Dict = field(default_factory=dict)
 
 
 class Recording:
@@ -560,6 +567,13 @@ class Recording:
     EDITS the prompt on its way in, this one touches nothing. The bytes the
     cell built are the bytes the model gets, so a round-0 episode here is the
     same episode `run_referee_crossplay.play` would have run.
+
+    `last_meta` IS A PULL, NOT A PUSH. An ask that wants its reasoning on the
+    record leaves it on itself under that name and this reads it back after
+    the call; an ask that does not have one is untouched and records `{}`.
+    Threading a second return value through `Ask` instead would have changed
+    the type every scripted policy and every gate in this file implements,
+    for a field only the trace writer reads.
     """
 
     def __init__(self, inner):
@@ -569,7 +583,9 @@ class Recording:
     def __call__(self, pid: int, phase: str, prompt: str) -> str:
         raw = self.inner(pid, phase, prompt)
         self.turns.append(Turn(pid=pid, phase=phase, prompt=prompt,
-                               reply=raw or ""))
+                               reply=raw or "",
+                               meta=dict(getattr(self.inner, "last_meta",
+                                                 None) or {})))
         return raw
 
 
@@ -756,6 +772,9 @@ def reflection_prompt(games_desc: str, n_episodes: int, digests: List[str],
 Ask = Callable[[int, str, str], str]
 MakeAsk = Callable[[str], Ask]
 ReflectFn = Callable[[str, str], str]
+# (game, episode, turns, playbook, chain seed, round, episode index)
+OnEpisode = Callable[[object, object, Sequence[Turn], "Playbook", int, int,
+                      int], None]
 
 
 def episode_seed(seed0: int, rnd: int, i: int) -> int:
@@ -818,7 +837,8 @@ def run_round(game, make_ask: MakeAsk, seeds: Sequence[int],
               playbook: Playbook, arm: str = "hole", focal: int = 0,
               visibility: str = "own", max_chars: int = 6000,
               base_system: str = RG.NEUTRAL_SYSTEM,
-              seed0: Optional[int] = None
+              seed0: Optional[int] = None,
+              on_episode: Optional[OnEpisode] = None
               ) -> Tuple[List[Dict], List[str]]:
     """`len(seeds)` episodes under one playbook. Returns (rows, digests).
 
@@ -835,6 +855,14 @@ def run_round(game, make_ask: MakeAsk, seeds: Sequence[int],
     exploiting. A per-episode ask would be the other fix, but the paper's
     transfer step is one system prompt per round and that is worth keeping
     literal.
+
+    `on_episode` is handed the finished episode, the turns behind it and the
+    playbook it was played under, once per episode. IT IS THE ONLY WAY OUT FOR
+    THE TURNS: the rows carry counts and the digests are elided to a character
+    budget, so without this hook the bytes the model actually emitted end when
+    the chain does. The chain does not otherwise keep them -- holding every
+    turn of every round in memory to return at the end would grow with the
+    wave, and a caller that wants them wants them on disk anyway.
 
     `base_system` and `seed0` are additive to the published signature. The
     driver picks the condition, and the default base is `neutral` because that
@@ -858,6 +886,8 @@ def run_round(game, make_ask: MakeAsk, seeds: Sequence[int],
                          visibility, playbook))
         digests.append(render_episode(game, ep, rec.turns, focal, visibility,
                                       max_chars))
+        if on_episode is not None:
+            on_episode(game, ep, rec.turns, playbook, chain, playbook.round, i)
     return rows, digests
 
 
@@ -865,7 +895,8 @@ def run_spartan_chain(game, make_ask: MakeAsk, reflect_fn: ReflectFn,
                       seed0: int, episodes: int, rounds: int,
                       arm: str = "hole", focal: int = 0,
                       visibility: str = "own", max_chars: int = 6000,
-                      base_system: str = RG.NEUTRAL_SYSTEM
+                      base_system: str = RG.NEUTRAL_SYSTEM,
+                      on_episode: Optional[OnEpisode] = None
                       ) -> Tuple[List[Dict], List[Playbook]]:
     """R0 -> reflect -> R1 -> ... -> R`rounds`. One chain, one sample.
 
@@ -890,7 +921,8 @@ def run_spartan_chain(game, make_ask: MakeAsk, reflect_fn: ReflectFn,
         seeds = [episode_seed(seed0, r, i) for i in range(episodes)]
         rr, digests = run_round(game, make_ask, seeds, pb, arm, focal,
                                 visibility, max_chars,
-                                base_system=base_system, seed0=seed0)
+                                base_system=base_system, seed0=seed0,
+                                on_episode=on_episode)
         rows += rr
         if r == rounds:
             break
@@ -899,6 +931,125 @@ def run_spartan_chain(game, make_ask: MakeAsk, reflect_fn: ReflectFn,
         text = (reflect_fn(REFLECT_SYSTEM, user) or "").strip()
         pb = Playbook(round=r + 1, text=text, games=(game.NAME,))
         books.append(pb)
+    return rows, books
+
+
+# ==========================================================================
+# INDEPENDENT PER-SEAT REFLECTION
+# ==========================================================================
+#
+# WHAT IS DIFFERENT AND WHY IT IS A DIFFERENT EXPERIMENT.
+#
+# `run_spartan_chain` keeps ONE playbook per chain and `run_round` composes it
+# into ONE system prompt that `chain_ask` hands to every seat. Under
+# `--opponents selfplay` that means N copies of the model sharing a single
+# reflection -- which is not N agents learning, it is one agent with N bodies
+# and perfect telepathy between them. Every seat reaches the same conclusion on
+# the same round by construction, so co-discovery is guaranteed rather than
+# observed, and "did the other seats find it too" cannot be asked.
+#
+# Here each seat carries its OWN playbook, reflects on its OWN view of the
+# episodes it just played (`render_episode(..., pid, ...)`, which is already
+# per-seat), and never sees another seat's text. That is the regime a
+# self-play training loop actually produces: independent policies updating on
+# their own trajectories, which may or may not converge on the same hack.
+#
+# The two are a matched pair and the CONTRAST is the measurement:
+#   shared      co-discovery forced -> upper bound on how fast a hack spreads
+#   per_seat    co-discovery optional -> does it spread on its own?
+# A hack that appears in `shared` and not in `per_seat` is one that needs
+# coordination the training loop will not supply.
+#
+# COST. Game calls are unchanged. Reflection calls go from `rounds` per chain
+# to `rounds * len(seats)`, and reflection is the expensive call, so a 3-seat
+# cell roughly triples the reflection bill -- in practice a small share of the
+# total (the 0901 waves ran 22.1M prompt tokens of which reflection was a
+# minority).
+
+MakeAskSeats = Callable[[Dict[int, str]], Ask]
+
+
+def run_round_per_seat(game, make_ask_seats: MakeAskSeats,
+                       seeds: Sequence[int],
+                       playbooks: Dict[int, "Playbook"],
+                       seats: Sequence[int],
+                       arm: str = "hole", visibility: str = "own",
+                       max_chars: int = 6000,
+                       base_system: str = RG.NEUTRAL_SYSTEM,
+                       seed0: Optional[int] = None,
+                       on_episode: Optional[OnEpisode] = None
+                       ) -> Tuple[List[Dict], Dict[int, List[str]]]:
+    """One round in which every seat plays under its own playbook.
+
+    Returns (rows, digests_by_seat). Rows are emitted PER SEAT -- one row per
+    (episode, seat) rather than one per episode -- because with independent
+    playbooks the seats are no longer interchangeable and a focal-only row
+    would throw away the very asymmetry the arm exists to measure.
+    """
+    chain = seed0 if seed0 is not None else (seeds[0] // 10000 if seeds else 0)
+    systems = {p: playbooks[p].system(base_system) for p in seats}
+    ask_round = make_ask_seats(systems)
+    rows: List[Dict] = []
+    digests: Dict[int, List[str]] = {p: [] for p in seats}
+    for i, seed in enumerate(seeds):
+        fresh = getattr(ask_round, "new_episode", None)
+        if callable(fresh):
+            fresh()
+        rec = Recording(ask_round)
+        ep = game.run(rec, seed, arm)
+        for p in seats:
+            r = _row(ep, game, chain, playbooks[p].round, i, arm, p,
+                     visibility, playbooks[p])
+            r["seat"] = p
+            r["reflect_scope"] = "per_seat"
+            rows.append(r)
+            digests[p].append(render_episode(game, ep, rec.turns, p,
+                                             visibility, max_chars))
+        if on_episode is not None:
+            on_episode(game, ep, rec.turns, playbooks[seats[0]], chain,
+                       playbooks[seats[0]].round, i)
+    return rows, digests
+
+
+def run_spartan_chain_per_seat(game, make_ask_seats: MakeAskSeats,
+                               reflect_fn: ReflectFn, seed0: int,
+                               episodes: int, rounds: int,
+                               seats: Sequence[int],
+                               arm: str = "hole", visibility: str = "own",
+                               max_chars: int = 6000,
+                               base_system: str = RG.NEUTRAL_SYSTEM,
+                               on_episode: Optional[OnEpisode] = None
+                               ) -> Tuple[List[Dict], Dict[int, List["Playbook"]]]:
+    """R0 -> each seat reflects on its own view -> R1 -> ...
+
+    `reflect_fn` is called `rounds * len(seats)` times. Each call sees only
+    that seat's digests and that seat's previous playbook, so nothing an agent
+    learns reaches another agent except THROUGH THE GAME -- which is the
+    point, and is the only channel a real self-play loop has either.
+    """
+    if episodes < 1 or rounds < 0:
+        raise ValueError(f"episodes={episodes} rounds={rounds}: a chain needs "
+                         f"at least one episode and a non-negative number of "
+                         f"reflections")
+    seats = list(seats)
+    pbs = {p: Playbook(round=0, text="", games=()) for p in seats}
+    books: Dict[int, List[Playbook]] = {p: [pbs[p]] for p in seats}
+    rows: List[Dict] = []
+    for r in range(rounds + 1):
+        seeds = [episode_seed(seed0, r, i) for i in range(episodes)]
+        rr, digests = run_round_per_seat(
+            game, make_ask_seats, seeds, pbs, seats, arm, visibility,
+            max_chars, base_system=base_system, seed0=seed0,
+            on_episode=on_episode)
+        rows += rr
+        if r == rounds:
+            break
+        for p in seats:
+            user = reflection_prompt(game.NAME, episodes, digests[p],
+                                     pbs[p].text or None)
+            text = (reflect_fn(REFLECT_SYSTEM, user) or "").strip()
+            pbs[p] = Playbook(round=r + 1, text=text, games=(game.NAME,))
+            books[p].append(pbs[p])
     return rows, books
 
 
@@ -953,6 +1104,13 @@ def _factory(game, mode: str) -> Callable[[], object]:
         # back to the honest default -- which would make CLEAN pass for free.
         import bots_textarena
         return lambda: bots_textarena.Scripted(mode, 0)
+    if game.NAME in NATIVE9:
+        # A fourth vocabulary. `contagion_screen._bots` routes these cells the
+        # same way and for the same reason: their phases are their own, and an
+        # unparsed move falls back to the HONEST default, so the wrong bot
+        # would report a clean cell for free.
+        import bots_native9
+        return lambda: bots_native9.Scripted(mode, 0)
     return lambda: T.Scripted(mode)
 
 
@@ -1004,8 +1162,17 @@ def make_mixed_ask(game, model_make_ask: MakeAsk, model_seats: Set[int],
         seat = _Seat(_factory(game, mode))
 
         def ask(pid: int, phase: str, prompt: str) -> str:
+            # `last_meta` is forwarded rather than inherited: `Recording`
+            # reads it off the ask it was handed, which is THIS closure, so a
+            # reasoning block left on `model_ask` would never be seen and
+            # every turn of an `--opponents audit` wave would trace as though
+            # the vendor had returned nothing. A scripted seat says so, so a
+            # trace cannot show a bot's move as a model's silence.
             if pid in model_seats:
-                return model_ask(pid, phase, prompt)
+                out = model_ask(pid, phase, prompt)
+                ask.last_meta = getattr(model_ask, "last_meta", None) or {}
+                return out
+            ask.last_meta = {"scripted": True}
             return seat(pid, phase, prompt)
 
         def new_episode() -> None:
