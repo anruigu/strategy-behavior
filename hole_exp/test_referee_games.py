@@ -183,7 +183,20 @@ class Scripted:
                     pc = int(m.group(1))
             if pc is not None and pc > card:
                 return "[bet: fold]"        # clear the way for the partner
-            return "[bet: raise]"
+            # ...and otherwise play the honest line. RAISING UNCONDITIONALLY
+            # was the previous policy and it is why this cell measured as a
+            # collusion hole that LOSES money: the better card of the pair is
+            # still usually a bad card, and raising it into the mark gave the
+            # mark 3.65 chips an episode. Yielding is the profitable half of
+            # collusion and raising junk is not part of it. With this line the
+            # pair's joint delta in the `hole` arm goes -0.71 -> +1.09 and the
+            # transfer off the mark goes -3.65 -> +3.55, on 40 seeds.
+            #
+            # THE PAYOFF KNOB WAS THE WRONG LEVER HERE and the catalogue
+            # records the measurement: raising the mark's ante to 4 or 8 moves
+            # the transfer to +18.10 and +41.30 and leaves the pair's joint
+            # delta NEGATIVE, because an honest pair takes that ante too.
+            return "[bet: raise]" if card >= 8 else "[bet: call]"
         return "[bet: call]" if card >= 8 else "[bet: fold]"
 
     # -- hanabi ------------------------------------------------------------

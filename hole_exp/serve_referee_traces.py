@@ -448,18 +448,40 @@ def _action_tokens(text: str) -> List[str]:
 
 SPARTAN_ROOT = HERE / "results" / "referee_spartan"
 
-# <game>-<model>-<condition>-s<seed>-R<round>.md, as `sample()` names them.
-# The model id is the loose field -- `qwen3.8-27b` carries both a dot and a
-# dash -- so it is the only one matched with `.+`, pinned on both sides by
-# fields that cannot contain a hyphen.
-PB_NAME = re.compile(r"((?:ref|gen|ta|nat)_\w+)-(.+)-(neutral|winmax)-"
-                     r"s(\d+)-R(\d+)$")
+# THREE conditions, not two. `win` is the middle rung of the prompt ladder
+# and this file matched `(neutral|winmax)` -- so every playbook and every
+# trace of a `--condition win` wave failed the match and was skipped in
+# silence, which shows up as a wave with rows and no reflection text rather
+# than as an error. `winmax` is first in the alternation so it is preferred
+# where both could start a match.
+COND = r"(neutral|winmax|win)"
+
+# `hx` is in the cell-name alternation because the hole-cross corpus is named
+# `hx_picket_*` / `hx_quota_*` and was not in it -- so every playbook and every
+# trace of those eight cells would have failed the match and been dropped in
+# silence, exactly as the per-seat playbooks were. They are the cells
+# `0902-branch-variations.md` P3b calls the cheapest decisive experiment, so
+# they are the worst eight to lose.
+
+# <game>-<model>-<condition>-s<seed>[-p<seat>]-R<round>.md, as `sample()`
+# names them. The model id is the loose field -- `qwen3.8-27b` carries both a
+# dot and a dash -- so it is the only one matched with `.+`, pinned on both
+# sides by fields that cannot contain a hyphen.
+#
+# `-p<seat>` is present exactly when the wave was sampled with
+# `--reflect per-seat`, where the chain writes ONE PLAYBOOK PER SEAT and the
+# whole question is whether two seats wrote the same thing. Without the group
+# here every one of those files failed to match and the wave rendered as
+# though no seat had reflected at all.
+PB_NAME = re.compile(r"((?:ref|gen|ta|nat|hx)_\w+)-(.+)-" + COND +
+                     r"-s(\d+)(?:-p(\d+))?-R(\d+)$")
 
 # <game>-<model>-<condition>-<arm>-s<seed>-R<round>-e<episode>.json.
 # Round AND episode: a chain replays one cell under one seed up to 16 times,
-# so a crossplay-shaped name would collapse the chain into one file.
-NAME_SP = re.compile(r"((?:ref|gen|ta|nat)_\w+)-(.+)-(neutral|winmax)-"
-                     r"(hole|nohole)-s(\d+)-R(\d+)-e(\d+)$")
+# so a crossplay-shaped name would collapse the chain into one file. There is
+# no seat here on purpose -- one episode is one board, played by every seat.
+NAME_SP = re.compile(r"((?:ref|gen|ta|nat|hx)_\w+)-(.+)-" + COND +
+                     r"-(hole|nohole)-s(\d+)-R(\d+)-e(\d+)$")
 
 _FRONT = re.compile(r"\A---\n.*?\n---\n", re.S)
 
@@ -512,7 +534,11 @@ def _pool(rows: List[Dict], kinds: List[str]) -> Dict[str, Dict]:
 
 
 def _playbooks(pb_dir: pathlib.Path) -> Dict[Tuple, Tuple[str, str]]:
-    """(game, model, condition, seed, round) -> (text, filename).
+    """(game, model, condition, seed, seat, round) -> (text, filename).
+
+    `seat` is None under shared reflection, where there is one playbook for
+    the whole table, and the seat number under `--reflect per-seat`, where
+    there is one per seat and they are not interchangeable.
 
     The frontmatter `sample()` writes is stripped: it repeats fields the key
     already carries, and leaving it in would put a `---` block at the top of
@@ -525,9 +551,10 @@ def _playbooks(pb_dir: pathlib.Path) -> Dict[Tuple, Tuple[str, str]]:
         m = PB_NAME.match(f.stem)
         if not m:
             continue
-        game, model, cond, seed, rnd = m.groups()
+        game, model, cond, seed, seat, rnd = m.groups()
         text = _FRONT.sub("", f.read_text(), count=1)
-        out[(game, model, cond, int(seed), int(rnd))] = (text, f.name)
+        out[(game, model, cond, int(seed),
+             None if seat is None else int(seat), int(rnd))] = (text, f.name)
     return out
 
 
@@ -540,6 +567,27 @@ def _spartan_waves(root: pathlib.Path):
     """
     for rf in sorted(root.rglob("rows.jsonl")):
         yield str(rf.parent.relative_to(root)), rf.parent
+
+
+def _seat_round(books, kinds, hard, game, model, cond, seed, rnd, seat, rr):
+    """One seat's own playbook and own rate for one round of a chain.
+
+    Independent reflection makes the seats non-interchangeable, so every
+    quantity here is that seat's: its reflection text, whether IT named the
+    hole, and the rate IT achieved. Pooling these into a table rate is still
+    done above, and is a different question -- "did the table exploit" against
+    "which seats did".
+    """
+    text, fname = books.get((game, model, cond, seed, seat, rnd), (None, None))
+    pooled = _pool(rr, kinds)
+    v = sum(pooled[k]["v"] for k in hard)
+    o = sum(pooled[k]["o"] for k in hard)
+    return {"p": seat, "playbook": text, "playbook_file": fname,
+            "names_hole": (rr[0].get("playbook_names_hole") if rr else None),
+            "chars": rr[0].get("playbook_chars") if rr else None,
+            "hard_v": v, "hard_o": o, "hard_rate": (v / o) if o else None,
+            "score": (sum(r.get("score_focal") or 0 for r in rr) / len(rr)
+                      if rr else None)}
 
 
 def load_spartan(root: pathlib.Path) -> Dict[str, Dict]:
@@ -596,11 +644,27 @@ def load_spartan(root: pathlib.Path) -> Dict[str, Dict]:
             for r in rs:
                 by_round.setdefault(r["round"], []).append(r)
 
+            # INDEPENDENT REFLECTION EMITS ONE ROW PER (EPISODE, SEAT).
+            # Under `--reflect per-seat` every seat played under its own
+            # playbook, so a row is a seat's view and `focal` is that seat.
+            # Two things follow, and both were wrong before this: the episode
+            # chips have to be de-duplicated (N seats share one board, and the
+            # page listed the same episode N times), and the pooled rate is
+            # then over the WHOLE TABLE rather than over seat 0, which is not
+            # the same statistic a shared-reflection wave reports. The legend
+            # says which, because a chain page that quietly switched
+            # denominators between waves would be unreadable.
+            per_seat = sorted({r["seat"] for r in rs if r.get("seat")
+                               is not None})
+            scope = "per-seat" if per_seat else "shared"
+
             rounds = []
             for rnd in sorted(by_round):
-                rr = sorted(by_round[rnd], key=lambda x: x["episode"])
-                text, fname = books.get((game, model, cond, seed, rnd),
-                                        (None, None))
+                rr = sorted(by_round[rnd], key=lambda x: (x["episode"],
+                                                          x.get("seat") or 0))
+                text, fname = books.get(
+                    (game, model, cond, seed,
+                     per_seat[0] if per_seat else None, rnd), (None, None))
                 pooled = _pool(rr, kinds)
                 hv = sum(pooled[k]["v"] for k in hard)
                 ho = sum(pooled[k]["o"] for k in hard)
@@ -621,16 +685,25 @@ def load_spartan(root: pathlib.Path) -> Dict[str, Dict]:
                     "hard_v": hv, "hard_o": ho,
                     "hard_rate": (hv / ho) if ho else None,
                     "invalid": (inv / dec) if dec else None,
+                    "seats": [_seat_round(books, kinds, hard, game, model,
+                                          cond, seed, rnd, p_,
+                                          [r for r in rr if r.get("seat")
+                                           == p_])
+                              for p_ in per_seat],
                     "episodes": [{
-                        "i": r["episode"],
-                        "seed": r.get("episode_seed"),
-                        "score": r.get("score_focal"),
-                        "gain": r.get("gain_focal"),
-                        "invalid": r.get("invalid_rate_focal"),
-                        "decisions": r.get("decisions_focal"),
+                        "i": ep_i,
+                        "seed": g0.get("episode_seed"),
+                        # Under per-seat these are the LOWEST seat's, and the
+                        # per-seat block above carries the rest; a chip that
+                        # averaged the seats would report a score no seat got.
+                        "score": g0.get("score_focal"),
+                        "gain": g0.get("gain_focal"),
+                        "invalid": g0.get("invalid_rate_focal"),
+                        "decisions": g0.get("decisions_focal"),
                         "trace": by_trace.get((game, model, cond, seed, rnd,
-                                               r["episode"])),
-                    } for r in rr],
+                                               ep_i)),
+                    } for ep_i, g0 in sorted(
+                        {r["episode"]: r for r in reversed(rr)}.items())],
                 })
 
             rates = [x["hard_rate"] for x in rounds if x["hard_rate"] is not None]
@@ -648,6 +721,14 @@ def load_spartan(root: pathlib.Path) -> Dict[str, Dict]:
                 "seed": seed, "visibility": vis, "opponents": opp,
                 "hard_kinds": hard, "all_kinds": kinds,
                 "kinds_split": bool(split),
+                "reflect_scope": scope, "seat_ids": per_seat,
+                # Per round, how many of the model's seats named the hole in
+                # their OWN playbook. Under shared reflection this is 0 or N
+                # by construction and says nothing; under independent
+                # reflection it is the co-discovery curve, and it is the one
+                # number this arm exists to produce.
+                "codiscovery": [sum(1 for s in x["seats"] if s["names_hole"])
+                                for x in rounds] if per_seat else [],
                 "rounds": rounds,
                 "n_rounds": len(rounds),
                 "rate0": r0, "peak": (max(rates) if rates else None),
@@ -703,7 +784,10 @@ def _spartan_traces(tdir: pathlib.Path, wave: str) -> Dict[str, Dict]:
              # No `design` key, for the reason the chain record gives.
              "p_audit": 0.0, "leader_mode": "",
              "seats_models": [], "playbook": d.get("playbook") or "",
-             "playbook_names_hole": d.get("playbook_names_hole")}
+             "playbook_names_hole": d.get("playbook_names_hole"),
+             "reflect_scope": d.get("reflect_scope") or "shared",
+             "playbooks": d.get("playbooks"),
+             "seats_naming_hole": d.get("seats_naming_hole")}
         e.update({k: d.get(k) for k in
                   ("turns", "models", "scores", "violations", "opportunities",
                    "gain", "n_players", "exploiters", "kinds")})
@@ -775,6 +859,18 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit}
 .rnd{border:1px solid var(--line);border-radius:8px;margin-bottom:14px;
  background:var(--panel);overflow:hidden;border-left:4px solid var(--mark)}
 .rnd.r0{border-left-color:var(--dim)}
+/* Independent reflection: the seats' playbooks side by side, because the only
+   way to see whether two agents found the same thing is to read them
+   together. Wraps rather than scrolls -- a 4-seat cell must not hide seat 3
+   off the right edge, which is where the answer would be. */
+.seatgrid{display:grid;gap:10px;
+ grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.seatbox{border:1px solid var(--line);border-radius:7px;overflow:hidden;
+ background:#191426;border-left:3px solid var(--reason)}
+.seatbox.hit{border-left-color:var(--bad)}
+.seatbox .sh{padding:6px 10px;border-bottom:1px dashed var(--line);
+ display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.seatbox pre{margin:0;padding:9px 10px;max-height:340px;overflow:auto}
 .kt{width:100%;border-collapse:collapse;font-size:12px}
 .kt th{text-align:left;color:var(--dim);font-weight:600;padding:2px 10px 4px 0;
  font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}
@@ -851,6 +947,11 @@ function chainCard(e){
       <span class="pill">${e.n_episodes} eps</span>
       <span class="pill">r0 ${fmt(e.rate0)} &rarr; ${fmt(e.fin)}</span>
       ${cls?`<span class="pill ${cls}">${d>0?'+':''}${fmt(d)}</span>`:''}
+      ${e.reflect_scope==='per-seat'?`<span class="pill r">${e.n_seats
+        } indep. reflections</span>`:''}
+      ${e.codiscovery_fin===null||e.codiscovery_fin===undefined?''
+        :`<span class="pill ${e.codiscovery_fin?'v':''}">${e.codiscovery_fin}/${
+          e.n_seats} named</span>`}
       ${e.has_traces?'<span class="pill r">turns</span>':''}
     </div></div>`;
 }
@@ -872,10 +973,16 @@ async function open_(id){
     <span style="color:var(--reason)">Reasoning</span> is rendered in its own
     block and is never merged into the reply &mdash; the reply is what the other
     players and the referee see, the reasoning is not.
-    ${e.round!==undefined&&e.round!==null?`This episode is round
-     <b>${e.round}</b> of a SPaRTan chain. The playbook below was in the
-     <b>system prompt</b> for every turn on this page &mdash; it is the only
-     thing that differs from round 0, which ran vanilla.`:''}
+    ${e.round!==undefined&&e.round!==null?(e.playbooks
+     ?`This episode is round <b>${e.round}</b> of a SPaRTan chain with
+      <b style="color:var(--reason)">independent reflection</b>. Each seat
+      below played under <b>its own</b> playbook, shown per seat &mdash; no
+      seat ever read another's, so the only channel between them is the game
+      itself. Reading the boxes together is how you see whether they found the
+      same thing.`
+     :`This episode is round <b>${e.round}</b> of a SPaRTan chain. The playbook
+      below was in the <b>system prompt</b> for every turn on this page &mdash;
+      it is the only thing that differs from round 0, which ran vanilla.`):''}
     ${e.design?`Flags come from the <b>engine's mark timeline</b>, not from an
     independent re-derivation &mdash; there is no second implementation of
     these detectors, so a flag here confirms the engine rather than checking
@@ -887,7 +994,30 @@ async function open_(id){
     :`Flags are re-derived from the prompt the model was shown, independently
     of the engine's counters.`}
    </div>
-   ${e.round?`<div class="turn"><div class="hd">
+   ${e.round&&e.playbooks?`<div class="turn"><div class="hd">
+      <span class="who" style="color:var(--reason)">PLAYBOOKS &middot; one per seat</span>
+      <span class="pill k">round ${e.round}</span>
+      ${(n=>`<span class="pill ${n?'v':''}">${n}/${
+        Object.keys(e.playbooks).length} seats name the hole</span>`)(
+        (e.seats_naming_hole||[]).length)}
+      <span class="model">each written by ${esc(e.focal)} after round
+        ${e.round-1}, from that seat's view alone</span>
+     </div>
+     <div class="sec reason">
+      <h4>independent reflections &middot; each in ITS OWN seat's system
+        prompt for the turns below</h4>
+      <div class="seatgrid">${Object.keys(e.playbooks)
+        .sort((a,b)=>a-b).map(k=>{const s=e.playbooks[k];
+        return `<div class="seatbox ${s.names_hole?'hit':''}">
+         <div class="sh"><span class="who" style="color:var(--reason)">SEAT p${k}</span>
+          <span class="pill">${s.chars} chars</span>
+          ${s.names_hole?'<span class="pill v">names the hole</span>':''}</div>
+         ${(s.text||'').trim()?`<pre>${esc(s.text)}</pre>`
+          :`<div class="none" style="padding:9px 10px">empty &mdash; this
+            seat's reflection returned nothing, so it played vanilla</div>`}
+        </div>`;}).join('')}</div>
+     </div></div>`
+    :e.round?`<div class="turn"><div class="hd">
       <span class="who">PLAYBOOK</span>
       <span class="pill k">round ${e.round}</span>
       <span class="pill">${(e.playbook||'').length} chars</span>
@@ -943,6 +1073,29 @@ function kindTable(e,rd,base){
       <td class="n" style="color:${d>0.05?'var(--bad)':d<-0.05?'var(--focal)':'var(--dim)'}">${
         d===null?'':(d>0?'+':'')+fmt(d)}</td></tr>`;}).join('')}</table>`;
 }
+// One seat's own reflection. `names_hole` is that seat's OWN playbook naming
+// the hole, so a grid where one box is flagged and three are not is the
+// co-discovery result rendered directly -- with shared reflection it can only
+// ever be all or none.
+function seatBox(s,rnd){
+  return `<div class="seatbox ${s.names_hole?'hit':''}">
+   <div class="sh">
+    <span class="who" style="color:var(--reason)">SEAT p${s.p}</span>
+    ${s.chars!==null&&s.chars!==undefined?`<span class="pill">${s.chars} chars</span>`:''}
+    ${s.hard_o?`<span class="pill k">HARD ${fmt(s.hard_rate)} (${s.hard_v}/${s.hard_o})</span>`:
+      '<span class="pill">no opportunity</span>'}
+    ${s.score===null||s.score===undefined?'':`<span class="pill">score ${fmt(s.score,1)}</span>`}
+    ${s.names_hole?'<span class="pill v">names the hole</span>':''}
+   </div>
+   ${rnd===0?`<div class="none" style="padding:9px 10px">round 0 is vanilla &mdash;
+      this seat had no playbook yet</div>`
+    :s.playbook===null?`<div class="none" style="padding:9px 10px;color:var(--bad)">
+      playbook file missing for this seat</div>`
+    :(s.playbook||'').trim()?`<pre>${esc(s.playbook)}</pre>`
+    :`<div class="none" style="padding:9px 10px">empty &mdash; this seat's
+      reflection call returned nothing, so it played vanilla</div>`}
+  </div>`;
+}
 function openChain(e){
   const base=e.rounds[0];
   el('main').innerHTML=`
@@ -966,6 +1119,18 @@ function openChain(e){
     These counts are the <b>engine's own</b>, read out of <code>rows.jsonl</code>
     &mdash; they are not the independently re-derived badges the turn pages
     carry.
+    ${e.reflect_scope==='per-seat'?`<br><b style="color:var(--reason)">Reflection
+     is INDEPENDENT per seat</b> (${e.seat_ids.length} seats: ${
+     e.seat_ids.map(p=>'p'+p).join(', ')}). Each seat reflected on its own view
+     only, so nothing one agent learned reached another except through the game.
+     Two consequences for this page: the headline rate is pooled over
+     <b>every seat</b> rather than over seat 0 alone, so it is not the same
+     denominator a shared-reflection chain reports; and the reflections are
+     shown per seat, where <b>how many boxes are flagged</b> is the
+     co-discovery count. Under shared reflection that count can only be 0 or
+     ${e.seat_ids.length}, which is why it is not reported there.`
+    :`<br>Reflection is <b>SHARED</b>: one playbook per chain, composed into
+     the system prompt every seat receives. The rate is seat 0's.`}
     ${e.has_traces?'':`<b style="color:var(--mark)">No turns on disk for this
       chain.</b> It was sampled before <code>run_referee_spartan.py --traces</code>
       existed, so the reflection text and the counts are all that was written
@@ -983,9 +1148,18 @@ function openChain(e){
           dd>0.05?'up':dd<-0.05?'down':''}">vs r0 ${dd>0?'+':''}${fmt(dd)
           }</span>`)(rd.hard_rate-base.hard_rate):''}
        <span class="pill">invalid ${fmt(rd.invalid)}</span>
-       ${rd.names_hole?'<span class="pill v">playbook names the hole</span>':''}
+       ${rd.seats.length
+        ?(n=>`<span class="pill ${n?'v':''}">${n}/${rd.seats.length} seats name
+           the hole</span>`)(rd.seats.filter(s=>s.names_hole).length)
+        :(rd.names_hole?'<span class="pill v">playbook names the hole</span>':'')}
      </div>
-     <div class="sec reason">
+     ${rd.seats.length?`<div class="sec reason">
+       <h4>${rd.r?`independent reflections &middot; written after round
+          ${rd.r-1} &middot; one per seat, none shared`
+         :'no playbooks &middot; round 0 is the vanilla arm'}</h4>
+       <div class="seatgrid">${rd.seats.map(s=>seatBox(s,rd.r)).join('')}</div>
+      </div>`
+     :`<div class="sec reason">
        <h4>${rd.r?`reflection &middot; written after round ${rd.r-1}
           &middot; ${rd.chars} chars`
          :'no playbook &middot; round 0 is the vanilla arm'}</h4>
@@ -997,7 +1171,7 @@ function openChain(e){
         :(rd.playbook||'').trim()?`<pre>${esc(rd.playbook)}</pre>`
         :`<div class="none">empty &mdash; the reflection call returned nothing,
           so this round ran vanilla too</div>`}
-     </div>
+     </div>`}
      <div class="sec"><h4>what the rate did</h4>${kindTable(e,rd,base)}</div>
      <div class="sec"><h4>${rd.episodes.length} episodes</h4>
       <div class="ep-row">${rd.episodes.map(x=>{
@@ -1112,7 +1286,18 @@ class Handler(BaseHTTPRequestHandler):
                     **({"n_rounds": e["n_rounds"], "rate0": e["rate0"],
                         "peak": e["peak"], "fin": e["fin"],
                         "delta": e["delta"], "has_traces": e["has_traces"],
-                        "n_episodes": e["n_episodes"]}
+                        "n_episodes": e["n_episodes"],
+                        # In the INDEX and not only the detail payload, for
+                        # the reason the delta is: a per-seat chain and a
+                        # shared one report rates over different denominators,
+                        # so a list that showed them identically would invite
+                        # exactly the comparison that is not valid. The card
+                        # carries the scope and, where it means anything, how
+                        # many seats had named the hole by the last round.
+                        "reflect_scope": e.get("reflect_scope", "shared"),
+                        "n_seats": len(e.get("seat_ids") or []),
+                        "codiscovery_fin": ((e.get("codiscovery") or [None])[-1]
+                                            if e.get("codiscovery") else None)}
                        if e.get("kind") == "chain" else
                        {"round": e.get("round"), "episode": e.get("episode")})}
                    for e in self.eps.values()]

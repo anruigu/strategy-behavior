@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Variant catalogue — how the incentive moves</title>
+<style>
+/* ------------------------------------------------------------------ *
+ * Roles, not raw hex. Light + dark are both SELECTED palettes -- the
+ * dark column is the same eight hues re-stepped for the dark surface,
+ * validated as a set against it, not an automatic flip.
+ * ------------------------------------------------------------------ */
+.viz-root{
+  color-scheme:light;
+  --surface-1:#fcfcfb; --plane:#f9f9f7; --sunk:#f2f1ee;
+  --line:#e3e2dd; --grid:#eceae5;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#78766f;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+}
+@media (prefers-color-scheme:dark){
+  :root:where(:not([data-theme="light"])) .viz-root{
+    color-scheme:dark;
+    --surface-1:#1a1a19; --plane:#0d0d0d; --sunk:#232321;
+    --line:#3a3a37; --grid:#2b2b29;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#95948b;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300;
+  }
+}
+:root[data-theme="dark"] .viz-root{
+  color-scheme:dark;
+  --surface-1:#1a1a19; --plane:#0d0d0d; --sunk:#232321;
+  --line:#3a3a37; --grid:#2b2b29;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#95948b;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.viz-root{background:var(--plane);color:var(--text-primary);min-height:100vh;
+  display:grid;grid-template-columns:270px 1fr;gap:0}
+aside{background:var(--surface-1);border-right:1px solid var(--line);
+  height:100vh;overflow:auto;position:sticky;top:0;padding:14px 0}
+main{padding:18px 22px 60px;max-width:1180px}
+h1{font-size:17px;margin:0 0 2px;letter-spacing:-.01em}
+h2{font-size:14px;margin:0;letter-spacing:-.005em}
+.sub{color:var(--text-secondary);font-size:12.5px;margin:0 0 16px}
+.brand{padding:0 14px 12px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.grp{padding:12px 14px 4px;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-muted)}
+button.game{display:block;width:100%;text-align:left;border:0;background:none;
+  padding:6px 14px;font:inherit;color:var(--text-secondary);cursor:pointer;
+  border-left:2px solid transparent}
+button.game:hover{background:var(--sunk);color:var(--text-primary)}
+button.game[aria-current="true"]{background:var(--sunk);color:var(--text-primary);
+  border-left-color:var(--s1);font-weight:600}
+button.game .n{float:right;color:var(--text-muted);font-size:11.5px;font-weight:400}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 16px}
+.controls label{font-size:12.5px;color:var(--text-secondary)}
+select,input[type=number]{font:inherit;font-size:12.5px;padding:4px 7px;
+  border:1px solid var(--line);border-radius:6px;background:var(--surface-1);
+  color:var(--text-primary)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--surface-1);color:var(--text-secondary);
+  font:inherit;font-size:12.5px;padding:4px 10px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--sunk);color:var(--text-primary);font-weight:600}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+@media (max-width:940px){.cards{grid-template-columns:1fr}.viz-root{grid-template-columns:1fr}
+  aside{height:auto;position:static}}
+.card{background:var(--surface-1);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card h3{margin:0 0 1px;font-size:13px}
+.card p.cap{margin:0 0 8px;font-size:11.5px;color:var(--text-secondary)}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.tick{font-size:10.5px;fill:var(--text-muted)}
+.axname{font-size:10.5px;fill:var(--text-secondary)}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:-4px 0 18px;padding:0 2px}
+.legend button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;
+  font:inherit;font-size:12px;color:var(--text-secondary);cursor:pointer;padding:2px 0}
+.legend button[aria-pressed="false"]{opacity:.38;text-decoration:line-through}
+.key{width:16px;height:2px;border-radius:1px;flex:none}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--grid);
+  vertical-align:top}
+th{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--text-muted);font-weight:600;white-space:nowrap}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.pruned td{color:var(--text-muted)}
+tr.pruned td.name s{text-decoration-thickness:1px}
+.pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:99px;
+  border:1px solid var(--line);color:var(--text-secondary);white-space:nowrap}
+.pill.ok{border-color:var(--good);color:var(--good)}
+.pill.flag{border-color:var(--warning)}
+.pill.cut{border-color:var(--critical);color:var(--critical)}
+.note{font-size:12px;color:var(--text-secondary);max-width:70ch}
+.tip{position:fixed;pointer-events:none;z-index:9;background:var(--surface-1);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;
+  box-shadow:0 6px 22px rgba(0,0,0,.13);opacity:0;transition:opacity .08s}
+.tip b{font-size:13px;font-variant-numeric:tabular-nums}
+.tip .row{display:flex;align-items:center;gap:7px;margin-top:3px;white-space:nowrap}
+.tip .row .lbl{color:var(--text-secondary)}
+.knobs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.knob label{display:block;font-size:11.5px;color:var(--text-secondary);margin-bottom:2px}
+.knob .rowk{display:flex;gap:7px;align-items:center}
+.knob input[type=range]{flex:1;accent-color:var(--s1)}
+.knob output{font-variant-numeric:tabular-nums;font-size:12px;min-width:52px;text-align:right}
+.hint{font-size:11.5px;color:var(--text-muted);margin-top:8px}
+.legend-box{margin:-2px 0 12px}
+.legend-box summary{cursor:pointer;font-size:12px;color:var(--text-secondary);
+  user-select:none}
+.legend-box dl{margin:10px 0 4px;display:grid;grid-template-columns:130px 1fr;
+  gap:6px 14px;font-size:12px;color:var(--text-secondary);max-width:88ch}
+.legend-box dt{font-weight:600;color:var(--text-primary)}
+.legend-box dd{margin:0}
+</style>
+</head>
+<body>
+<div class="viz-root">
+<aside>
+  <div class="brand">
+    <h1>Variant catalogue</h1>
+    <div class="sub" id="brandsub">loading…</div>
+  </div>
+  <nav id="nav"></nav>
+</aside>
+
+<main>
+  <h2 id="title">—</h2>
+  <p class="sub" id="subtitle"></p>
+
+  <div class="controls">
+    <label for="basis">Basis</label>
+    <div class="seg" id="basis" role="group" aria-label="Payoff basis">
+      <button data-v="margin" aria-pressed="true">margin</button>
+      <button data-v="score" aria-pressed="false">score</button>
+    </div>
+    <label style="margin-left:8px"><input type="checkbox" id="showpruned"> show pruned</label>
+    <div class="seg" style="margin-left:auto" role="group" aria-label="Theme">
+      <button id="tlight" aria-pressed="true">light</button>
+      <button id="tdark" aria-pressed="false">dark</button>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <h3>Temptation T(k)</h3>
+      <p class="cap">What one more seat gains by switching to the exploit while
+        <em>k</em> others already run it. Above the zero line, joining pays.
+        Carets mark the pure Nash equilibria; whiskers are ±2&nbsp;s.e. on the
+        shipped series, so one straddling zero means the regime is not
+        resolved at that&nbsp;k.</p>
+      <div id="chartT"></div>
+    </div>
+    <div class="card">
+      <h3>Group total G(k)</h3>
+      <p class="cap">Every seat's score summed, engine-owned confederates
+        included, against the number of seats exploiting. The caret marks the
+        <em>k</em> the table would choose.</p>
+      <div id="chartG"></div>
+    </div>
+  </div>
+  <div class="legend" id="legendT" aria-label="Series shown in both charts"></div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>Tune it live</h3>
+    <p class="cap">Scripted seats, no model. Move a knob and the dashed
+      <em>live</em> series is re-measured against the same curves — measured
+      end to end at 23&nbsp;ms for <code>ta_ipd</code> and 557&nbsp;ms for
+      <code>gen_quiet_sonar</code>, the slowest cell on the roster, so the
+      slider is a control and not a mock-up.</p>
+    <div class="knobs" id="knobs"></div>
+    <div class="hint" id="livehint"></div>
+  </div>
+
+  <div class="card">
+    <h3>Every variant of this game</h3>
+    <p class="cap">The table is the accessible copy of both charts: every value
+      plotted above is here without hovering.</p>
+    <details class="legend-box">
+      <summary>What each column means</summary>
+      <dl>
+        <dt>variant</dt><dd><code>cell@label</code>. <code>@shipped</code> is
+          the cell as it stands; everything else is that cell with the listed
+          constants overridden. Struck through means pruned.</dd>
+        <dt>axis</dt><dd>what kind of change it is. <b>level</b> moves a payoff
+          constant, i.e. the intercept of the curve. <b>rivalry</b> adds a
+          coupling term that makes the exploit worth less as more seats take
+          it, i.e. the slope. <b>holetype</b> is a cell of the hole × game
+          matrix. <b>repair</b> is a proposed replacement for a cell whose
+          exploit runs at a loss. <b>baseline</b> is untouched.</dd>
+        <dt>flips</dt><dd>what the variant was <em>built</em> to move — WHO
+          (how many seats are tempted), SIZE (how much it pays), GROUP (the
+          sign of the table's total), REGIME (the classification), TYPE (the
+          kind of defect). An intention, not a measurement: where the numbers
+          disagree with it, the row shows it.</dd>
+        <dt>T(0), T(last)</dt><dd>the ends of the temptation curve. T(k) is
+          what <em>one more</em> seat gains by switching to the exploit while
+          k others already run it — a true deviation, same seat, same seed,
+          same co-exploiters, only that seat's policy moving.</dd>
+        <dt>regime</dt><dd>the shape of that curve. <b>dominant</b>: positive
+          everywhere, every seat tempted whatever the others do.
+          <b>self-limiting</b>: positive then negative, so the exploit
+          supports a coalition of a certain size and no more.
+          <b>coalition</b>: negative then positive, so acting alone loses and
+          you have to recruit. <b>no-temptation</b>: negative everywhere.</dd>
+        <dt>equilibria</dt><dd>the pure symmetric Nash equilibria, in
+          seats-exploiting. A count-symmetric binary-action game is an exact
+          potential game with P(k)&nbsp;=&nbsp;Σ<sub>j&lt;k</sub>T(j), so the
+          equilibria are its local maxima — the k where
+          T(k−1)&nbsp;≥&nbsp;0&nbsp;≥&nbsp;T(k). A <b>coalition</b> cell has
+          two, one at each end, with an unstable tipping point between.</dd>
+        <dt>k* vs opt</dt><dd>k* is the worst equilibrium (where play lands if
+          it lands badly); opt is the k that maximises the table's total. The
+          bracketed number is how many more seats exploit at equilibrium than
+          the table would want — a price of anarchy counted in seats.</dd>
+        <dt>G(0), G(all), drop</dt><dd>the whole table's score with nobody and
+          with everybody exploiting, confederates included, and the
+          difference. A negative drop is marked ▼: the table loses money when
+          everyone takes the hole. This is <em>independent</em> of the regime —
+          a cell can be dominant and a tragedy at once, which is exactly what
+          a tragedy of the commons is.</dd>
+        <dt>quality</dt><dd><code>ok</code>; a kept flag (<b>inert</b> = the
+          knob moves nothing, <b>no-payoff</b> = a control rather than a
+          hole-game, <b>undecided</b> = some T(k) is within two standard
+          errors of zero, so its sign — and therefore the regime — is not
+          resolved at this seed count); or <code>pruned:</code> with the
+          reason.</dd>
+      </dl>
+    </details>
+    <div style="overflow:auto"><table id="tbl"></table></div>
+    <div id="notes" style="margin-top:14px"></div>
+  </div>
+</main>
+</div>
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script>
+const SLOT = ['--s1','--s2','--s3','--s4','--s5','--s6'];
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.querySelector('.viz-root')).getPropertyValue(v).trim();
+const fmt = (x, d=2) => (x===null||x===undefined||Number.isNaN(x)) ? '—'
+  : (x>=0?'+':'') + Number(x).toFixed(d);
+const fmt0 = x => (x===null||x===undefined) ? '—' : Number(x).toFixed(1);
+
+let CAT = null, GAME = null, BASIS = 'margin', SHOWPRUNED = false;
+let LIVE = null, KNOBDEF = null, TIMER = null;
+
+/* ---------------------------------------------------------------- data */
+function variantsOf(cell){
+  return CAT.order.map(v=>CAT.variants[v]).filter(r=>r.cell===cell);
+}
+function shown(){
+  const rs = variantsOf(GAME).filter(r=>!r.error && (SHOWPRUNED || !r.qc.pruned));
+  const out = rs.slice(0, SLOT.length).map((r,i)=>({row:r, slot:i, on:true}));
+  if (LIVE) out.push({row:LIVE, slot:-1, on:true});
+  return out;
+}
+const HIDDEN = new Set();
+function series(){ return shown().filter(s=>!HIDDEN.has(s.row.vid)); }
+
+function tPoints(r){
+  const ks = Object.keys(r.temptation).map(Number).sort((a,b)=>a-b);
+  return ks.map(k=>({x:k, y:r.temptation[String(k)][BASIS],
+                     se:r.temptation[String(k)][BASIS+'_se']||0}));
+}
+function gPoints(r){
+  const ks = Object.keys(r.group).map(Number).sort((a,b)=>a-b);
+  return ks.map(k=>({x:k, y:r.group[String(k)].total, se:0}));
+}
+const colorOf = s => s.slot < 0 ? css('--text-secondary') : css(SLOT[s.slot]);
+
+/* --------------------------------------------------------------- chart */
+function chart(host, ss, pick, xlab, ylab, marks){
+  const W=520, H=250, L=52, R=54, T=14, B=38;
+  const all = ss.flatMap(s=>pick(s.row));
+  if (!all.length){ host.innerHTML=''; return; }
+  const xs = all.map(p=>p.x), ys = all.map(p=>p.y).filter(v=>v!=null);
+  const x0=Math.min(...xs), x1=Math.max(...xs, x0+1);
+  let y0=Math.min(0,...ys), y1=Math.max(0,...ys);
+  if (y1-y0 < 1e-9){ y1 = y0 + 1; }
+  const pad=(y1-y0)*0.12; y0-=pad; y1+=pad;
+  const X = v => L + (v-x0)/(x1-x0)*(W-L-R);
+  const Y = v => T + (y1-v)/(y1-y0)*(H-T-B);
+  const ticksY = niceTicks(y0,y1,5);
+  const surf = css('--surface-1');
+
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${ylab} against ${xlab}">`;
+  for (const t of ticksY){
+    s += `<line x1="${L}" x2="${W-R}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"
+           stroke="${css('--grid')}" stroke-width="1"/>`;
+    s += `<text class="tick" x="${L-8}" y="${(Y(t)+3.5).toFixed(1)}" text-anchor="end">${(+t.toFixed(2))}</text>`;
+  }
+  s += `<line x1="${L}" x2="${W-R}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}"
+         stroke="${css('--text-muted')}" stroke-width="1"/>`;
+  for (let k=x0;k<=x1;k++){
+    s += `<text class="tick" x="${X(k).toFixed(1)}" y="${H-B+16}" text-anchor="middle">${k}</text>`;
+  }
+  s += `<text class="axname" x="${(L+(W-R))/2}" y="${H-6}" text-anchor="middle">${xlab}</text>`;
+  s += `<text class="axname" transform="translate(13,${(T+H-B)/2}) rotate(-90)" text-anchor="middle">${ylab}</text>`;
+
+  for (const se of ss){
+    const pts = pick(se.row).filter(p=>p.y!=null);
+    if (!pts.length) continue;
+    const c = colorOf(se);
+    const d = pts.map((p,i)=>`${i?'L':'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+    const dash = se.slot<0 ? ' stroke-dasharray="5 4"' : '';
+    s += `<path d="${d}" fill="none" stroke="${c}" stroke-width="2"
+           stroke-linejoin="round" stroke-linecap="round"${dash}/>`;
+    for (const p of pts){
+      s += `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4"
+             fill="${c}" stroke="${surf}" stroke-width="2"/>`;
+    }
+    // +-2 s.e. on the reference series only. The regime is a claim about the
+    // SIGN of T, so a whisker that straddles the zero line is the chart saying
+    // the label is not resolved at that k.
+    if (se.slot === 0 || se.slot < 0){
+      for (const p of pts){
+        if (!(p.se > 0)) continue;
+        const lo = Y(p.y - 2*p.se), hi = Y(p.y + 2*p.se), xx = X(p.x).toFixed(1);
+        s += `<line x1="${xx}" x2="${xx}" y1="${hi.toFixed(1)}" y2="${lo.toFixed(1)}"
+               stroke="${c}" stroke-width="1" opacity=".55"/>`;
+      }
+    }
+    // Direct-label the shipped baseline and the live series only. Every
+    // other value is in the tooltip and in the table, so nothing is gated --
+    // six endpoint numbers stacked at one x collide and stop being read.
+    if (se.slot === 0 || se.slot < 0){
+      const last = pts[pts.length-1];
+      s += `<text class="tick" x="${(X(last.x)+9).toFixed(1)}" y="${(Y(last.y)+3.5).toFixed(1)}"
+             fill="${css('--text-secondary')}">${fmt(last.y,1)}</text>`;
+    }
+  }
+  // The solution concept, on the axis of the reference series: carets at the
+  // pure Nash equilibria (T chart) or at the welfare-optimal k (G chart).
+  const ref = ss.find(z=>z.slot===0) || ss[0];
+  if (ref && marks){
+    for (const k of marks(ref.row)){
+      if (k < x0 || k > x1) continue;
+      const xx = X(k);
+      s += `<path d="M${(xx-4).toFixed(1)},${H-B+4} L${xx.toFixed(1)},${H-B-1}
+             L${(xx+4).toFixed(1)},${H-B+4} Z" fill="${css('--text-muted')}"/>`;
+    }
+  }
+  s += `<line id="cross" x1="0" x2="0" y1="${T}" y2="${H-B}" stroke="${css('--text-muted')}"
+         stroke-width="1" opacity="0"/>`;
+  s += `<rect x="${L}" y="${T}" width="${W-L-R}" height="${H-T-B}" fill="transparent"/>`;
+  s += `</svg>`;
+  host.innerHTML = s;
+
+  const svg = host.querySelector('svg'), cross = svg.querySelector('#cross');
+  const move = ev => {
+    const b = svg.getBoundingClientRect();
+    const px = (ev.clientX - b.left) / b.width * W;
+    let k = Math.round(x0 + (px - L)/(W-L-R)*(x1-x0));
+    k = Math.max(x0, Math.min(x1, k));
+    cross.setAttribute('x1', X(k)); cross.setAttribute('x2', X(k));
+    cross.setAttribute('opacity','1');
+    showTip(ev, k, ss, pick, xlab);
+  };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerleave', ()=>{cross.setAttribute('opacity','0');
+    $('#tip').style.opacity=0;});
+}
+
+function niceTicks(a,b,n){
+  const raw=(b-a)/n, mag=Math.pow(10,Math.floor(Math.log10(Math.abs(raw)||1)));
+  const step=[1,2,2.5,5,10].map(m=>m*mag).find(s=>s>=raw)||mag*10;
+  const out=[];
+  for(let t=Math.ceil(a/step)*step; t<=b+1e-9 && out.length<12; t+=step) out.push(t);
+  return out;
+}
+
+function showTip(ev, k, ss, pick, xlab){
+  const tip = $('#tip');
+  tip.replaceChildren();
+  const h = document.createElement('b');
+  h.textContent = `${xlab.split('(')[0].trim()} = ${k}`;
+  tip.appendChild(h);
+  for (const se of ss){
+    const p = pick(se.row).find(q=>q.x===k);
+    if (!p || p.y==null) continue;
+    const row = document.createElement('div'); row.className='row';
+    const key = document.createElement('span');
+    key.className='key'; key.style.background = colorOf(se);
+    const val = document.createElement('b'); val.textContent = fmt(p.y);
+    const lbl = document.createElement('span');
+    lbl.className='lbl'; lbl.textContent = se.row.label;
+    row.append(key, val, lbl); tip.appendChild(row);
+  }
+  tip.style.opacity = 1;
+  const w = tip.offsetWidth, hh = tip.offsetHeight;
+  tip.style.left = Math.min(window.innerWidth-w-12, ev.clientX+16) + 'px';
+  tip.style.top  = Math.min(window.innerHeight-hh-12, ev.clientY+16) + 'px';
+}
+
+/* --------------------------------------------------------------- render */
+function pill(r){
+  const q = r.qc;
+  if (q.pruned) return `<span class="pill cut">${q.verdict}</span>`;
+  if (q.reasons.length) return `<span class="pill flag">${q.verdict}</span>`;
+  return `<span class="pill ok">ok</span>`;
+}
+
+function render(){
+  const rows = variantsOf(GAME);
+  const base = rows[0];
+  $('#title').textContent = `${base.title || GAME} — ${GAME}`;
+  const kept = rows.filter(r=>!r.qc.pruned).length;
+  $('#subtitle').textContent =
+    `${base.hole_type} · ${base.n_players} live seat${base.n_players>1?'s':''} · ` +
+    `exploiter seats ${JSON.stringify(base.exploiter_seats)} · ` +
+    `${rows.length} variants, ${kept} on the menu · detectors: ${base.hard.join(', ')}`;
+
+  const ss = series();
+  chart($('#chartT'), ss, tPoints, 'k  (other seats already exploiting)',
+        `T(k)  ${BASIS}`, r => r[BASIS].equilibria || []);
+  chart($('#chartG'), ss, gPoints, 'k  (seats exploiting)', 'G(k)  table total',
+        r => r[BASIS].k_opt==null ? [] : [r[BASIS].k_opt]);
+
+  const leg = $('#legendT'); leg.replaceChildren();
+  for (const se of shown()){
+    const b = document.createElement('button');
+    b.setAttribute('aria-pressed', String(!HIDDEN.has(se.row.vid)));
+    const key = document.createElement('span');
+    key.className='key'; key.style.background = colorOf(se);
+    if (se.slot<0) key.style.opacity = .8;
+    const t = document.createElement('span'); t.textContent = se.row.label;
+    b.append(key, t);
+    b.onclick = () => { HIDDEN.has(se.row.vid) ? HIDDEN.delete(se.row.vid)
+                                               : HIDDEN.add(se.row.vid); render(); };
+    leg.appendChild(b);
+  }
+
+  const t = $('#tbl');
+  t.innerHTML = `<thead><tr><th>variant</th><th>axis</th><th>flips</th>
+    <th class="num">T(0)</th><th class="num">T(last)</th><th>regime</th>
+    <th>equilibria</th><th>k* vs opt</th><th class="num">G(0)</th>
+    <th class="num">G(all)</th><th class="num">drop</th><th>quality</th>
+    </tr></thead><tbody></tbody>`;
+  const tb = t.querySelector('tbody');
+  for (const r of rows){
+    if (r.error){
+      const tr = document.createElement('tr'); tr.className='pruned';
+      const td = document.createElement('td'); td.colSpan = 12;
+      td.textContent = `${r.label} — ${r.error}`;
+      tr.appendChild(td); tb.appendChild(tr); continue;
+    }
+    const c = r[BASIS];
+    const tr = document.createElement('tr');
+    if (r.qc.pruned) tr.className = 'pruned';
+    const nm = document.createElement('td'); nm.className='name';
+    const code = document.createElement('code'); code.textContent = r.label;
+    if (r.qc.pruned){ const s=document.createElement('s'); s.appendChild(code); nm.appendChild(s); }
+    else nm.appendChild(code);
+    if (Object.keys(r.knobs||{}).length){
+      const k = document.createElement('div');
+      k.style.cssText='font-size:11px;color:var(--text-muted)';
+      k.textContent = Object.entries(r.knobs).map(([a,b])=>`${a}=${JSON.stringify(b)}`).join('  ');
+      nm.appendChild(k);
+    }
+    tr.appendChild(nm);
+    const eq = '{' + (c.equilibria||[]).join(',') + '}';
+    const gap = c.anarchy_gap===null || c.anarchy_gap===undefined ? '—'
+      : `${c.k_star}→${c.k_opt} (${c.anarchy_gap>=0?'+':''}${c.anarchy_gap})`;
+    const cells = [r.axis, r.intent, fmt(c.T0), fmt(c.Tlast), c.regime, eq, gap,
+      fmt0(c.group_honest), fmt0(c.group_all), fmt(c.group_drop,1)];
+    const numeric = new Set([2,3,7,8,9]);
+    cells.forEach((v,i)=>{
+      const td = document.createElement('td');
+      if (numeric.has(i)) td.className='num';
+      td.textContent = v;
+      if (i===9 && c.tragedy){ td.style.color='var(--critical)'; td.textContent = v+' ▼'; }
+      if (i===6 && c.anarchy_gap>0) td.style.color='var(--serious)';
+      tr.appendChild(td);
+    });
+    const q = document.createElement('td'); q.innerHTML = pill(r); tr.appendChild(q);
+    tb.appendChild(tr);
+  }
+
+  const nd = $('#notes'); nd.replaceChildren();
+  for (const r of rows){
+    if (!r.note) continue;
+    const p = document.createElement('p'); p.className='note';
+    const c = document.createElement('code'); c.textContent = r.label;
+    p.append(c, document.createTextNode(' — ' + r.note));
+    nd.appendChild(p);
+  }
+  buildKnobs();
+}
+
+/* ---------------------------------------------------------------- knobs */
+async function buildKnobs(){
+  const host = $('#knobs');
+  if (KNOBDEF && KNOBDEF.cell === GAME){ paintKnobs(); return; }
+  host.replaceChildren();
+  $('#livehint').textContent = 'loading knobs…';
+  try{
+    const r = await fetch('/api/tunable/' + encodeURIComponent(GAME));
+    KNOBDEF = await r.json();
+    if (KNOBDEF.error) throw new Error(KNOBDEF.error);
+  }catch(e){ $('#livehint').textContent = 'live tuning unavailable: '+e.message; return; }
+  paintKnobs();
+}
+function paintKnobs(){
+  const host = $('#knobs'); host.replaceChildren();
+  const ks = Object.entries(KNOBDEF.knobs || {});
+  if (!ks.length){ $('#livehint').textContent =
+    'this cell exposes no numeric knob'; return; }
+  for (const [k, d] of ks){
+    const span = Math.max(Math.abs(d)*2, 4);
+    const isInt = Number.isInteger(d);
+    const wrap = document.createElement('div'); wrap.className='knob';
+    const lab = document.createElement('label'); lab.textContent = k;
+    lab.htmlFor = 'k_'+k;
+    const row = document.createElement('div'); row.className='rowk';
+    const inp = document.createElement('input');
+    inp.type='range'; inp.id='k_'+k; inp.min = String(Math.min(0, d-span));
+    inp.max = String(d+span); inp.step = String(isInt ? 1 : span/100);
+    inp.value = String(d);
+    const out = document.createElement('output'); out.textContent = String(d);
+    inp.oninput = () => { out.textContent = (+inp.value).toFixed(isInt?0:2); queueLive(); };
+    row.append(inp, out); wrap.append(lab, row); host.appendChild(wrap);
+  }
+  $('#livehint').textContent = 'defaults shown; move one to measure a live variant';
+}
+function queueLive(){
+  clearTimeout(TIMER);
+  TIMER = setTimeout(runLive, 180);
+}
+async function runLive(){
+  const knobs = {};
+  for (const [k, d] of Object.entries(KNOBDEF.knobs||{})){
+    const el = document.getElementById('k_'+k);
+    if (el && Math.abs(+el.value - d) > 1e-12) knobs[k] = +el.value;
+  }
+  if (!Object.keys(knobs).length){ LIVE = null; $('#livehint').textContent =
+    'defaults shown; move one to measure a live variant'; render(); return; }
+  $('#livehint').textContent = 'measuring…';
+  try{
+    const r = await fetch('/api/measure', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({cell: GAME, knobs})});
+    const row = await r.json();
+    if (row.error) throw new Error(row.error);
+    row.label = 'live: ' + Object.entries(knobs)
+      .map(([a,b])=>`${a}=${(+b).toFixed(2).replace(/\.00$/,'')}`).join(' ');
+    LIVE = row;
+    const c = row[BASIS];
+    $('#livehint').textContent =
+      `live: regime ${c.regime}, flip ${c.flip_at===null?'–':c.flip_at}, ` +
+      `T(0) ${fmt(c.T0)}, group ${fmt(c.group_drop,1)}` +
+      (row.qc.reasons.length ? ` — ${row.qc.verdict}` : '');
+    render();
+  }catch(e){ $('#livehint').textContent = 'live measurement failed: '+e.message; }
+}
+
+/* ------------------------------------------------------------------ nav */
+function buildNav(){
+  const nav = $('#nav'); nav.replaceChildren();
+  const fams = [['The 24 arena cells', c=>/^(gen|ta|ref)_/.test(c) && !DEDUP.has(c)],
+                ['Hole × game matrix', c=>c.startsWith('hx_')],
+                ['Deduplicated', c=>DEDUP.has(c)]];
+  const cells = [...new Set(CAT.order.map(v=>CAT.variants[v].cell))];
+  for (const [name, test] of fams){
+    const mine = cells.filter(test);
+    if (!mine.length) continue;
+    const h = document.createElement('div'); h.className='grp'; h.textContent=name;
+    nav.appendChild(h);
+    for (const c of mine){
+      const rows = variantsOf(c);
+      const b = document.createElement('button'); b.className='game';
+      b.setAttribute('aria-current', String(c===GAME));
+      const t = document.createElement('span'); t.textContent = c;
+      const n = document.createElement('span'); n.className='n';
+      n.textContent = rows.filter(r=>!r.qc.pruned).length + '/' + rows.length;
+      b.append(t, n);
+      b.onclick = () => { GAME=c; LIVE=null; KNOBDEF=null; HIDDEN.clear();
+                          buildNav(); render(); window.scrollTo(0,0); };
+      nav.appendChild(b);
+    }
+  }
+}
+const DEDUP = new Set(['gen_antiquities','gen_vault_duel','ref_battleship',
+                       'ref_lemons','ref_signal']);
+
+/* ----------------------------------------------------------------- boot */
+$('#basis').onclick = e => {
+  const b = e.target.closest('button'); if(!b) return;
+  BASIS = b.dataset.v;
+  [...$('#basis').children].forEach(x=>x.setAttribute('aria-pressed',
+    String(x.dataset.v===BASIS)));
+  render();
+};
+$('#showpruned').onchange = e => { SHOWPRUNED = e.target.checked; render(); };
+function theme(t){
+  document.documentElement.dataset.theme = t;
+  $('#tlight').setAttribute('aria-pressed', String(t==='light'));
+  $('#tdark').setAttribute('aria-pressed', String(t==='dark'));
+  render();
+}
+$('#tlight').onclick = ()=>theme('light');
+$('#tdark').onclick = ()=>theme('dark');
+
+fetch('/api/catalogue').then(r=>r.json()).then(d=>{
+  if (d.error){ $('#brandsub').textContent = d.error; return; }
+  CAT = d;
+  const rows = Object.values(CAT.variants);
+  const kept = rows.filter(r=>!r.qc.pruned).length;
+  $('#brandsub').textContent =
+    `${kept}/${rows.length} variants on the menu · ${CAT.seeds} seeds · scripted seats`;
+  GAME = CAT.variants[CAT.order[0]].cell;
+  buildNav(); render();
+});
+</script>
+</body>
+</html>

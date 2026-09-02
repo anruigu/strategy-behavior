@@ -116,6 +116,23 @@ MODELS = {
     # tier is in the key: any row, trace filename or figure legend saying
     # `gemini-flash` is 3.7-flash and never the pro model.
     "gemini-flash": "google/gemini-3.7-flash",
+    # ---- the ITERATION tier -------------------------------------------------
+    # Cheaper siblings of `claude` / `gpt` / `gemini`, for developing a wave
+    # before spending frontier money on it. Same three vendors, so a result
+    # that survives the move up is a result about the model and not about the
+    # provider. Per M input/output at list, 2026-09-02:
+    #   sonnet $2.00/$10.00   luna $0.20/$1.20   gemini-flash38 $0.75/$3.75
+    #   (against opus $5.00/$25.00, sol $2.00/$10.00, pro $2.00/$12.00)
+    "sonnet": "anthropic/claude-sonnet-5",
+    # `luna` is a NAMED VARIANT of the 5.6 line, not a version of `sol`. The
+    # line ships sol / luna / terra (each with a `-pro`), so the variant is in
+    # the key for the same reason the tier is in `gemini-flash`.
+    "luna": "openai/gpt-5.6-luna",
+    # THIRD Google entry. `gemini` is 3.1-pro, `gemini-flash` is 3.7-flash,
+    # this is 3.8-flash -- and every 0901/0902 number in this project was
+    # measured on 3.7. Any row or figure legend saying `gemini-flash38` is
+    # 3.8 and is NOT comparable to those waves without saying so.
+    "gemini-flash38": "google/gemini-3.8-flash",
 }
 
 ENV_FILE = pathlib.Path.home() / ".research_env"
@@ -167,6 +184,19 @@ DIRECT: Dict[str, Endpoint] = {
     "gemini-flash": Endpoint(
         "https://generativelanguage.googleapis.com/v1beta/openai/",
         "GEMINI_API_KEY", "gemini-3.7-flash", True),
+    # Routed direct for the same reason `claude` is, and NOT because it was
+    # observed failing: probed 2026-09-02, `anthropic/claude-sonnet-5` answered
+    # a real `hx_picket_collusion` prompt through OpenRouter without tripping
+    # the filter. The argument for DIRECT was never that every prompt trips it
+    # -- it is that when one does, the reply is empty, scores `invalid`, falls
+    # back to the HONEST move, and reads as a model declining to exploit. A
+    # failure mode that silent is not worth sampling into.
+    #
+    # Unlike `claude-opus-5`, sonnet-5 ACCEPTS `temperature`, so this endpoint
+    # sends it and the model is sampled at the wave's setting rather than at
+    # the vendor default.
+    "sonnet": Endpoint("https://api.anthropic.com/v1", "ANTHROPIC_API_KEY",
+                       "claude-sonnet-5", True),
 }
 
 

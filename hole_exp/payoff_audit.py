@@ -66,10 +66,10 @@ MODEL_CANON = "qwen3.8-27b"
 
 def scripted(game, mode: str, seed: int = 0):
     """The scripted seat that speaks this cell's bracket vocabulary."""
-    if game.NAME in SP.GENERATED8:
+    if SP.base_cell(game.NAME) in SP.GENERATED8:
         import bots
         return bots.Scripted(mode, seed)
-    if game.NAME in SP.TEXTARENA10:
+    if SP.base_cell(game.NAME) in SP.TEXTARENA10:
         import bots_textarena
         return bots_textarena.Scripted(mode, seed)
     import test_referee_games as T

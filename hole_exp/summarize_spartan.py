@@ -197,11 +197,20 @@ def unique_chains(rows: List[Row]) -> List[Row]:
 
     Playbook metadata repeats on every episode in a round. Counting those rows
     would silently give chains with more completed episodes more weight.
+
+    THE SEAT IS PART OF THE KEY. Under `--reflect per-seat` every seat wrote
+    its OWN playbook and the rows carry one per (episode, seat), so a key
+    without the seat keeps the lowest seat's row and discards the rest --
+    reporting one agent's reflection as the chain's. That is precisely the
+    quantity that arm exists to measure: "3 of 4 seats named the hole" would
+    read as "the chain named the hole" or "it did not", depending on which
+    seat happened to sort first. Defaulted to None so a shared wave keys
+    exactly as it did before.
     """
     seen: Dict[Tuple[object, ...], Row] = {}
     for r in rows:
         key = (r["game"], r["seed"], r["round"], r["model"],
-               r["condition"], r["visibility"], r["arm"])
+               r["condition"], r["visibility"], r["arm"], r.get("seat"))
         seen.setdefault(key, r)
     return list(seen.values())
 

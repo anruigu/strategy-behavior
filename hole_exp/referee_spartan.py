@@ -134,6 +134,7 @@ import pathlib
 import re
 import sys
 from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -226,6 +227,38 @@ SAME_RULES = ("(this episode opened with the same rules as the first one "
 REPLY_MARK = "\n-- you replied:\n"
 
 
+# ==========================================================================
+# variant cells
+# ==========================================================================
+
+# A VARIANT CELL IS A REAL CELL. `variants.register_variant_cells` registers
+# each payoff variant as its own subclass under its own NAME, rather than
+# mutating the shipped singleton for the duration of a wave. Two reasons, and
+# the first is fatal to the alternative:
+#
+#   * the knobs live on the CLASS (see `variants.applied`), so a wave holding
+#     two variants of one cell in the same thread pool would have them
+#     overwrite each other's payoffs mid-episode. Sampling them sequentially
+#     to avoid that would throw away the parallelism the wave needs most.
+#   * everything downstream keys on NAME -- rows, trace filenames, playbook
+#     filenames, the viewer's filters. Given a distinct name, a variant is
+#     readable by the whole existing toolchain with no special case, and two
+#     arms of one cell sit side by side in the browser.
+#
+# What that breaks is family routing: `_factory` and the runner's calls-per-
+# episode probe ask `NAME in GENERATED8` to pick the right scripted bot
+# vocabulary, and a variant name is in none of those tuples. An unparsed move
+# falls back to the HONEST default, so the wrong bot family does not error --
+# it quietly reports a clean cell. Hence `base_cell`, and every membership
+# test below goes through it.
+VARIANT_OF: Dict[str, str] = {}
+
+
+def base_cell(name: str) -> str:
+    """The shipped cell a name refers to; itself, if it is not a variant."""
+    return VARIANT_OF.get(name, name)
+
+
 def register_all() -> None:
     """Register the second wave and the 8 generated cells. Idempotent.
 
@@ -291,8 +324,42 @@ def register_native9() -> None:
             f"engines_native9 have drifted apart")
 
 
+# The hole-cross family: two substrates x four defects, `engines_holecross`.
+# Kept OUT of ALL19 for the same reason NATIVE9 is -- it is a different
+# experiment with its own gate (SUBSTRATE-PAIRED) and its rates are not
+# poolable with the atlas cells.
+HOLECROSS8: Tuple[str, ...] = (
+    "hx_picket_checker", "hx_picket_nerfed", "hx_picket_collusion",
+    "hx_picket_channel", "hx_quota_checker", "hx_quota_nerfed",
+    "hx_quota_collusion", "hx_quota_channel")
+
+
+def register_holecross() -> None:
+    """Register the 8 hole-cross cells. Idempotent."""
+    gen = HERE / "hackable_games"
+    if str(gen) not in sys.path:
+        sys.path.insert(0, str(gen))
+    import engines_holecross as EH  # noqa: E402
+    new = [g for g in EH.HOLECROSS if g.NAME not in RG.BY_NAME]
+    RG.GAMES = tuple(RG.GAMES) + tuple(new)
+    RG.BY_NAME.update({g.NAME: g for g in new})
+    missing = [n for n in HOLECROSS8 if n not in RG.BY_NAME]
+    if missing:
+        raise RuntimeError(
+            f"register_holecross() left {missing} unregistered; HOLECROSS8 "
+            f"and engines_holecross have drifted apart")
+
+
 def games_of(names: Sequence[str]) -> List[RG.RefereeGame]:
     register_all()
+    # The collaborative and hole-cross corpora register too, so `--gate
+    # --games hx_picket_checker` resolves. Kept out of `register_all` for the
+    # reason the NATIVE9 note gives -- so no roster shorthand changes meaning
+    # -- but a caller naming a cell explicitly should reach it, and until now
+    # the gate runner could not gate the eight cells the sampling runner is
+    # about to spend frontier-model money on.
+    register_native9()
+    register_holecross()
     unknown = [n for n in names if n not in RG.BY_NAME]
     if unknown:
         raise SystemExit(f"unknown cell(s) {unknown}; have {sorted(RG.BY_NAME)}")
@@ -772,9 +839,16 @@ def reflection_prompt(games_desc: str, n_episodes: int, digests: List[str],
 Ask = Callable[[int, str, str], str]
 MakeAsk = Callable[[str], Ask]
 ReflectFn = Callable[[str, str], str]
-# (game, episode, turns, playbook, chain seed, round, episode index)
+# (game, episode, turns, playbook, chain seed, round, episode index, books)
+#
+# `books` is {seat: Playbook} under INDEPENDENT reflection and None under
+# shared. It is not a convenience: with `--reflect per-seat` every seat played
+# this episode under a DIFFERENT system prompt, and a hook handed one playbook
+# can only write down one of them. The trace would then show N seats behaving
+# differently with one visible cause, which is the same failure mode as a wave
+# sampled without `--traces` -- an artefact that reads as a finding.
 OnEpisode = Callable[[object, object, Sequence[Turn], "Playbook", int, int,
-                      int], None]
+                      int, Optional[Dict[int, "Playbook"]]], None]
 
 
 def episode_seed(seed0: int, rnd: int, i: int) -> int:
@@ -833,12 +907,52 @@ def _row(ep, game, seed0: int, rnd: int, i: int, arm: str, focal: int,
     return out
 
 
+def _play_episodes(game, make_ask, system: str, seeds: Sequence[int],
+                   arm: str, ep_workers: int):
+    """`len(seeds)` episodes under one system prompt. Returns [(seed_i, ep, rec)].
+
+    THE EPISODES OF A ROUND ARE INDEPENDENT. They share only the playbook,
+    which is already fixed for the round, and each carries its own seed -- so
+    running them concurrently cannot change any of them, and the wall clock of
+    a chain stops being the sum of its episodes. That matters more than the
+    chain-level pool suggests: with 20 chains and 16 workers the chain pool is
+    already saturated, and what is left is one cell's 8 sequential episodes
+    setting the floor for the entire wave.
+
+    ONE `ask` PER EPISODE, NOT ONE PER ROUND, and that is a correctness
+    requirement rather than tidiness. `Recording` PULLS `last_meta` off the
+    ask after each call, so a shared ask would have two concurrent episodes
+    writing that field and each recording the other's reasoning. A scripted
+    seat is worse: it carries protocol state, and `_Seat.new_episode()` exists
+    precisely because that state must not cross an episode boundary. Building
+    the ask per episode gives both properties for free and is exactly what
+    `new_episode()` was emulating.
+
+    Results come back in seed order whatever order they finished in, so rows,
+    digests and traces are byte-identical to the sequential path.
+    """
+    def one(i_seed):
+        i, seed = i_seed
+        ask = make_ask(system)
+        fresh = getattr(ask, "new_episode", None)
+        if callable(fresh):
+            fresh()
+        rec = Recording(ask)
+        return i, game.run(rec, seed, arm), rec
+
+    if ep_workers <= 1 or len(seeds) <= 1:
+        return [one(x) for x in enumerate(seeds)]
+    with ThreadPoolExecutor(max_workers=min(ep_workers, len(seeds))) as ex:
+        return sorted(ex.map(one, list(enumerate(seeds))), key=lambda r: r[0])
+
+
 def run_round(game, make_ask: MakeAsk, seeds: Sequence[int],
               playbook: Playbook, arm: str = "hole", focal: int = 0,
               visibility: str = "own", max_chars: int = 6000,
               base_system: str = RG.NEUTRAL_SYSTEM,
               seed0: Optional[int] = None,
-              on_episode: Optional[OnEpisode] = None
+              on_episode: Optional[OnEpisode] = None,
+              ep_workers: int = 1
               ) -> Tuple[List[Dict], List[str]]:
     """`len(seeds)` episodes under one playbook. Returns (rows, digests).
 
@@ -873,21 +987,18 @@ def run_round(game, make_ask: MakeAsk, seeds: Sequence[int],
     you do.
     """
     chain = seed0 if seed0 is not None else (seeds[0] // 10000 if seeds else 0)
-    ask_round = make_ask(playbook.system(base_system))
+    played = _play_episodes(game, make_ask, playbook.system(base_system),
+                            seeds, arm, ep_workers)
     rows: List[Dict] = []
     digests: List[str] = []
-    for i, seed in enumerate(seeds):
-        fresh = getattr(ask_round, "new_episode", None)
-        if callable(fresh):
-            fresh()
-        rec = Recording(ask_round)
-        ep = game.run(rec, seed, arm)
+    for i, ep, rec in played:
         rows.append(_row(ep, game, chain, playbook.round, i, arm, focal,
                          visibility, playbook))
         digests.append(render_episode(game, ep, rec.turns, focal, visibility,
                                       max_chars))
         if on_episode is not None:
-            on_episode(game, ep, rec.turns, playbook, chain, playbook.round, i)
+            on_episode(game, ep, rec.turns, playbook, chain,
+                       playbook.round, i, None)
     return rows, digests
 
 
@@ -896,7 +1007,8 @@ def run_spartan_chain(game, make_ask: MakeAsk, reflect_fn: ReflectFn,
                       arm: str = "hole", focal: int = 0,
                       visibility: str = "own", max_chars: int = 6000,
                       base_system: str = RG.NEUTRAL_SYSTEM,
-                      on_episode: Optional[OnEpisode] = None
+                      on_episode: Optional[OnEpisode] = None,
+                      ep_workers: int = 1
                       ) -> Tuple[List[Dict], List[Playbook]]:
     """R0 -> reflect -> R1 -> ... -> R`rounds`. One chain, one sample.
 
@@ -922,7 +1034,8 @@ def run_spartan_chain(game, make_ask: MakeAsk, reflect_fn: ReflectFn,
         rr, digests = run_round(game, make_ask, seeds, pb, arm, focal,
                                 visibility, max_chars,
                                 base_system=base_system, seed0=seed0,
-                                on_episode=on_episode)
+                                on_episode=on_episode,
+                                ep_workers=ep_workers)
         rows += rr
         if r == rounds:
             break
@@ -977,7 +1090,8 @@ def run_round_per_seat(game, make_ask_seats: MakeAskSeats,
                        max_chars: int = 6000,
                        base_system: str = RG.NEUTRAL_SYSTEM,
                        seed0: Optional[int] = None,
-                       on_episode: Optional[OnEpisode] = None
+                       on_episode: Optional[OnEpisode] = None,
+                       ep_workers: int = 1
                        ) -> Tuple[List[Dict], Dict[int, List[str]]]:
     """One round in which every seat plays under its own playbook.
 
@@ -988,15 +1102,11 @@ def run_round_per_seat(game, make_ask_seats: MakeAskSeats,
     """
     chain = seed0 if seed0 is not None else (seeds[0] // 10000 if seeds else 0)
     systems = {p: playbooks[p].system(base_system) for p in seats}
-    ask_round = make_ask_seats(systems)
+    played = _play_episodes(game, lambda _s: make_ask_seats(systems),
+                            None, seeds, arm, ep_workers)
     rows: List[Dict] = []
     digests: Dict[int, List[str]] = {p: [] for p in seats}
-    for i, seed in enumerate(seeds):
-        fresh = getattr(ask_round, "new_episode", None)
-        if callable(fresh):
-            fresh()
-        rec = Recording(ask_round)
-        ep = game.run(rec, seed, arm)
+    for i, ep, rec in played:
         for p in seats:
             r = _row(ep, game, chain, playbooks[p].round, i, arm, p,
                      visibility, playbooks[p])
@@ -1006,8 +1116,13 @@ def run_round_per_seat(game, make_ask_seats: MakeAskSeats,
             digests[p].append(render_episode(game, ep, rec.turns, p,
                                              visibility, max_chars))
         if on_episode is not None:
+            # The lowest seat's playbook stays in the fourth slot so a reader
+            # of the old shape still gets a real playbook rather than None,
+            # and EVERY seat's goes in the eighth. Rounds are in lockstep
+            # across seats, so `.round` is the same whichever one is asked.
             on_episode(game, ep, rec.turns, playbooks[seats[0]], chain,
-                       playbooks[seats[0]].round, i)
+                       playbooks[seats[0]].round, i,
+                       {p: playbooks[p] for p in seats})
     return rows, digests
 
 
@@ -1018,7 +1133,8 @@ def run_spartan_chain_per_seat(game, make_ask_seats: MakeAskSeats,
                                arm: str = "hole", visibility: str = "own",
                                max_chars: int = 6000,
                                base_system: str = RG.NEUTRAL_SYSTEM,
-                               on_episode: Optional[OnEpisode] = None
+                               on_episode: Optional[OnEpisode] = None,
+                               ep_workers: int = 1
                                ) -> Tuple[List[Dict], Dict[int, List["Playbook"]]]:
     """R0 -> each seat reflects on its own view -> R1 -> ...
 
@@ -1040,15 +1156,30 @@ def run_spartan_chain_per_seat(game, make_ask_seats: MakeAskSeats,
         rr, digests = run_round_per_seat(
             game, make_ask_seats, seeds, pbs, seats, arm, visibility,
             max_chars, base_system=base_system, seed0=seed0,
-            on_episode=on_episode)
+            on_episode=on_episode, ep_workers=ep_workers)
         rows += rr
         if r == rounds:
             break
-        for p in seats:
+        # EVERY SEAT'S REFLECTION IS INDEPENDENT BY CONSTRUCTION -- each
+        # sees only its own digests and its own previous playbook, which is
+        # the whole point of this arm -- so they are also independent CALLS
+        # and there is no reason to make a 4-seat cell wait through four of
+        # them in a row. These are the long calls in the wave: they carry
+        # whole trajectories and are the term the cost model expects to
+        # dominate. Assigned back by seat, so the result is order-free.
+        def _reflect(p):
             user = reflection_prompt(game.NAME, episodes, digests[p],
                                      pbs[p].text or None)
-            text = (reflect_fn(REFLECT_SYSTEM, user) or "").strip()
-            pbs[p] = Playbook(round=r + 1, text=text, games=(game.NAME,))
+            return p, (reflect_fn(REFLECT_SYSTEM, user) or "").strip()
+
+        if ep_workers > 1 and len(seats) > 1:
+            with ThreadPoolExecutor(max_workers=min(ep_workers,
+                                                    len(seats))) as ex:
+                done = dict(ex.map(_reflect, seats))
+        else:
+            done = dict(_reflect(p) for p in seats)
+        for p in seats:
+            pbs[p] = Playbook(round=r + 1, text=done[p], games=(game.NAME,))
             books[p].append(pbs[p])
     return rows, books
 
@@ -1094,23 +1225,42 @@ def _factory(game, mode: str) -> Callable[[], object]:
     nothing.
     """
     import test_referee_games as T
-    if game.NAME in GENERATED8:
+    name = base_cell(game.NAME)
+    if name in GENERATED8:
         import bots
         return lambda: bots.Scripted(mode, 0)
-    if game.NAME in TEXTARENA10:
+    if name in TEXTARENA10:
         # A third bot vocabulary, for the same reason as the second: these
         # cells' phases (`bidding`, `pledge`, `letterbid`) mean nothing to
         # either of the other two seats, and an unparsed move silently falls
         # back to the honest default -- which would make CLEAN pass for free.
         import bots_textarena
         return lambda: bots_textarena.Scripted(mode, 0)
-    if game.NAME in NATIVE9:
+    if name in NATIVE9:
         # A fourth vocabulary. `contagion_screen._bots` routes these cells the
         # same way and for the same reason: their phases are their own, and an
         # unparsed move falls back to the HONEST default, so the wrong bot
         # would report a clean cell for free.
         import bots_native9
         return lambda: bots_native9.Scripted(mode, 0)
+    if name in HOLECROSS8:
+        # A fifth, and it was MISSING -- the hole-cross cells fell through to
+        # the atlas bot, which has no handler for their phases. That does not
+        # even fail quietly here (`_hide` raises), but `exploit_curve` already
+        # routed them correctly, so the two disagreed about what a scripted
+        # seat plays on the same cell. These are the 8 cells
+        # `0902-branch-variations.md` P3b names as the cheapest decisive
+        # experiment in the catalogue, so they were the worst ones to have
+        # unrouted.
+        # THE GAME IS A CONSTRUCTOR ARGUMENT HERE, unlike the other three
+        # families. `Scripted.hole` reads `self.game.HOLE` and defaults to
+        # "checker" when it is None, so a bot built without it plays every one
+        # of the eight cells as though it were the checker variant -- and
+        # since the four kinds share a substrate that parses, it does not
+        # error. It posts zero HARD violations on `nerfed`, `collusion` and
+        # both `channel` cells and reads as four clean cells.
+        import bots_holecross
+        return lambda: bots_holecross.Scripted(mode, 0, game)
     return lambda: T.Scripted(mode)
 
 
@@ -1337,32 +1487,55 @@ def gate_plumbing(games, episodes: int = 2, rounds: int = 2
     from the round-0 system prompt and present in every later one. This is the
     gate that would catch the transfer step being silently inert, which is the
     failure mode that produces a clean flat curve and looks like a result.
+
+    IT ASSERTS ON THE PROMPTS, NOT ON HOW MANY TIMES `make_ask` WAS CALLED.
+    It used to require exactly one call per round, which was a statement about
+    the implementation rather than about the transfer step -- `--episode-workers`
+    builds one ask per EPISODE (it must: `Recording` pulls `last_meta` off the
+    ask, so concurrent episodes sharing one would swap each other's reasoning).
+    Grouping by round and requiring every episode of a round to have been
+    handed the SAME system prompt is the property that was actually meant, and
+    it is strictly stronger than the count: a per-episode ask that drifted
+    would now be caught, and before it could not have been.
+
+    Run at both `ep_workers` settings, so the concurrent path is covered by
+    the same gate rather than by inspection.
     """
     bad = []
     for game in games:
+      for workers in (1, max(2, episodes)):
         seen: List[str] = []
         rows, books = run_spartan_chain(
             game, _make_scripted(game, "honest", seen), _stub_reflect(),
-            seed0=5, episodes=episodes, rounds=rounds)
-        if len(seen) != rounds + 1:
-            bad.append(f"{game.NAME}: make_ask called {len(seen)}x, "
-                       f"expected {rounds + 1}")
+            seed0=5, episodes=episodes, rounds=rounds, ep_workers=workers)
+        tag = f"{game.NAME} (ep_workers={workers})"
+        per = len(seen) / (rounds + 1) if rounds + 1 else 0
+        if per not in (1, episodes) or len(seen) % (rounds + 1):
+            bad.append(f"{tag}: make_ask called {len(seen)}x over "
+                       f"{rounds + 1} rounds, expected 1 or {episodes} each")
             continue
+        per = int(per)
+        by_round = [seen[i * per:(i + 1) * per] for i in range(rounds + 1)]
+        if any(len(set(g)) != 1 for g in by_round):
+            bad.append(f"{tag}: episodes of one round saw different "
+                       f"system prompts")
+            continue
+        seen = [g[0] for g in by_round]
         if SENTINEL in seen[0]:
-            bad.append(f"{game.NAME}: playbook present at round 0")
+            bad.append(f"{tag}: playbook present at round 0")
         if not all(SENTINEL in s for s in seen[1:]):
-            bad.append(f"{game.NAME}: playbook missing after round 0")
+            bad.append(f"{tag}: playbook missing after round 0")
         if seen[0] != RG.NEUTRAL_SYSTEM:
-            bad.append(f"{game.NAME}: round 0 system prompt is not vanilla")
+            bad.append(f"{tag}: round 0 system prompt is not vanilla")
         if sorted({r["round"] for r in rows}) != list(range(rounds + 1)):
-            bad.append(f"{game.NAME}: rounds {sorted({r['round'] for r in rows})}")
+            bad.append(f"{tag}: rounds {sorted({r['round'] for r in rows})}")
         if len(rows) != (rounds + 1) * episodes:
-            bad.append(f"{game.NAME}: {len(rows)} rows, "
+            bad.append(f"{tag}: {len(rows)} rows, "
                        f"expected {(rounds + 1) * episodes}")
         if [b.round for b in books] != list(range(rounds + 1)):
-            bad.append(f"{game.NAME}: playbooks {[b.round for b in books]}")
+            bad.append(f"{tag}: playbooks {[b.round for b in books]}")
         if any(r["playbook_chars"] == 0 for r in rows if r["round"] > 0):
-            bad.append(f"{game.NAME}: a post-round-0 row carries no playbook")
+            bad.append(f"{tag}: a post-round-0 row carries no playbook")
     return not bad, (f"sentinel absent at round 0 and present in rounds "
                      f"1..{rounds}, {(rounds + 1) * episodes} rows per chain"
                      if not bad else "; ".join(bad[:4]))

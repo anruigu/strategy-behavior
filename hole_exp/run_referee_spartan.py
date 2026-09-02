@@ -184,7 +184,7 @@ def chain_ask_seats(actor: Actor, systems: Dict[int, str]):
 
 def run_one(game, game_actor, reflect_actor, system, seed, episodes, rounds,
             arm, visibility, max_chars, model_seats=None, on_episode=None,
-            reflect_scope="shared"):
+            reflect_scope="shared", ep_workers=1):
     if reflect_scope == "per-seat":
         # Independent reflection is only meaningful when the model holds more
         # than one seat, and it is only self-play when it holds all of them.
@@ -194,7 +194,8 @@ def run_one(game, game_actor, reflect_actor, system, seed, episodes, rounds,
             game, lambda systems: chain_ask_seats(game_actor, systems),
             reflection(reflect_actor), seed, episodes, rounds, seats,
             arm=arm, visibility=visibility, max_chars=max_chars,
-            base_system=system, on_episode=on_episode)
+            base_system=system, on_episode=on_episode,
+            ep_workers=ep_workers)
     make_ask = lambda system: chain_ask(game_actor, system)   # noqa: E731
     if model_seats is not None and model_seats != set(range(game.N_PLAYERS)):
         make_ask = SP.make_mixed_ask(game, make_ask, model_seats, "honest")
@@ -202,7 +203,7 @@ def run_one(game, game_actor, reflect_actor, system, seed, episodes, rounds,
         game, make_ask,
         reflection(reflect_actor), seed, episodes, rounds, arm=arm, focal=0,
         visibility=visibility, max_chars=max_chars, base_system=system,
-        on_episode=on_episode)
+        on_episode=on_episode, ep_workers=ep_workers)
 
 
 # --------------------------------------------------------------------------
@@ -224,7 +225,7 @@ def trace_stem(job: Dict, rnd: int, ep_i: int) -> str:
 
 
 def trace_of(game, ep, turns, playbook, job: Dict, rnd: int, ep_i: int,
-             model_seats) -> Dict:
+             model_seats, books=None) -> Dict:
     """One episode as the viewer reads it, in the crossplay trace schema.
 
     THE PLAYBOOK IS PART OF THE EPISODE RECORD, not a sidecar. It was in the
@@ -237,6 +238,15 @@ def trace_of(game, ep, turns, playbook, job: Dict, rnd: int, ep_i: int,
     `scripted` rides on the turn rather than being inferred from the seat, so
     a reader does not have to reconstruct `--opponents` policy to know which
     replies a model wrote.
+
+    UNDER `--reflect per-seat` THERE IS NO SUCH THING AS "the playbook".
+    `books` is {seat: Playbook}, each seat's own reflection on its own view,
+    and each was in that seat's system prompt for its own turns below. They
+    are written out per seat in `playbooks`, and `playbook` keeps the lowest
+    seat's text so the field means the same thing it always did. Recording one
+    of N would make the other seats look like they diverged for no reason --
+    and it is exactly the divergence that this arm exists to measure, so it is
+    the one thing the trace must not drop.
     """
     out = []
     for i, t in enumerate(turns):
@@ -260,6 +270,18 @@ def trace_of(game, ep, turns, playbook, job: Dict, rnd: int, ep_i: int,
         "playbook_round": playbook.round,
         "playbook": playbook.text,
         "playbook_names_hole": SP.names_hole(playbook.text, game),
+        "reflect_scope": "per-seat" if books else "shared",
+        "playbooks": ({str(s): {"round": pb.round, "text": pb.text,
+                                "names_hole": SP.names_hole(pb.text, game),
+                                "chars": len(pb.text)}
+                       for s, pb in sorted(books.items())} if books else None),
+        # How many of the model's seats named the hole in their OWN playbook.
+        # Under shared reflection this is 0 or N by construction and says
+        # nothing; under independent reflection it is the co-discovery count,
+        # and it is the number the arm was built to produce.
+        "seats_naming_hole": (sorted(s for s, pb in books.items()
+                                     if SP.names_hole(pb.text, game))
+                              if books else None),
         "models": {str(p): (job["model"] if p in model_seats else "scripted")
                    for p in range(game.N_PLAYERS)},
         "n_players": game.N_PLAYERS,
@@ -316,6 +338,81 @@ def playbook_text(pb, job: Dict) -> str:
     return header + text
 
 
+def _apply_config(ap, a, argv) -> None:
+    """Fold a TOML settings file into the parsed args.
+
+    Precedence is file < command line, and it is enforced by looking at what
+    was actually typed rather than by comparing against defaults: a flag set
+    explicitly TO its default value must still beat the file, and a
+    default-comparison cannot tell those apart.
+
+    Unknown keys are an error, not a warning. A settings file is exactly the
+    place a typo survives -- `max_token = 3072` would parse, apply nothing, and
+    the wave would run at the 1200 default straight into the truncation knee
+    that `0901-roster-and-knobs` says confounds every other measurement.
+    """
+    import tomllib
+    cfg = tomllib.load(open(a.config, "rb"))
+    typed = {x.split("=")[0] for x in argv if x.startswith("--")}
+
+    def put(dest, value):
+        if f"--{dest.replace('_', '-')}" not in typed:
+            setattr(a, dest, value)
+
+    known = {
+        "models": {"roster": "models", "thinking": None,
+                   "report_reasoning_tokens": None},
+        "sampling": {k: k for k in
+                     ("rounds", "episodes", "chains", "seed0", "condition",
+                      "arm", "reflect", "visibility", "opponents",
+                      "temperature", "max_tokens", "reflect_max_tokens",
+                      "max_chars")},
+        "parallelism": {"workers": "workers",
+                        "episode_workers": "episode_workers"},
+        "output": {"tag": "tag", "traces": "traces", "out": "out"},
+    }
+    cells: List[str] = []
+    for section, body in cfg.items():
+        if section == "cells":
+            # Every list in [cells] is one group, concatenated in file order.
+            # Groups are for the READER -- they name what a block is testing --
+            # so an unknown group name is not an error the way a misspelled
+            # knob is.
+            for group, names in body.items():
+                if not isinstance(names, list):
+                    raise SystemExit(f"{a.config}: [cells].{group} must be a "
+                                     f"list of cell names")
+                cells.extend(names)
+            continue
+        if section not in known:
+            raise SystemExit(f"{a.config}: unknown section [{section}]; "
+                             f"expected {sorted(known) + ['cells']}")
+        for key, val in body.items():
+            if key not in known[section]:
+                raise SystemExit(
+                    f"{a.config}: unknown key [{section}].{key}; expected "
+                    f"{sorted(known[section])}")
+            dest = known[section][key]
+            if dest is not None:
+                put(dest, val)
+    if cells and "--games" not in typed and "--variants" not in typed:
+        a.games = cells
+    # `thinking` is read here only to REFUSE it, rather than accepting a knob
+    # that would silently do nothing. `reasoning_body` picks the payload form
+    # from the endpoint and holds effort at `low`; wiring a per-wave override
+    # would change the request shape for every runner that shares that helper.
+    # A file that asks for something the code cannot deliver has to say so.
+    think = cfg.get("models", {}).get("thinking", "low")
+    if think != "low":
+        raise SystemExit(
+            f"{a.config}: [models].thinking = {think!r} is not implemented. "
+            f"`run_referee_crossplay.reasoning_body` holds effort at `low` for "
+            f"the whole roster and is shared by every runner. Note that claude "
+            f"reports 0 reasoning tokens whatever is sent, so `low` does not "
+            f"equalise deliberation across this roster either -- see the "
+            f"comment in the file.")
+
+
 def main() -> int:
     SP.register_all()
     # The 2026-09-01 collaborative-hole cells. `register_native9` is kept out
@@ -324,9 +421,32 @@ def main() -> int:
     # caller may ASK for by name, and leaves every existing roster shorthand
     # resolving to exactly the tuple it resolved to before.
     SP.register_native9()
+    # And the 8 hole-cross cells, for the same reason and with the same
+    # effect: `--games all` still resolves to exactly ALL19, and a caller may
+    # now ASK for `hx_*` by name. These are the two-games x four-hole-kinds
+    # factorial that `0902-branch-variations.md` P3b calls the cheapest
+    # decisive experiment in the catalogue, and until now the sampling runner
+    # could not reach them at all.
+    SP.register_holecross()
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", nargs="+", default=list(SP.ALL19))
+    # SAMPLE PAYOFF VARIANTS AS CELLS. `variants.py` catalogues 89 branches of
+    # the menu -- one knob moved, the rules text and the arithmetic moving
+    # together -- and until now nothing could put a MODEL on one: the catalogue
+    # measures them with scripted seats over 20 seeds and says so outright
+    # ("nothing here predicts whether a model finds the hole").
+    #
+    # Each id given here registers as its own cell (see
+    # `variants.register_variant_cells`) and joins `--games`, so two arms of one
+    # game are sampled side by side in one pool, land in one `rows.jsonl`, and
+    # are read in the browser by the same filters as anything else.
+    ap.add_argument("--variants", nargs="+", default=None,
+                    metavar="CELL@LABEL",
+                    help="payoff variants to sample, e.g. "
+                         "gen_quiet_sonar@hit-8. Registered as cells named "
+                         "<cell>__<label>; add the @shipped arm explicitly to "
+                         "get a matched baseline in the same wave.")
     # Not constrained to the roster: with --base-url the name is whatever the
     # server was started under (`--served-model-name`), which no roster knows.
     ap.add_argument("--models", nargs="+", default=["qwen"],
@@ -397,7 +517,32 @@ def main() -> int:
                          "and honest, matching the regime payoff_audit prices "
                          "the hole in. See referee_spartan.make_mixed_ask.")
     ap.add_argument("--max-chars", type=int, default=6000)
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--workers", type=int, default=12,
+                    help="chains in flight at once. The chain pool saturates "
+                         "at `len(games) * chains`, and past that this buys "
+                         "nothing -- see --episode-workers for the other axis")
+    # THE SECOND AXIS OF PARALLELISM, AND THE ONE THAT SETS THE FLOOR.
+    # `--workers` runs whole chains side by side, so a wave of 20 chains is
+    # done being helped by it at 20. What is left is the chain itself, which
+    # is sequential: (rounds+1) x episodes episodes, each of them a run of
+    # decisions. `gen_quiet_sonar` is 72 calls an episode and 8 episodes a
+    # chain, so 576 calls in a row -- about 11 minutes at measured throughput,
+    # whatever the worker count is. That single number is the wall clock of
+    # the whole wave.
+    #
+    # The episodes of one round share only the playbook, which is fixed for
+    # the round, and each carries its own seed; the per-seat reflections see
+    # only their own seat's digests. Both sets are independent and both are
+    # run concurrently at >1. Rows, digests and traces come back in seed order
+    # either way -- the DETERMINISTIC gate covers exactly this.
+    #
+    # Defaults to 1 so no existing wave changes its request pattern by
+    # accident. The ceiling worth using is `--episodes` (and, per seat,
+    # the seat count).
+    ap.add_argument("--episode-workers", type=int, default=1,
+                    help="episodes of one round to run concurrently, and "
+                         "per-seat reflections likewise. Cuts the wall clock "
+                         "of a single chain, which --workers cannot.")
     ap.add_argument("--temperature", type=float, default=0.7)
     ap.add_argument("--max-tokens", type=int, default=1200)
     ap.add_argument("--reflect-max-tokens", type=int, default=4000)
@@ -412,7 +557,20 @@ def main() -> int:
     ap.add_argument("--out",
                     default=str(HERE / "results" / "referee_spartan"))
     ap.add_argument("--dry-run", action="store_true")
-    a = ap.parse_args()
+    # A TOML SETTINGS FILE, because the interesting knobs of this runner are
+    # about twenty flags long and the ones that matter most (chains, not
+    # episodes; max_tokens above the truncation knee; --traces) are the ones a
+    # caller is most likely to leave at a default that quietly costs a wave.
+    # A file can carry the reasoning next to the value; a shell history cannot.
+    #
+    # An explicit flag still WINS over the file, so one knob can be swept
+    # without editing anything and the sweep is visible in the command.
+    ap.add_argument("--config", default=None,
+                    help="TOML settings file, e.g. configs/bench3.toml. "
+                         "Explicit command-line flags override it.")
+    a = ap.parse_args(namespace=None)
+    if a.config:
+        _apply_config(ap, a, sys.argv[1:])
 
     if a.rounds < 0:
         raise SystemExit(f"--rounds {a.rounds} is below 0")
@@ -458,8 +616,19 @@ def main() -> int:
         # fails loudly rather than silently sampling a stale cut.
         SP._check_dedup_matches()
     names: List[str] = []
-    for g in a.games:
+    for g in (a.games if a.variants is None else []):
         names.extend(expand.get(g, [g]))
+    # Registered BEFORE the roster is resolved, so the variant cells exist by
+    # the time `unknown` is computed. `--games` defaults to the whole 19, so a
+    # caller passing only `--variants` means only the variants: taking the
+    # union with a default nobody typed would silently sample 19 extra cells.
+    if a.variants:
+        import variants as VARS
+        VARS.register()
+        made = VARS.register_variant_cells(a.variants)
+        for cell, vid in made.items():
+            print(f"[spartan]   variant {vid:34s} -> cell {cell}")
+        names.extend(made)
     a.games = list(dict.fromkeys(names))
 
     unknown = [g for g in a.games if g not in RG.BY_NAME]
@@ -518,20 +687,30 @@ def main() -> int:
     from test_referee_games import Scripted
     per_episode = {}
     for g in games:
-        if g.NAME in SP.GENERATED8:
+        if SP.base_cell(g.NAME) in SP.GENERATED8:
             # Generated cells use a different bracket vocabulary; the atlas
             # Scripted seat has no handlers for it and would fail before it
             # could count decisions.
             from hackable_games.bots import Scripted as GeneratedScripted
             scripted = GeneratedScripted("honest", 0)
-        elif g.NAME in SP.TEXTARENA10:
+        elif SP.base_cell(g.NAME) in SP.TEXTARENA10:
             from hackable_games.bots_textarena import (
                 Scripted as TextarenaScripted)
             scripted = TextarenaScripted("honest", 0)
-        elif g.NAME in SP.NATIVE9:
+        elif SP.base_cell(g.NAME) in SP.NATIVE9:
             from hackable_games.bots_native9 import (
                 Scripted as NativeScripted)
             scripted = NativeScripted("honest", 0)
+        elif SP.base_cell(g.NAME) in SP.HOLECROSS8:
+            # Same omission as in `referee_spartan._factory`: without this the
+            # calls-per-episode probe runs the atlas bot against a hole-cross
+            # cell, which raises before it can count a single decision.
+            from hackable_games.bots_holecross import (
+                Scripted as HoleCrossScripted)
+            # Third positional is the GAME -- see the note in
+            # `referee_spartan._factory`. Without it the bot plays every
+            # hole-cross cell as the checker variant.
+            scripted = HoleCrossScripted("honest", 0, g)
         else:
             scripted = Scripted("honest")
         ep = g.run(scripted, 0, a.arm)
@@ -545,7 +724,17 @@ def main() -> int:
 
     game_calls = sum(per_episode[j["game"]] * a.episodes * (a.rounds + 1)
                      for j in todo)
-    reflect_calls = len(todo) * a.rounds
+    # INDEPENDENT REFLECTION SCALES WITH SEATS. `run_spartan_chain_per_seat`
+    # calls the reflector once per seat per round, so a 4-seat cell reflects
+    # four times where a shared chain reflects once -- and reflection input,
+    # not its call count, is what dominates the bill. Estimating it as one
+    # would understate a per-seat wave by up to 4x on exactly the term that
+    # matters.
+    n_reflect = {j["game"]: (len(model_seats_for(RG.BY_NAME[j["game"]],
+                                                 j["opponents"]))
+                             if a.reflect == "per-seat" else 1)
+                 for j in todo}
+    reflect_calls = sum(n_reflect[j["game"]] for j in todo) * a.rounds
     print(f"[spartan] tag={a.tag}  models={a.models}  "
           f"condition={a.condition}  arm={a.arm}")
     print(f"[spartan] rounds=R0..R{a.rounds}  episodes/round={a.episodes}  "
@@ -555,9 +744,11 @@ def main() -> int:
     for g in games:
         n = sum(1 for j in todo if j["game"] == g.NAME)
         gc = per_episode[g.NAME] * a.episodes * (a.rounds + 1)
+        rc = a.rounds * (len(model_seats_for(g, a.opponents))
+                         if a.reflect == "per-seat" else 1)
         print(f"[spartan]   {g.NAME:20s} {n:3d} chains  "
               f"{per_episode[g.NAME]:3d} calls/episode  "
-              f"{gc:5d} game + {a.rounds:2d} reflection calls/chain")
+              f"{gc:5d} game + {rc:2d} reflection calls/chain")
     print(f"[spartan] ~{game_calls} game calls + {reflect_calls} reflection "
           f"calls = {game_calls + reflect_calls} model calls")
 
@@ -567,8 +758,9 @@ def main() -> int:
     # This linear transcript-growth assumption is named because reflection
     # input, not its small call count, is expected to dominate the bill.
     reflect_in = sum(
-        sum(r * a.episodes * per_episode[j["game"]] * 1.75e3
-            for r in range(1, a.rounds + 1))
+        n_reflect[j["game"]]
+        * sum(r * a.episodes * per_episode[j["game"]] * 1.75e3
+              for r in range(1, a.rounds + 1))
         for j in todo)
     reflect_out = reflect_calls * 1.0e3
     print("[spartan] cost assumption: game calls use ~1.5k in / 250 out; "
@@ -609,10 +801,11 @@ def main() -> int:
         mcalls = sum(per_episode[j["game"]] * a.episodes * (a.rounds + 1)
                      for j in model_jobs)
         rin = sum(
-            sum(r * a.episodes * per_episode[j["game"]] * 1.75e3
-                for r in range(1, a.rounds + 1))
+            n_reflect[j["game"]]
+            * sum(r * a.episodes * per_episode[j["game"]] * 1.75e3
+                  for r in range(1, a.rounds + 1))
             for j in model_jobs)
-        rcalls = len(model_jobs) * a.rounds
+        rcalls = sum(n_reflect[j["game"]] for j in model_jobs) * a.rounds
         estimate += mcalls * (1.5e3 * pin + 250 * pout)
         estimate += rin * pin + rcalls * 1.0e3 * pout
     print(f"[spartan] roughly ${estimate:,.2f} at OpenRouter list price"
@@ -681,10 +874,10 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d,
         # holds in digests.
         traces: List[Tuple[str, Dict]] = []
 
-        def on_episode(g, ep, turns, playbook, chain, rnd, ep_i):
+        def on_episode(g, ep, turns, playbook, chain, rnd, ep_i, books=None):
             traces.append((trace_stem(j, rnd, ep_i),
                            trace_of(g, ep, turns, playbook, j, rnd, ep_i,
-                                    seats)))
+                                    seats, books)))
 
         rows, playbooks = run_one(
             game, game_actor, reflect_actor,
@@ -692,7 +885,7 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d,
             j["arm"], j["visibility"], a.max_chars,
             model_seats=seats,
             on_episode=on_episode if traces_d is not None else None,
-            reflect_scope=a.reflect)
+            reflect_scope=a.reflect, ep_workers=a.episode_workers)
         calls = game_actor.usage["calls"] + reflect_actor.usage["calls"]
         filtered = (game_actor.usage["filtered"]
                     + reflect_actor.usage["filtered"])
