@@ -27,8 +27,12 @@ function renderStats() {
 }
 
 function renderFilters() {
+  // 'marshal' is not a family, it is a property of the engine -- the cells
+  // that expose per-decision credit and so can be trained on. Kept in the same
+  // strip because it is the cut a reader most often wants next after family.
   const fams = [['all', 'all games'], ['generated', 'model-written'],
-                ['referee', 'hand-built']];
+                ['referee', 'hand-built'], ['textarena', 'textarena ports'],
+                ['marshal', 'MARSHAL-ready']];
   $('filters').innerHTML = '';
   fams.forEach(([k, label]) => {
     const b = document.createElement('button');
@@ -42,14 +46,23 @@ function renderFilters() {
 function renderGrid() {
   const g = $('grid');
   g.innerHTML = '';
-  GAMES.filter(c => filter === 'all' || c.family === filter).forEach(c => {
+  GAMES.filter(c => filter === 'all' ||
+                    (filter === 'marshal' ? c.marshal_ready
+                                          : c.family === filter)).forEach(c => {
     const d = document.createElement('div');
     d.className = 'card';
+    // No hole information on a card. `marshal_ready` is a property of how the
+    // engine records score, not of what the referee fails to check, so it
+    // gives nothing away -- unlike the blurb, which never reaches here.
+    const fam = {generated: 'gen', referee: 'ref', textarena: 'ta'}[c.family] || 'ref';
+    const marshal = c.marshal_ready
+      ? '<span class="tag marshal" title="records per-decision score; ' +
+        'MARSHAL can do turn-level credit assignment">MARSHAL</span>' : '';
     d.innerHTML =
       `<h3>${esc(c.title)}</h3>
        <div class="blurb">${esc(c.teaser || '')}</div>
        <div class="foot">
-         <span class="tag ${c.family === 'generated' ? 'gen' : 'ref'}">${esc(c.author)}</span>
+         <span class="tag ${fam}">${esc(c.author)}</span>${marshal}
          <span>${c.n_players}p · ${esc(String(c.rounds))} rounds</span>
        </div>`;
     d.onclick = () => start(c.id, 'hole');

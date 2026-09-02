@@ -375,10 +375,16 @@ def play_episode(
     # exactly when the learner defected that round. The opening round has no
     # prior opponent move and so is excluded, as it is in ipd_lib. This makes
     # len == betrayal_den and sum == betrayal_num.
+    # The parallel round list is needed because positions in this filtered
+    # timeline are not round numbers, while endgame windows are cut on rounds.
     opp_decisions = rec["opp_decisions"]
     exploit_steps = [
         my == "defect"
         for i, my in enumerate(rec["my_decisions"])
+        if opp_decisions[:i] and opp_decisions[:i][-1] == "cooperate"
+    ]
+    exploit_rounds = [
+        i for i, my in enumerate(rec["my_decisions"])
         if opp_decisions[:i] and opp_decisions[:i][-1] == "cooperate"
     ]
     # `exploit_rate` is BETRAYAL, not defection: P(defect | the opponent
@@ -400,6 +406,7 @@ def play_episode(
                                          * rec["betrayal_den"])),
         scored_decisions=int(rec["betrayal_den"]),
         exploit_steps=exploit_steps,
+        exploit_rounds=exploit_rounds,
         invalid_decisions=n_invalid,
         stats={
             "defection_rate": rec["defection_rate"],

@@ -222,4 +222,9 @@ it says `skip` rather than passing quietly when it cannot.
   which is written as `abandoned: true` rather than dropped.
 - One live run per participant. A reload does not fork a second chain that
   would land in the data as two short runs by the same person on the same cell.
-- Fifteen of the nineteen cells have no board yet.
+- Twenty-one of the twenty-four cells on the menu have no board yet.
+- `views/battleship.py` is now **orphaned**: deduplication took
+  `ref_battleship` off the menu in favour of `gen_quiet_sonar`, which
+  carries the same hole with per-decision credit. The adapter still
+  works and the cell still resolves by id, so the board is one
+  `catalog.DUPLICATES` deletion away from being reachable again.

@@ -61,9 +61,27 @@ class GenGame(RG.RefereeGame):
     SOURCE = ""          # which model wrote the spec
     TITLE = ""
 
+    def _snap(self, ep, pid) -> None:
+        """Record the seat's running score at the moment it is asked to act.
+
+        Every game in this file builds `ep.scores[p]` incrementally from 0.0, so
+        the change between one decision and the next IS that decision's score.
+        Snapshotting here -- the single choke point every decision passes
+        through -- means turn-level credit needs no per-game bookkeeping and
+        cannot drift from a game's own settlement.
+
+        Consumed by `referee_env`, which differences the snapshots against the
+        final score; by construction the deltas sum to `ep.scores[p]`. Purely
+        additive: nothing in this file reads it, so the arms stay byte
+        identical.
+        """
+        ep.extras.setdefault("_score_snaps", {}).setdefault(
+            pid, []).append(float(ep.scores.get(pid, 0.0)))
+
     def _ask_int(self, ask, ep, pid, phase, obs, verb, lo, hi, fallback):
         raw = ask(pid, phase, obs + BREVITY)
         ep.decisions[pid] += 1
+        self._snap(ep, pid)
         v = as_int(last_token(raw, verb), lo, hi)
         if v is None:
             ep.invalid[pid] += 1
@@ -73,6 +91,7 @@ class GenGame(RG.RefereeGame):
     def _ask_word(self, ask, ep, pid, phase, obs, verb, allowed, fallback):
         raw = ask(pid, phase, obs + BREVITY)
         ep.decisions[pid] += 1
+        self._snap(ep, pid)
         v = as_word(last_token(raw, verb), allowed)
         if v is None:
             ep.invalid[pid] += 1
@@ -748,6 +767,7 @@ class VaultDuel(GenGame):
         def ask_code(pid, phase, obs, fallback):
             raw = ask(pid, phase, obs + BREVITY)
             ep.decisions[pid] += 1
+            self._snap(ep, pid)
             v = last_token(raw, phase)
             d = re.sub(r"\D", "", v or "")
             if len(d) < 3:

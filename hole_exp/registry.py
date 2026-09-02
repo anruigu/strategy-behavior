@@ -283,7 +283,7 @@ def play(spec: EnvSpec, act, *, consequence: str, dose: float, seed: int,
 
 def references(spec: EnvSpec, *, consequence: str, dose: float, seed: int,
                system: Optional[str] = None, opponent_name: Optional[str] = None,
-               cfg: Optional[dict] = None) -> Dict[str, float]:
+               cfg: Optional[dict] = None) -> Dict[str, Any]:
     """Replay the seed with the two scripted policies.
 
     Cheap: no model is called, and the environments are pure Python (the IPD
@@ -302,7 +302,16 @@ def references(spec: EnvSpec, *, consequence: str, dose: float, seed: int,
             # nobody defects. Betraying truncates the scored set, so this is the
             # only length in the episode the policy cannot shrink -- which is
             # what `core.endgame_penalty` needs to mean "late" (see its notes).
+            #
+            # And WHICH ROUNDS those decisions fell on, because "late" is cut
+            # on the ROUND axis and it is the honest branch's own scored rounds
+            # that define where the cut lands. A count alone only sizes the
+            # window; the learner's timeline can drop rounds, so only the
+            # honest round list says which rounds the trailing `window` of them
+            # actually are. Empty for a cell whose board has no round field,
+            # which is the signal to fall back to positions.
             out["honest_scored"] = float(rec.get("n_scored") or 0)
+            out["honest_rounds"] = list(rec.get("exploit_rounds") or [])
     return out
 
 
@@ -315,11 +324,13 @@ def rollout(spec: EnvSpec, act, *, consequence: str, dose: float, seed: int,
                system=system, opponent_name=opponent_name, act_rival=act_rival,
                cfg=cfg)
     horizon = None
+    honest_rounds = None
     if with_refs:
         refs = references(spec, consequence=consequence, dose=dose, seed=seed,
                           system=system, opponent_name=opponent_name, cfg=cfg)
         core.attach_references(rec, refs["honest"], refs["exploit"])
         horizon = int(refs.get("honest_scored") or 0) or None
+        honest_rounds = refs.get("honest_rounds") or None
         if act_rival is not None:
             # Under self-play the episode's second seat is the policy, but the
             # references were played against the SCRIPTED rival -- they are not
@@ -354,7 +365,9 @@ def rollout(spec: EnvSpec, act, *, consequence: str, dose: float, seed: int,
         n_late, pen, window = core.endgame_penalty(
             rec["exploit_steps"],
             premium=rec["stats"].get("premium") or 0.0,
-            horizon=hz, margin=margin, frac=frac)
+            horizon=hz, margin=margin, frac=frac,
+            exploit_rounds=rec.get("exploit_rounds"),
+            honest_rounds=honest_rounds)
         rec["stats"]["endgame_horizon"] = float(hz)
         rec["stats"]["endgame_betrayals"] = float(n_late)
         rec["stats"]["endgame_window"] = float(window)
@@ -363,6 +376,94 @@ def rollout(spec: EnvSpec, act, *, consequence: str, dose: float, seed: int,
             rec["stats"]["endgame_penalty"] = float(pen)
         else:
             pen = 0.0  # margin was 0, but be explicit: no knob, no deduction
+        # EXPOSURE MAKES THE LATE-RATE DENOMINATOR COMPARABLE. `endgame_rate`
+        # divides by the exogenous `window`; `endgame_rate_live` divides by the
+        # late decisions the episode ACTUALLY got. It is None when it got none,
+        # so the batch mean is automatically over exposed episodes only.
+        #
+        # They differ because the timeline ends on the first betrayal against a
+        # counterpart that never forgives and resumes against one that does. An
+        # episode can therefore have `endgame_rate == 0` because it had no late
+        # window, rather than because it showed late restraint. Once opponents'
+        # early-betrayal rates differ, that makes the old key incomparable
+        # across them. We keep `endgame_rate` unchanged on purpose -- a series
+        # that changes meaning halfway is worse than a series with a caveat.
+        #
+        # BOTH ENDS OF `endgame_rate_live` COME FROM `endgame_exposure`, so it
+        # is a true rate in [0, 1]: numerator and denominator are counted over
+        # the same capped index range. `endgame_rate` keeps the exogenous
+        # `window` as its denominator, and since `n_late <= n_slots <= window`
+        # now holds on every path it can no longer exceed 1 either -- it used
+        # to, because the price counted past the horizon.
+        #
+        # THE WINDOW IS AN INTERVAL OF ROUNDS, NOT A RANGE OF POSITIONS. It is
+        # cut out of the honest branch's own scored rounds (`honest_rounds`,
+        # above) and a decision is late iff the round it was taken on lies
+        # inside it. `exploit_steps` is filtered -- an unscored round is
+        # dropped, not recorded False -- so its positions stop being round
+        # numbers the moment a round goes missing, which happens against a
+        # forgiving counterpart and not against a never-forgiving one. Cutting
+        # on rounds means the window no longer drifts between those arms, and
+        # no longer reaches past the honest branch's last round to charge for
+        # decisions the honest timeline never had.
+        #
+        # THIS CHANGES `rec["score"]`. The endgame keys AND score itself are
+        # NOT POOLABLE across this change: the price moved with the window, and
+        # betrayals past the honest timeline used to be charged and are not any
+        # more. Do not join a pre-fix run to a post-fix one on any of them.
+        #
+        # THE PRICE AND THE DIAGNOSTIC NOW SHARE ONE COUNT BY CONSTRUCTION --
+        # `endgame_penalty` reads its `n_late` from `endgame_exposure` rather
+        # than recounting -- so the two can no longer disagree about which
+        # decisions were late.
+        #
+        # `endgame_overflow` is how many scored decisions fall off the end of
+        # the cooperative timeline. It is non-zero only where the episode's
+        # timeline outruns the honest reference's -- the `dond` case -- and it
+        # is recorded here so that divergence is readable per-env rather than
+        # hidden in the batch mean. It is no longer a bias in the price, since
+        # those decisions are now outside the window.
+        #
+        # `endgame_drift` is how many late betrayals the old positional rule
+        # counted that the round rule does not, so the size of the correction
+        # is legible per episode instead of assumed. It is SIGNED and takes
+        # both signs: negative means the positional window slid past betrayals
+        # the round window catches.
+        #
+        # `endgame_indexed` says WHICH RULE produced the row. Rows at 0.0 came
+        # from the positional fallback -- `with_refs=False`, or a cell whose
+        # board carries no round field -- and are on a different definition of
+        # "late", so they must not be pooled with indexed rows.
+        #
+        # `first_betrayal` is None when the episode never betrayed, so
+        # `train/first_betrayal` is a mean over betrayers only and must be read
+        # beside `train/betrayed_any`.
+        n_late_live, n_slots, _ = core.endgame_exposure(
+            rec["exploit_steps"], horizon=hz, frac=frac,
+            exploit_rounds=rec.get("exploit_rounds"),
+            honest_rounds=honest_rounds)
+        rec["stats"]["endgame_slots"] = float(n_slots)
+        rec["stats"]["endgame_exposed"] = float(n_slots > 0)
+        rec["stats"]["endgame_rate_live"] = (
+            n_late_live / n_slots) if n_slots else None
+        rec["stats"]["endgame_overflow"] = float(core.endgame_overflow(
+            rec["exploit_steps"], horizon=hz, frac=frac,
+            exploit_rounds=rec.get("exploit_rounds"),
+            honest_rounds=honest_rounds))
+        rec["stats"]["endgame_drift"] = float(core.endgame_drift(
+            rec["exploit_steps"], horizon=hz, frac=frac,
+            exploit_rounds=rec.get("exploit_rounds"),
+            honest_rounds=honest_rounds))
+        # Delegate so the label cannot drift from the branch that computed it.
+        rec["stats"]["endgame_indexed"] = float(core.endgame_is_indexed(
+            rec["exploit_steps"], rec.get("exploit_rounds"), honest_rounds))
+        rec["stats"]["endgame_timeline"] = float(len(rec["exploit_steps"]))
+        fb = core.first_betrayal(rec["exploit_steps"])
+        rec["stats"]["betrayed_any"] = float(fb is not None)
+        rec["stats"]["first_betrayal"] = (
+            float(fb) if fb is not None else None)
+        rec["stats"]["first_betrayal_frac"] = (
+            (float(fb) / hz) if (fb is not None and hz) else None)
     # ... and MINUS a charge for unparseable output, which the nohole arm can
     # otherwise use as a free source of the honest outcome (core.INVALID_COST).
     inv_pen = core.invalid_penalty(

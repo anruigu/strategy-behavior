@@ -584,6 +584,9 @@ def play_episode(
     prev_claim: Optional[Dict[str, float]] = None
     misreports: List[float] = []
     exploit_steps: List[bool] = []
+    # Filtered decision positions are not rounds, so endgame windows must be
+    # cut on the round axis.
+    exploit_rounds: List[int] = []
     n_exploit = n_invalid = 0
     deal: Optional[Dict[str, int]] = None
 
@@ -607,6 +610,7 @@ def play_episode(
             misreports.append(m)
             deceived = m > MISREPORT_TOL
             exploit_steps.append(deceived)
+            exploit_rounds.append(int(st["round"]))
             if deceived:
                 n_exploit += 1
         flags = opponent.observe(claim_norm, proposal, prev_claim)
@@ -645,6 +649,7 @@ def play_episode(
         opponent=opponent.name, payoff=payoff, turns=turns,
         exploit_decisions=n_exploit, scored_decisions=n_scored,
         invalid_decisions=n_invalid, exploit_steps=exploit_steps,
+        exploit_rounds=exploit_rounds,
         stats={
             # Graded deception magnitude, next to its thresholded twin. A rising
             # exploit_rate with a flat misreport magnitude is a different finding

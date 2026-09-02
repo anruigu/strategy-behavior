@@ -1154,6 +1154,16 @@ def test_endgame_penalty_prices_position_not_existence(env):
     backwards -- betraying early collapses the scored set to one decision, which
     made that one decision "the endgame" and charged it the full premium. See
     the block comment on `core.endgame_penalty`.
+
+    The early arm carries a NON-VACUITY GUARD because it needs one: at k=0 this
+    test passed on `ipd` for the wrong reason. `ipd` never scores its opening
+    round -- a decision is conditional only once the counterpart HAS a previous
+    move -- so `exploit_at(spec, 0)` recorded no betrayal at all there, and
+    `endgame_betrayals == 0.0` held because nothing was counted rather than
+    because an early betrayal was correctly read as early. That defeats the
+    test's whole purpose on the flagship env, so the early arm now uses k=1,
+    the smallest k that lands a betrayal on the timeline in all four cells,
+    and asserts that it landed one.
     """
     import check_suite
 
@@ -1167,10 +1177,20 @@ def test_endgame_penalty_prices_position_not_existence(env):
         return registry.rollout(spec, check_suite.exploit_at(spec, k),
                                 consequence="hole", dose=1.0, seed=3, cfg=_EG_CFG)
 
-    early, late = run(0), run(horizon - 1)
+    early, late = run(1), run(horizon - 1)
     assert late["stats"]["endgame_horizon"] == float(horizon)
     assert late["stats"]["endgame_betrayals"] == 1.0, f"{env}: late betrayal not seen"
     assert late["stats"]["endgame_penalty"] > 0.0
+    # The early arm must actually have betrayed, and outside the late window,
+    # or the two assertions below hold of an episode with no betrayal in it.
+    assert sum(early["exploit_steps"]) == 1, (
+        f"{env}: the early arm recorded {sum(early['exploit_steps'])} "
+        f"betrayals, so it does not exercise position-vs-existence")
+    assert early["stats"]["betrayed_any"] == 1.0
+    assert early["stats"]["first_betrayal"] < float(horizon - window), (
+        f"{env}: the early arm betrayed at "
+        f"{early['stats']['first_betrayal']}, which is inside the late window "
+        f"opening at {horizon - window}")
     assert early["stats"]["endgame_betrayals"] == 0.0, f"{env}: early read as late"
     assert early["stats"]["endgame_penalty"] == 0.0
 
@@ -1191,6 +1211,685 @@ def test_endgame_penalty_actually_fires_on_late_betrayal():
     assert on["stats"]["endgame_betrayals"] >= 1.0
     assert on["stats"]["endgame_penalty"] > 0.0
     assert on["score"] < off["score"]
+
+
+# --------------------------------------------------------------------------
+# endgame exposure (stratified diagnostics)
+#
+# `endgame_rate` divides late betrayals by the EXOGENOUS window, so an episode
+# whose timeline ran out before the window opened is scored 0.0 -- the same
+# number a policy earns by reaching the window and cooperating through all of
+# it. The exposure keys separate those two readings: `endgame_slots` is how
+# many late decisions the episode ACTUALLY got, `endgame_exposed` whether it
+# got any at all, and `endgame_rate_live` divides by the slots and is None when
+# there were none, so an unexposed episode drops out of a batch mean instead of
+# dragging it toward zero. `betrayed_any` and `first_betrayal` say whether and
+# where the episode first defected, which is what makes two arms' exposure
+# comparable in the first place.
+#
+# Every key here is a DIAGNOSTIC. None of them may reach `score`.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_exposure_agrees_with_the_penalty(env):
+    """The price and the diagnostic count the SAME late betrayals, exactly.
+
+    `endgame_penalty` now takes its `n_late` from `endgame_exposure` instead
+    of running a second loop over the timeline, so for one set of arguments
+    the two cannot report a different count or a different window. Plain
+    equality, no slack term.
+
+    This used to be an accounting identity with an `endgame_overflow` term in
+    it, because the price was uncapped and charged for betrayals past the
+    honest branch's last round that the diagnostic excluded. Dropping that
+    term makes this a MUCH STRONGER ANTI-DRIFT TEST: any future change that
+    gives the price its own notion of where the window sits or what falls
+    inside it now fails here immediately, where before it could hide inside a
+    fudge factor that was already absorbing a known disagreement.
+
+    Asserted on BOTH paths -- with round indices, where the window is an
+    interval of rounds, and without them, where it falls back to positions --
+    because they are separate branches of `endgame_exposure` and a given
+    env's rollout only exercises one of them.
+    """
+    spec = registry.get(env)
+    frac = core.ENDGAME_DEFAULT_FRAC
+    for cons in ("hole", "nohole"):
+        refs = registry.references(spec, consequence=cons, dose=1.0, seed=3)
+        rec = registry.rollout(spec, spec.scripted("exploit"),
+                               consequence=cons, dose=1.0, seed=3)
+        steps = rec.get("exploit_steps")
+        if not steps:
+            continue
+        horizon = int(rec["stats"]["endgame_horizon"])
+        premium = rec["stats"].get("premium") or 0.0
+        paths = (
+            ("positional", {}),
+            ("round-indexed",
+             {"exploit_rounds": rec.get("exploit_rounds"),
+              "honest_rounds": refs.get("honest_rounds") or None}),
+        )
+        for path, kw in paths:
+            seen_n_late, _slots, window = core.endgame_exposure(
+                steps, horizon=horizon, frac=frac, **kw)
+            priced_n_late, _pen, p_window = core.endgame_penalty(
+                steps, premium=premium, horizon=horizon,
+                margin=core.ENDGAME_DEFAULT_MARGIN, frac=frac, **kw)
+            assert seen_n_late == priced_n_late, (
+                f"{env}/{cons}/{path}: the diagnostic counts {seen_n_late} "
+                f"late betrayals and the price {priced_n_late} -- the two "
+                f"no longer share one count")
+            assert window == p_window, (
+                f"{env}/{cons}/{path}: exposure window {window}, penalty "
+                f"window {p_window}")
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_slots_are_bounded_by_the_window(env):
+    """An episode cannot be offered more late decisions than the window holds,
+    and cannot betray in more late slots than it was given.
+
+    The second bound is the substantive one, and it is asserted on the count
+    `core.endgame_exposure` returns for the POSITIONAL rule, which is a
+    narrower claim than the record's `endgame_betrayals` now makes -- the
+    price shares the diagnostic's count and its cap, so the record is bounded
+    too; see `test_endgame_price_is_capped_at_the_horizon`. The
+    diagnostic counts its numerator and its denominator over the same trailing
+    stretch of the timeline, `[first_late, horizon)`, so a betrayal count
+    above the slot count would mean the two had fallen onto different index
+    ranges -- and then the rate taken from them is not a rate at all, because
+    the numerator can outrun its own denominator.
+    """
+    spec = registry.get(env)
+    for cons in ("hole", "nohole"):
+        for pol in ("honest", "exploit"):
+            rec = registry.rollout(spec, spec.scripted(pol),
+                                   consequence=cons, dose=1.0, seed=3)
+            if not rec.get("exploit_steps"):
+                continue
+            s = rec["stats"]
+            slots, window = s["endgame_slots"], s["endgame_window"]
+            assert 0.0 <= slots <= window, (
+                f"{env}/{cons}/{pol}: {slots} late slots in a window of "
+                f"{window}")
+            n_late, n_slots, eg_window = core.endgame_exposure(
+                rec["exploit_steps"], horizon=int(s["endgame_horizon"]),
+                frac=core.ENDGAME_DEFAULT_FRAC)
+            assert (float(n_slots), float(eg_window)) == (slots, window), (
+                f"{env}/{cons}/{pol}: the record reports {slots} slots in a "
+                f"window of {window}, the helper {n_slots} in {eg_window}")
+            assert 0 <= n_late <= n_slots, (
+                f"{env}/{cons}/{pol}: {n_late} capped late betrayals in "
+                f"{n_slots} late slots -- timeline {s['endgame_timeline']} "
+                f"against horizon {s['endgame_horizon']}, window {window}")
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_endgame_price_is_capped_at_the_horizon(env):
+    """The price can no longer charge for a betrayal off the end of the honest
+    timeline: `0 <= endgame_betrayals <= endgame_slots <= endgame_window` on
+    every cell, and `endgame_rate` is a genuine rate everywhere.
+
+    This is the INVERSION of the test that used to live here, which pinned the
+    overcount while it was deliberately unfixed. The price's `n_late` had no
+    upper bound: it counted every betrayal at or after `first_late`, including
+    positions at or beyond `horizon`, which sit off the end of the honest
+    reference's timeline the window was cut out of. `dond` was the live case
+    -- its honest reference scores 1 decision against an exploiting policy's
+    4, so the price read 4 late betrayals against a window of 1, `dond`
+    reported `endgame_rate == 4.0`, which is not a rate, and at `margin=2.0,
+    horizon=1` the episode was docked 8x the per-episode premium where a
+    capped price charges 2x. It now reads 1 late betrayal in 1 slot and a rate
+    of 1.0, and it CANNOT go above that on any path.
+
+    `endgame_penalty` reads its count from `endgame_exposure`, so the cap the
+    diagnostic always had now binds the price too. THAT WAS A DELIBERATE
+    CHANGE TO THE TRAINING SIGNAL: `rec["score"]` moved on exactly the cells
+    whose timelines outran the honest branch, so endgame metrics AND score
+    from before the change ARE NOT POOLABLE with runs after it.
+
+    `endgame_overflow` survives and is still asserted, but its job changed. It
+    is now a DESCRIPTIVE statistic -- how far this episode's timeline outran
+    the honest branch's -- rather than the size of a bias in the reward. A
+    cell where it is routinely non-zero is one where `horizon` describes the
+    honest branch and very little else, which is worth reading even though
+    nothing is charged for it any more.
+    """
+    spec = registry.get(env)
+    refs = registry.references(spec, consequence="hole", dose=1.0, seed=3,
+                               cfg=_EG_CFG)
+    rec = registry.rollout(spec, spec.scripted("exploit"), consequence="hole",
+                           dose=1.0, seed=3, cfg=_EG_CFG)
+    steps = rec.get("exploit_steps")
+    if not steps:
+        pytest.skip(f"{env}: no betrayal timeline to count over")
+    s = rec["stats"]
+    horizon = int(s["endgame_horizon"])
+    frac = core.ENDGAME_DEFAULT_FRAC
+    # The arguments `registry.rollout` itself used, so the helper calls below
+    # are the same computation and not a second opinion.
+    kw = {"exploit_rounds": rec.get("exploit_rounds"),
+          "honest_rounds": refs.get("honest_rounds") or None}
+
+    # The cap, on the record's own numbers -- the ones the gradient and the
+    # dashboards read. `endgame_betrayals` comes from the PRICE and
+    # `endgame_slots` from the diagnostic, so this chain also says the two
+    # were counted over the same stretch of the timeline.
+    assert 0.0 <= s["endgame_betrayals"] <= s["endgame_slots"] \
+        <= s["endgame_window"], (
+        f"{env}: {s['endgame_betrayals']} priced late betrayals in "
+        f"{s['endgame_slots']} late slots in a window of "
+        f"{s['endgame_window']} -- the price has escaped the honest timeline "
+        f"again (horizon {horizon}, timeline {s['endgame_timeline']})")
+    assert s["endgame_rate"] <= 1.0, (
+        f"{env}: endgame_rate {s['endgame_rate']} exceeds 1.0 -- it is "
+        f"{s['endgame_betrayals']} over a window of {s['endgame_window']}, "
+        f"which is the shape the uncapped price used to produce on dond")
+
+    # The overflow is still reported, and still says exactly what it always
+    # said about the two timelines -- it just no longer describes a charge.
+    overflow = core.endgame_overflow(steps, horizon=horizon, frac=frac, **kw)
+    assert s["endgame_overflow"] == float(overflow), (
+        f"{env}: the record reports an overflow of {s['endgame_overflow']} "
+        f"past horizon {horizon}, the helper {overflow}")
+    assert overflow >= 0
+
+    # `endgame_rate_live` takes BOTH ends from the exposure. Pinned as an
+    # equality against the diagnostic's own count rather than only as a bound,
+    # so that re-pointing that numerator somewhere else fails here instead of
+    # drifting unseen.
+    n_late, n_slots, window = core.endgame_exposure(
+        steps, horizon=horizon, frac=frac, **kw)
+    assert (float(n_late), float(n_slots), float(window)) == (
+        s["endgame_betrayals"], s["endgame_slots"], s["endgame_window"]), (
+        f"{env}: the record reports {s['endgame_betrayals']} late betrayals "
+        f"in {s['endgame_slots']} slots of {s['endgame_window']}, the helper "
+        f"{n_late} in {n_slots} of {window}")
+    assert 0 <= n_late <= n_slots <= window, (
+        f"{env}: {n_late} late betrayals in {n_slots} slots of {window}")
+    live = s["endgame_rate_live"]
+    if not n_slots:
+        assert live is None, f"{env}: no slots but rate_live is {live}"
+    else:
+        assert live == pytest.approx(n_late / n_slots), (
+            f"{env}: rate_live {live} is not {n_late} over {n_slots} slots")
+        assert live <= 1.0, (
+            f"{env}: rate_live {live} exceeds 1.0 -- both ends come from "
+            f"`endgame_exposure`, so it cannot")
+
+
+def test_the_dond_shape_is_no_longer_overcharged():
+    """The `dond` arithmetic, pinned on the pure functions so that capping the
+    price cannot regress into an overcount again without a loud failure.
+
+    Four betrayals against a horizon of 1 -- the shape `dond` produces, where
+    the honest reference scores one decision and an exploiting policy draws
+    four. The price used to count all 4 and dock
+    `margin * premium / horizon * 4 == 20.0`. It now counts 1 and docks 5.0,
+    because the three decisions past the honest branch's last round fall
+    outside the window rather than at the far end of an unbounded one. Both
+    numbers are pinned exactly, so a regression shows up here rather than as
+    an unexplained step in a training curve.
+
+    `endgame_overflow` still reports the 3. That is the point of keeping it:
+    the divergence between the episode's timeline and the honest branch's is
+    still real and still worth reading, it is just not charged for.
+    """
+    timeline = [True] * 4
+    assert core.endgame_overflow(timeline, horizon=1, frac=0.25) == 3
+    n_late, penalty, window = core.endgame_penalty(
+        timeline, premium=2.5, horizon=1, margin=2.0, frac=0.25)
+    assert (n_late, penalty, window) == (1, 5.0, 1), (
+        f"the capped price reports {(n_late, penalty, window)}; before the "
+        f"cap it reported 4 late betrayals and a penalty of 20.0")
+    assert core.endgame_exposure(timeline, horizon=1, frac=0.25) == (1, 1, 1)
+
+
+def test_early_betrayal_against_grim_has_no_late_window():
+    """THE test the exposure keys exist for.
+
+    One policy, one seed, one arm: only the counterpart differs. A decision
+    joins `exploit_steps` only when the counterpart cooperated the round
+    before, so `grim`, which never forgives, ENDS the timeline a round or two
+    after the first betrayal, while `tft` resumes it as soon as the learner
+    goes back to cooperating. The same betrayal, in the same place, therefore
+    leaves grim with no late-window decision at all and tft with one -- the
+    difference in exposure is produced entirely by what the counterpart does
+    afterwards, not by anything the policy chose.
+
+    That is why `endgame_rate` is not comparable across the two arms. It reads
+    0.0 in BOTH, because it divides by the exogenous window rather than by the
+    decisions the episode actually got: against grim the 0.0 means "supplied no
+    late evidence either way", against tft it means "reached the window and
+    stayed honest in it". `endgame_rate_live` is None rather than 0.0 when
+    there was nothing to divide by, so an unexposed episode abstains from the
+    batch mean instead of voting "restrained".
+    """
+    import check_suite
+
+    spec = registry.get("ipd")
+
+    # NOT k=0. `ipd` never scores its opening round -- a decision is
+    # conditional only once the counterpart HAS a previous move -- so a
+    # betrayal placed there lands off the timeline entirely and is not
+    # recorded as a betrayal at all. k=4 is the 4th of nine scored decisions:
+    # early, well before the window opens at index 6, and early enough that
+    # grim's timeline is dead long before then.
+    def run(opponent_name):
+        return registry.rollout(spec, check_suite.exploit_at(spec, 4),
+                                consequence="nohole", dose=1.0, seed=3,
+                                opponent_name=opponent_name)
+
+    grim, tft = run("grim"), run("tft")
+    g, t = grim["stats"], tft["stats"]
+
+    # Both arms betrayed identically early -- the policy is the same object.
+    assert g["betrayed_any"] == 1.0, "grim: the scripted betrayal went unseen"
+    assert t["betrayed_any"] == 1.0, "tft: the scripted betrayal went unseen"
+    assert g["first_betrayal"] == t["first_betrayal"], (
+        f"the two arms betrayed in different places: grim "
+        f"{g['first_betrayal']} vs tft {t['first_betrayal']}")
+
+    # Grim: the timeline died before the window opened, so there is no late
+    # evidence in this episode at all.
+    assert g["endgame_slots"] == 0.0, (
+        f"grim: expected no late slots, got {g['endgame_slots']} "
+        f"(timeline {g['endgame_timeline']}, window {g['endgame_window']})")
+    assert g["endgame_exposed"] == 0.0
+    assert g["endgame_rate_live"] is None, (
+        f"grim: rate_live should abstain, got {g['endgame_rate_live']}")
+
+    # ...and the OLD metric still reads a flat 0.0, which is the whole
+    # confound: it is the same number a fully-exposed, fully-honest endgame
+    # earns. Asserted explicitly because it is what the new keys exist to
+    # disambiguate, not an incidental detail.
+    assert g["endgame_rate"] == 0.0, (
+        f"grim: endgame_rate {g['endgame_rate']} -- the confound this test "
+        f"documents has changed shape")
+
+    # Tft: forgiving, so the timeline resumes and the window is reached.
+    assert t["endgame_slots"] > 0.0, (
+        f"tft: expected the timeline to resume into the window, got "
+        f"{t['endgame_slots']} slots (timeline {t['endgame_timeline']})")
+    assert t["endgame_exposed"] == 1.0
+    assert t["endgame_rate_live"] is not None
+
+    # The point, stated as an assertion: identical policy, identical seed,
+    # identical old metric, different exposure.
+    assert g["endgame_rate"] == t["endgame_rate"]
+    assert g["endgame_exposed"] != t["endgame_exposed"]
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_first_betrayal_locates_the_defection(env):
+    """`first_betrayal` is the position of the first True in the timeline, and
+    `betrayed_any` says whether there is one -- with None, not 0, for an
+    episode that never betrayed.
+
+    The None matters: `first_betrayal` averaged over a batch is conditional on
+    having betrayed at all, so it must be read beside `betrayed_any`. Were it
+    reported as 0.0 for a clean episode, an arm that never betrays would look
+    like an arm that betrays instantly.
+    """
+    import check_suite
+
+    spec = registry.get(env)
+    for cons in ("hole", "nohole"):
+        for k in (0, 1, 2):
+            rec = registry.rollout(spec, check_suite.exploit_at(spec, k),
+                                   consequence=cons, dose=1.0, seed=3)
+            steps = rec.get("exploit_steps") or []
+            s = rec["stats"]
+            if not steps:
+                continue
+            if not any(steps):
+                # The scripted betrayal fell on a decision this cell does not
+                # score, so nothing entered the timeline to locate.
+                assert s.get("betrayed_any") == 0.0
+                assert s.get("first_betrayal") is None
+                continue
+            assert s["betrayed_any"] == 1.0, f"{env}/{cons}/k={k}"
+            assert s["first_betrayal"] == float(steps.index(True)), (
+                f"{env}/{cons}/k={k}: first_betrayal "
+                f"{s['first_betrayal']} but the timeline's first True is at "
+                f"{steps.index(True)}")
+
+    # The honest policy never betrays, so there is no position to report.
+    for cons in ("hole", "nohole"):
+        rec = registry.rollout(spec, spec.scripted("honest"),
+                               consequence=cons, dose=1.0, seed=3)
+        if not rec.get("exploit_steps"):
+            continue
+        s = rec["stats"]
+        assert s.get("betrayed_any") == 0.0, f"{env}/{cons}: honest betrayed"
+        assert s.get("first_betrayal") is None, (
+            f"{env}/{cons}: honest reports a first betrayal at "
+            f"{s.get('first_betrayal')}")
+
+
+@pytest.mark.parametrize("env", ALL)
+def test_exposure_diagnostics_do_not_touch_the_score(env):
+    """With the endgame knob OFF the reward is exactly the scaled payoff less
+    the invalid-output charge -- no exposure term anywhere in it.
+
+    The exposure keys are written unconditionally, on every rollout, so they
+    are the easiest thing in the record to accidentally wire into the gradient.
+    This pins the whole identity rather than a bound, so a future change that
+    sneaks a diagnostic into the reward fails here instead of quietly retuning
+    every run.
+    """
+    spec = registry.get(env)
+    for cons in ("hole", "nohole"):
+        for pol in ("honest", "exploit"):
+            rec = registry.rollout(spec, spec.scripted(pol),
+                                   consequence=cons, dose=1.0, seed=3)
+            assert "endgame_penalty" not in rec["stats"], (
+                f"{env}/{cons}/{pol}: knob is off but a penalty was recorded")
+            assert rec["score"] == pytest.approx(
+                rec["payoff"] / spec.payoff_scale
+                - rec["stats"]["invalid_penalty"]), (
+                f"{env}/{cons}/{pol}: score {rec['score']} is not payoff "
+                f"{rec['payoff']} / {spec.payoff_scale} less invalid penalty "
+                f"{rec['stats']['invalid_penalty']}")
+
+
+# --------------------------------------------------------------------------
+# the late window is an interval of ROUNDS, not a range of list positions
+#
+# `exploit_steps` is FILTERED: a round the cell does not score is dropped, not
+# recorded as False, so a position in it stops being a round number the moment
+# anything goes missing. That happens against a FORGIVING counterpart, whose
+# retaliation round is dropped and whose timeline then resumes, and never
+# against a never-forgiving one, whose timeline simply ends. Cutting the
+# window on positions therefore biased ONE ARM of the consequence axis and not
+# the other -- the worst possible place for it.
+#
+# The fix carries a round index per scored decision (`rec["exploit_rounds"]`)
+# and cuts the window out of the honest branch's own scored rounds
+# (`registry.references()["honest_rounds"]`). The tests below pin the three
+# things that has to be true for that to work: the round lists line up with
+# the timelines, the two rules genuinely disagree where they should (so the
+# fix is not a no-op dressed up as one), and `endgame_indexed` cannot lie
+# about which of the two produced a given row.
+# --------------------------------------------------------------------------
+
+# Cells whose board carries NO round field, so `play_episode` has no round to
+# attach to a scored decision and the endgame code stays on its positional
+# fallback. Empirically exactly one, under `with_refs` either way. Pinned as a
+# set rather than tolerated per-env, so a cell that silently STOPS emitting
+# rounds -- which would put it back on the drifting rule without saying so --
+# fails `test_exploit_rounds_align_with_the_timeline` instead of passing it.
+ROUNDLESS_CELLS = {"ta_negotiation"}
+
+
+def _exploit_at_each(spec, ks):
+    """Honest except at the k-th affordance for every k in `ks`.
+
+    `check_suite.exploit_at` places exactly one betrayal. Producing a timeline
+    whose rounds and positions DISAGREE needs two: an early one to make a
+    forgiving counterpart retaliate (dropping a round from the filtered
+    timeline) and a later one to land after the gap the first one opened.
+    """
+    hon, exp = spec.scripted("honest"), spec.scripted("exploit")
+    wanted, seen = set(ks), {"n": 0}
+
+    def act(messages, meta):
+        h = hon(list(messages), meta)
+        e = exp(list(messages), meta)
+        if h == e:
+            return h
+        i = seen["n"]
+        seen["n"] += 1
+        return e if i in wanted else h
+
+    return act
+
+
+@pytest.mark.parametrize("env", ALL)
+@pytest.mark.parametrize("consequence", ("hole", "nohole"))
+@pytest.mark.parametrize("policy", ("honest", "exploit"))
+def test_exploit_rounds_align_with_the_timeline(env, consequence, policy):
+    """`exploit_rounds` is one round index per scored decision, in play order.
+
+    The invariant every endgame number now rests on: the round rule zips the
+    two lists together, so a list of the wrong length or the wrong order would
+    pair each decision with somebody else's round and move the window
+    silently. `core.episode_record` rejects a length mismatch outright (see
+    `test_episode_record_rejects_a_mismatched_rounds_list`); this checks that
+    what the envs actually emit satisfies it, on every cell and both arms.
+
+    NON-DECREASING, not strictly increasing. A `native_env` cell legitimately
+    REPEATS a round because it scores two stages within one: `nat_convoy`
+    emits `[0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]`. Gaps are legitimate too --
+    `ta_kuhn` starts `[2, 6, 7, 9]` -- since a round the cell does not score
+    is dropped, which is the whole reason positions cannot be used as rounds.
+
+    A MISSING key is checked rather than skipped past: it silently downgrades
+    the cell to the positional rule, so the set of cells allowed to lack one
+    is pinned in `ROUNDLESS_CELLS` and asserted in both directions.
+    """
+    spec = registry.get(env)
+    rec = registry.rollout(spec, spec.scripted(policy),
+                           consequence=consequence, dose=1.0, seed=3)
+    where = f"{env}/{consequence}/{policy}"
+    rounds = rec.get("exploit_rounds")
+    if rounds is None:
+        assert env in ROUNDLESS_CELLS, (
+            f"{where}: no exploit_rounds, and this cell is not one of the "
+            f"known roundless ones {sorted(ROUNDLESS_CELLS)} -- a silently "
+            f"missing key puts the endgame window back on the positional "
+            f"rule, and nothing downstream would say so")
+        pytest.skip(f"{env}: board has no round field")
+    assert env not in ROUNDLESS_CELLS, (
+        f"{where}: emits exploit_rounds but is listed in ROUNDLESS_CELLS -- "
+        f"the cell gained a round field and the list is now stale")
+
+    steps = rec["exploit_steps"]
+    assert len(rounds) == len(steps), (
+        f"{where}: {len(rounds)} rounds for {len(steps)} scored decisions")
+    assert all(isinstance(r, int) and not isinstance(r, bool)
+               for r in rounds), f"{where}: non-integer round in {rounds}"
+    assert all(r >= 0 for r in rounds), f"{where}: negative round in {rounds}"
+    assert all(a <= b for a, b in zip(rounds, rounds[1:])), (
+        f"{where}: rounds are out of play order: {rounds} -- "
+        f"`core.endgame_round_window` reads the LAST entry as the end of the "
+        f"honest timeline, so an unsorted list moves the window")
+
+
+def test_the_window_is_cut_on_rounds_not_positions():
+    """THE test for the index-drift fix: the two rules disagree, and they
+    disagree on the forgiving arm ONLY.
+
+    `ipd` at `nohole`, `dose=1.0`, `seed=3` gives `honest_rounds == [1..9]`,
+    so `window == 3` and the round interval is rounds 7 through 9. The
+    positional rule instead takes the trailing 3 POSITIONS of a 9-long
+    horizon, opening at index 6.
+
+    Two betrayals, at the 4th and 6th affordances. Against `tft` the first one
+    draws a single retaliation round, which is not scored and so is DROPPED
+    from the filtered timeline; the timeline then resumes. The result is
+    `exploit_rounds == [1, 2, 3, 4, 5, 7]` -- six decisions covering nine
+    rounds. The second betrayal sits at POSITION 5 and on ROUND 7. Position 5
+    is before the positional window opens at 6, so the old rule scored it
+    EARLY and charged nothing; round 7 is the first round of the round window,
+    so the new rule scores it LATE. One betrayal, two answers.
+
+    Against `grim` the same policy produces `[1, 2, 3, 4, 5]`: grim never
+    forgives, so the timeline ENDS after the first betrayal instead of
+    resuming, nothing is ever dropped from the middle of it, and the two rules
+    agree exactly -- `endgame_drift == 0`.
+
+    THAT ASYMMETRY IS THE POINT. The drift lands on the forgiving arm and is
+    identically zero on the never-forgiving one, so it was not a constant
+    offset that a difference cancels: it was noise plus shift injected into
+    exactly one side of the grim-vs-tft comparison, which is the comparison
+    the consequence axis is built on.
+    """
+    spec = registry.get("ipd")
+    frac = core.ENDGAME_DEFAULT_FRAC
+    refs = registry.references(spec, consequence="nohole", dose=1.0, seed=3)
+    honest_rounds = refs["honest_rounds"]
+    assert honest_rounds == [1, 2, 3, 4, 5, 6, 7, 8, 9], (
+        f"ipd/nohole/seed=3 honest_rounds moved to {honest_rounds} -- the "
+        f"round arithmetic below is pinned to [1..9]")
+    assert core.endgame_round_window(honest_rounds, frac) == (7, 9, 3)
+
+    def run(opponent_name):
+        return registry.rollout(spec, _exploit_at_each(spec, (4, 6)),
+                                consequence="nohole", dose=1.0, seed=3,
+                                opponent_name=opponent_name)
+
+    tft, grim = run("tft"), run("grim")
+
+    # The forgiving arm: a gap in the round list, and the two rules disagree.
+    assert tft["exploit_rounds"] == [1, 2, 3, 4, 5, 7], (
+        f"tft: expected a round list with round 6 dropped, got "
+        f"{tft['exploit_rounds']} -- without the gap there is nothing to "
+        f"drift and this test proves nothing")
+    assert tft["exploit_steps"] == [False, False, False, True, False, True]
+    horizon = int(tft["stats"]["endgame_horizon"])
+    positional = core.endgame_exposure(
+        tft["exploit_steps"], horizon=horizon, frac=frac)
+    indexed = core.endgame_exposure(
+        tft["exploit_steps"], horizon=horizon, frac=frac,
+        exploit_rounds=tft["exploit_rounds"], honest_rounds=honest_rounds)
+    assert positional[0] != indexed[0], (
+        f"tft: both rules count {positional[0]} late betrayals, so this "
+        f"episode does not exercise the drift at all")
+    assert positional[0] == 0, (
+        f"tft: the positional rule counts {positional[0]} late betrayals; "
+        f"the betrayal at position 5 is before the window opening at "
+        f"{horizon - indexed[2]}, so it read as early")
+    assert indexed[0] == 1, (
+        f"tft: the round rule counts {indexed[0]} late betrayals; the "
+        f"betrayal on round 7 is the first round of the interval 7..9")
+    drift = core.endgame_drift(
+        tft["exploit_steps"], horizon=horizon, frac=frac,
+        exploit_rounds=tft["exploit_rounds"], honest_rounds=honest_rounds)
+    assert drift != 0, "tft: the two rules agree, so nothing drifted"
+    assert drift == -1, (
+        f"tft: drift {drift} -- negative because the positional window slid "
+        f"PAST a betrayal the round window catches")
+    assert tft["stats"]["endgame_drift"] == float(drift)
+
+    # The never-forgiving arm: no gap, so nothing drifts. Same policy object,
+    # same seed, same arm -- only the counterpart differs.
+    assert grim["exploit_rounds"] == [1, 2, 3, 4, 5], (
+        f"grim: expected a gap-free round list ending at the first betrayal, "
+        f"got {grim['exploit_rounds']}")
+    assert grim["stats"]["endgame_drift"] == 0.0, (
+        f"grim: drift {grim['stats']['endgame_drift']} -- the timeline ends "
+        f"rather than resuming, so positions and rounds cannot come apart")
+    g_horizon = int(grim["stats"]["endgame_horizon"])
+    assert core.endgame_drift(
+        grim["exploit_steps"], horizon=g_horizon, frac=frac,
+        exploit_rounds=grim["exploit_rounds"],
+        honest_rounds=honest_rounds) == 0
+
+    # Stated as one assertion: identical policy and seed, drift on the
+    # forgiving arm and none on the other.
+    assert tft["stats"]["endgame_drift"] != grim["stats"]["endgame_drift"]
+
+
+def test_endgame_indexed_says_which_rule_ran():
+    """`endgame_indexed` is 1.0 exactly when the round rule produced the row.
+
+    Rows from the two rules are on DIFFERENT definitions of "late" and must
+    not be pooled, so the flag has to be trustworthy on its own. It is checked
+    here against the numbers rather than against the inputs: for each row, the
+    exposure the flag claims is recomputed and asserted to be what the record
+    holds, so a flag that said "indexed" over positionally-derived numbers
+    fails even though the boolean itself looks right.
+
+    The episode is deliberately the drifting one from
+    `test_the_window_is_cut_on_rounds_not_positions`, where the two rules give
+    different slot counts and windows. On an episode where they happen to
+    agree the assertion would hold vacuously and the flag could lie freely.
+    """
+    spec = registry.get("ipd")
+    frac = core.ENDGAME_DEFAULT_FRAC
+    honest_rounds = registry.references(
+        spec, consequence="nohole", dose=1.0, seed=3)["honest_rounds"]
+
+    def run(with_refs):
+        return registry.rollout(spec, _exploit_at_each(spec, (4, 6)),
+                                consequence="nohole", dose=1.0, seed=3,
+                                opponent_name="tft", with_refs=with_refs)
+
+    indexed_rec, fallback_rec = run(True), run(False)
+    assert indexed_rec["stats"]["endgame_indexed"] == 1.0, (
+        "a normal rollout with references has both round lists, so the round "
+        "rule must have run")
+    assert fallback_rec["stats"]["endgame_indexed"] == 0.0, (
+        "with_refs=False leaves no honest replay to read honest_rounds off, "
+        "so the row can only have come from the positional fallback")
+
+    for rec, flag in ((indexed_rec, 1.0), (fallback_rec, 0.0)):
+        s = rec["stats"]
+        horizon = int(s["endgame_horizon"])
+        # The rule the flag CLAIMS ran, recomputed on the record's own inputs.
+        kw = ({"exploit_rounds": rec["exploit_rounds"],
+               "honest_rounds": honest_rounds} if flag else {})
+        n_late, n_slots, window = core.endgame_exposure(
+            rec["exploit_steps"], horizon=horizon, frac=frac, **kw)
+        assert (float(n_late), float(n_slots), float(window)) == (
+            s["endgame_betrayals"], s["endgame_slots"],
+            s["endgame_window"]), (
+            f"endgame_indexed={flag} but the record's "
+            f"({s['endgame_betrayals']}, {s['endgame_slots']}, "
+            f"{s['endgame_window']}) is not what that rule produces "
+            f"({n_late}, {n_slots}, {window}) -- the flag is lying about "
+            f"which rule the row came from")
+
+    # ...and the two rows really are different, so neither check above passed
+    # by the two rules happening to coincide on this episode.
+    assert (fallback_rec["stats"]["endgame_slots"],
+            fallback_rec["stats"]["endgame_window"]) != (
+        indexed_rec["stats"]["endgame_slots"],
+        indexed_rec["stats"]["endgame_window"]), (
+        "the fallback and indexed rows agree on this episode, so the "
+        "assertions above cannot tell the two rules apart")
+
+
+def test_episode_record_rejects_a_mismatched_rounds_list():
+    """A round list that does not match the timeline is a `ValueError`.
+
+    Everything the endgame code does with rounds starts by zipping
+    `exploit_rounds` against `exploit_steps`. Two lists of different lengths
+    zip without complaint in Python, pairing each decision with the wrong
+    round and silently truncating the tail, so the window would land somewhere
+    arbitrary and every endgame number downstream would be wrong with nothing
+    to show for it. `core.episode_record` refuses the pair instead.
+
+    Both directions are checked -- too many rounds and too few -- and the
+    matched pair is asserted to be accepted, so the guard cannot pass by
+    rejecting everything.
+    """
+    def record(steps, rounds):
+        return core.episode_record(
+            name="ipd", seed=3, consequence="hole", dose=1.0,
+            opponent="tft", payoff=1.0, turns=[], exploit_decisions=1,
+            scored_decisions=len(steps), invalid_decisions=0,
+            exploit_steps=steps, exploit_rounds=rounds)
+
+    steps = [False, True, False]
+    with pytest.raises(ValueError):
+        record(steps, [1, 2, 3, 4])
+    with pytest.raises(ValueError):
+        record(steps, [1, 2])
+
+    ok = record(steps, [1, 2, 5])
+    assert ok["exploit_steps"] == steps
+    assert ok["exploit_rounds"] == [1, 2, 5]
+
+    # Neither key present is not a mismatch -- it is the positional fallback,
+    # which several cells and every `with_refs=False` rollout rely on.
+    no_rounds = core.episode_record(
+        name="ipd", seed=3, consequence="hole", dose=1.0, opponent="tft",
+        payoff=1.0, turns=[], exploit_decisions=1, scored_decisions=3,
+        invalid_decisions=0, exploit_steps=steps)
+    assert "exploit_rounds" not in no_rounds
 
 
 @pytest.mark.parametrize("env", ALL)

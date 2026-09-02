@@ -95,6 +95,7 @@ class NativeModule:
         totals = {p: 0.0 for p in range(g.N_PLAYERS)}
         n_exploit = n_scored = n_invalid = 0
         exploit_steps: List[bool] = []
+        exploit_rounds: List[int] = []
         penalty_total = 0.0
 
         for rnd in range(g.ROUNDS):
@@ -125,6 +126,16 @@ class NativeModule:
                         # exploit is a per-round verdict resolved below; mark the
                         # decision it lands on once the round is scored.
                         exploit_steps.append(False)
+                        # `rnd` is NOT unique here -- the stage loop can
+                        # score more than once in a round, so nat_convoy
+                        # (pledge and action, 6 rounds) gives
+                        # [0,0,1,1,...]. The tie is the honest answer:
+                        # both decisions really were taken in that round,
+                        # and the consumer cuts its window on rounds, so
+                        # it tolerates them. A fabricated sub-round index
+                        # would place a decision in a round it was never
+                        # taken in.
+                        exploit_rounds.append(rnd)
                         parsed = str(mv)
                     moves[lid] = mv
                     turns.append(core.Turn(messages=prompt, action=raw,
@@ -142,6 +153,9 @@ class NativeModule:
                 # last scored decision of the round, so it is the entry that
                 # carries the True. `exploited` can only be true when that move
                 # parsed, so there is always a scored entry to mark.
+                # Assigning in place leaves `exploit_rounds` untouched, as
+                # it should: the round that entry was taken in has not
+                # changed, so the two lists stay aligned.
                 exploit_steps[-1] = True
                 if audit.random() < p_detect:
                     penalty_total += PENALTY_MARGIN * g.premium(st)
@@ -156,6 +170,7 @@ class NativeModule:
             scored_decisions=n_scored,
             invalid_decisions=n_invalid,
             exploit_steps=exploit_steps,
+            exploit_rounds=exploit_rounds,
             stats={"penalty": penalty_total,
                    "premium_per_instance": g.premium(st),
                    "others_mean": core.mean([totals[p] for p in totals

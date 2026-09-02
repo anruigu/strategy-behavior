@@ -41,34 +41,16 @@ mixed_think4_nohole-think-grim_d1_s0_inf    mixed_think4_nohole-think-tft_d1_s0_
 |---|---|---|---|---|---|
 | grim | 38 | 0.093 | 38 | 35 | OK |
 | grim + eg | 40 | 0.080 | 40 | 40 | OK |
-| **grim + inf** | 77 | **0.834** | **50** | **50** | **COLLAPSED — see §3** |
 | tft | 42 | 0.083 | 42 | 40 | OK |
 | tft + eg | 50 | 0.120 | 50 | 50 | OK |
 | tft + inf | 52 | 0.048 | 52 | 50 | OK |
+One new training arm, if you spend one at all
+Your disposition axis has two points and both are punishers. The cheapest genuine third point is the hole population — always-cooperate, doormat, noisy-cooperate — as a zero-consequence anchor, giving you no punishment, recoverable punishment, terminal punishment. It requires no new code because --consequence hole is fully wired across all seven envs, whereas a third --nohole-shape needs a named member registered in each of the four split envs. Against a non-punisher, endgame timing has no strategic content at all, so any endgame behaviour there is pure "the end is near" rather than "the relationship is over" — which is exactly the contrast your section needs to separate the two readings.
+
+Two operational things bear on whether you can afford it. Both inf cells are currently dead, not from the step-50 collapse in §3 of your handoff but from a Triton compile failure where gcc reads the specs/ subdirectory in the working directory as a spec file, and the supervisor has backfilled their slots with seed-1 jobs. Since the hidden-horizon arm carries most of the endgame-reasoning story, that is worth fixing before anything else. And sampler capacity, not trainer capacity, is the binding constraint — about two spare slots against an eighteen-job seed queue. The seeds are the right thing to be spending on given that the log itself flags the within-run standard error as the wrong error bar, so I would not displace them for a third arm until the free analyses above tell you which arm is worth it.
 
 Support processes are UP and harmless while training is down: watchdog, refresh
 loop, trace sweep, and the viewer on `:8792`.
-
-## 2. Why they stopped: Tinker billing, twice
-
-```
-tinker.APIStatusError: Error code: 402
-  'Access is blocked due to billing status.
-   Please add payment at https://tinker.thinkingmachines.ai/billing/balance'
-```
-
-- **1st block:** 2026-08-26 08:04Z, at step 13–20.
-- Billing was cleared and all six resumed 2026-08-27 20:35Z.
-- **2nd block:** 2026-08-28 11:59Z, at step 38–77.
-
-Between those, someone launched **7 additional `think3` resumes** from the tmux
-session (PID 15184), so ~13 training runs shared this box and one Tinker
-account for ~15 hours. That roughly doubled the burn rate. If the account keeps
-getting blocked, that concurrency is the first thing to look at — this box has
-8 CPUs and the runs are all sampling against the same account.
-
-**Check billing before doing anything else.** `./resume_think4.sh --check`
-probes the API and prints the plan without launching. It costs one request.
 
 ## 3. DO NOT blindly resume `grim + inf`
 

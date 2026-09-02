@@ -1,0 +1,2099 @@
+{
+ "figure": "fig4_normalised_by_behaviour.png",
+ "question": "With the BEHAVIOUR normalised out -- restricting to final-round decision blocks, where every episode contributes exactly one and the denominator is therefore matched by construction -- does the endgame penalty move endgame REASONING, and is the movement endgame-specific?",
+ "answer": {
+  "headline": "Normalised by behaviour, the reasoning effect does NOT vanish -- and unlike the pooled analysis it is endgame-SPECIFIC. On final-round decision blocks, where both arms contribute ~48 blocks per cell no matter how much they betray, plans-to-betray falls -0.089 +/- 0.047 (grim) and -0.068 +/- 0.043 (tft) while plans-to-HOLD RISES +0.084 +/- 0.047 and +0.049 +/- 0.030, and the generic punishment FLOOR control does not fall at all (-0.054 +/- 0.232 grim, +0.117 +/- 0.089 tft). The reasoning move is far smaller than the behavioural one -- about a third of it against grim and a fifth against tft, an ORDER-OF-MAGNITUDE statement and not a precise ratio.",
+  "behaviour_vs_reasoning": {
+   "grim": {
+    "behaviour_delta": -0.2171849427168576,
+    "plans_to_betray_delta": -0.08866455752610425,
+    "plans_to_hold_delta": 0.08401932066507974,
+    "floor_control_delta": -0.05438526483020434,
+    "plans_to_betray_over_behaviour_ratio": {
+     "mean": 0.34364823022990704,
+     "min": 0.26932637630863493,
+     "max": 0.40824449622041975,
+     "per_estimator": {
+      "strat_global": 0.40824449622041975,
+      "strat_finalround": 0.26932637630863493,
+      "logistic_adj": 0.3533738181606664
+     },
+     "note": "|plans-to-betray delta| / |final-round behaviour delta|, over the three length-adjusted estimators. The behaviour denominator is seed-fragile, so this is an order-of-magnitude quantity."
+    }
+   },
+   "tft": {
+    "behaviour_delta": -0.4049940898345154,
+    "plans_to_betray_delta": -0.06755050842124388,
+    "plans_to_hold_delta": 0.049059284603623986,
+    "floor_control_delta": 0.1173411749076869,
+    "plans_to_betray_over_behaviour_ratio": {
+     "mean": 0.19779029304394538,
+     "min": 0.16679381284019648,
+     "max": 0.24384848472273343,
+     "per_estimator": {
+      "strat_global": 0.16679381284019648,
+      "strat_finalround": 0.24384848472273343,
+      "logistic_adj": 0.18272858156890626
+     },
+     "note": "|plans-to-betray delta| / |final-round behaviour delta|, over the three length-adjusted estimators. The behaviour denominator is seed-fragile, so this is an order-of-magnitude quantity."
+    }
+   }
+  },
+  "substantive_claim": "Opposite signs on the two directional endgame markers -- plans-to-betray down, plans-to-HOLD up -- with the generic in_game_penalty FLOOR control flat or rising. Neither a verbosity artifact (which moves every binary marker the same way) nor blanket suppression (which takes the floor with it) produces that pattern.",
+  "size": "The reasoning move is much smaller than the behavioural one: about a third against grim and a fifth against tft, averaging the three length-adjusted estimators. That ratio is an ORDER-OF-MAGNITUDE statement, not a measurement -- see caveats.behaviour_bars_are_seed_driven.",
+  "does_not_overturn_pooled": true
+ },
+ "caveats": {
+  "behaviour_bars_are_seed_driven": "The final-round behaviour deltas here carry very wide between-seed bars (grim +/-0.201, tft +/-0.276) because each is driven by ONE seed: grim/eg seed 2 defects on 0.385 of its final rounds and tft/eg seed 2 on 0.043, against ~0.8-1.0 everywhere else. THE BEHAVIOURAL RESULT DOES NOT REST ON THIS EVAL: it rests on the training logs, grim -0.039 +/- 0.012 and tft -0.142 +/- 0.064 over 3 seeds (research_logs/0830-endgame-summary.md section 1, 3 seeds).",
+  "compromised_cell": "grim/nohole seed 1 contributes 15 usable final-round blocks against 47-48 for every other cell, because 0.608 of its decision turns emit an empty answer. tft/nohole seed 0 is at 0.312. Both are drawn hatched in panel E and both drive the orange drop-that-cell sensitivity point. Those sensitivity estimates rest on 2 seeds and carry no usable error bar.",
+  "marginal_significance": "Several estimates sit at 1.5-2 sigma on the between-seed bar and none of them is drawn as decisive. See sigma_on_primary_estimator for every one of them, computed at render time.",
+  "implausible_logistic_se": "tft m_backward_induction logistic_adj has SE 0.0026, which is three seeds happening to agree closely rather than a precise measurement. The stratified value is primary and that logistic SE is never headlined.",
+  "conditioning": "Restricting to the final round conditions on OPPORTUNITY, which is pre-treatment and matched by construction. Additionally conditioning on actually defecting is POST-TREATMENT and is carried under secondary_post_treatment_conditioning, never as primary, because tft/eg seed 2 defects on only 2 of its 47 final rounds. It reproduces the primary sign on all four markers against grim and on three of four against tft; the exception is tft m_endgame_hold, which flips on that two-block cell alone -- see sign_agreement_with_primary and drop_tiny_cells under each marker.",
+  "relationship_to_pooled_analysis": "This does not overturn research_logs/0830-endgame-traces.md section 4. It is a different conditioning of the same data and both are correct for what they measure: the pooled estimate is dominated by the blocks that are not final-round decisions. Panel D draws the pair."
+ },
+ "definitions": {
+  "final_round_decision_block": "in_decision == True and answer_defect is not None and rounds_from_end == 0",
+  "error_bars": "BETWEEN TRAINING SEED on the DIFFERENCE: the eg - nohole delta is formed within a matched training seed and only then averaged; the bar is sd(per-seed deltas)/sqrt(n_seeds), n = 3. Seeds are never pooled into one rate.",
+  "raw": "Unadjusted difference of final-round marker rates.",
+  "strat_global": "Direct standardisation to n_chars quintile bins whose edges are cut over ALL blocks in trace_blocks.jsonl, with the standard population being the bin distribution of the pooled (nohole + eg) final-round blocks for that opponent. Each arm is standardised over the bins it occupies, with the standard weights renormalised over those bins; the two standardised rates are then differenced.",
+  "strat_finalround": "Identical, with the quintile edges recut over the final-round blocks of the four contrast arms only.",
+  "logistic_adj": "Per seed, logistic regression of the marker hit on [intercept, log(n_chars), arm == eg] over that seed's pooled nohole + eg final-round blocks; the reported value is the marginal effect of the arm term evaluated at the pooled mean log-length. Newton-Raphson, ridge 1e-06, 200 iterations.",
+  "primary_estimator": "strat_global",
+  "sensitivity": "Flagged cell dropped, 2 seeds, drawn as an orange cross with no error bar."
+ },
+ "source": {
+  "block_jsonl": "trace_blocks.jsonl",
+  "pooled_marker_json": "trace_markers.json",
+  "upstream": "/home/allie/strategy-behavior/hole_exp/results/think4_evals/A_endgame_length.jsonl",
+  "generated_utc": "2026-08-30T19:14:18Z",
+  "source_mtime_utc": "2026-08-30T19:08:19Z",
+  "source_bytes": 16525688,
+  "n_blocks_total": 12480,
+  "n_final_round_decision_blocks_all_arms": 576,
+  "n_final_round_decision_blocks_contrast_arms": 529,
+  "training_log_behaviour_reference": {
+   "grim": {
+    "delta": -0.039,
+    "se": 0.012
+   },
+   "tft": {
+    "delta": -0.142,
+    "se": 0.064
+   },
+   "source": "research_logs/0830-endgame-summary.md section 1, 3 seeds",
+   "note": "The only literals on this figure."
+  }
+ },
+ "quintile_edges_global": [
+  300.0,
+  485.60000000000036,
+  957.0,
+  1797.0
+ ],
+ "quintile_edges_finalround": [
+  487.0,
+  779.0,
+  1124.8,
+  1568.6000000000004
+ ],
+ "hazard_screen": {
+  "criterion": "empty answer on more than 0.25 of DECISION turns",
+  "why_the_usual_gate_misses_it": "The repo gate is invalid_rate > 0.15. invalid_rate counts actions the environment had to substitute; it does not count decision turns that produced no answer text at all. grim/nohole seed 1 reads invalid_rate 0.000.",
+  "flagged_cells": [
+   "grim/nohole/s1",
+   "tft/nohole/s0"
+  ],
+  "empty_answer_rate_decision_turns": {
+   "grim/eg|0": 0.11666666666666667,
+   "grim/eg|1": 0.05,
+   "grim/eg|2": 0.058333333333333334,
+   "grim/nohole|0": 0.11041666666666666,
+   "grim/nohole|1": 0.6083333333333333,
+   "grim/nohole|2": 0.15416666666666667,
+   "tft/eg|0": 0.08958333333333333,
+   "tft/eg|1": 0.041666666666666664,
+   "tft/eg|2": 0.00625,
+   "tft/nohole|0": 0.3125,
+   "tft/nohole|1": 0.0875,
+   "tft/nohole|2": 0.07083333333333333
+  }
+ },
+ "panelA_behaviour_vs_reasoning": {
+  "grim": {
+   "behaviour_final_round_defect": {
+    "delta": -0.2171849427168576,
+    "se": 0.20052696553778196,
+    "per_seed": [
+     0.0891,
+     -0.1461,
+     -0.5946
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ]
+   },
+   "behaviour_drop_flagged": {
+    "delta": -0.25272776868521546,
+    "se": 0.3418235133660665,
+    "per_seed": [
+     0.0891,
+     -0.5946
+    ],
+    "n_seeds": 2,
+    "train_seeds": [
+     0,
+     2
+    ]
+   },
+   "primary_estimator": "strat_global",
+   "markers_primary": {
+    "m_endgame_defect_plan": {
+     "delta": -0.08866455752610425,
+     "se": 0.047413520072385515,
+     "per_seed": [
+      0.001,
+      -0.1067,
+      -0.1602
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "m_backward_induction": {
+     "delta": -0.06763458373811193,
+     "se": 0.10874235722123704,
+     "per_seed": [
+      0.0501,
+      -0.2849,
+      0.0319
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "m_endgame_hold": {
+     "delta": 0.08401932066507974,
+     "se": 0.0470581598776746,
+     "per_seed": [
+      -0.0097,
+      0.1235,
+      0.1383
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "m_in_game_penalty": {
+     "delta": -0.05438526483020434,
+     "se": 0.23249898710913403,
+     "per_seed": [
+      0.1555,
+      -0.5187,
+      0.2
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "markers_primary_drop_flagged": {
+    "m_endgame_defect_plan": {
+     "delta": -0.07962627242678921,
+     "se": 0.08061670958525913,
+     "per_seed": [
+      0.001,
+      -0.1602
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "m_backward_induction": {
+     "delta": 0.04098086924360972,
+     "se": 0.009096751223354902,
+     "per_seed": [
+      0.0501,
+      0.0319
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "m_endgame_hold": {
+     "delta": 0.06430061373646548,
+     "se": 0.0740062769257352,
+     "per_seed": [
+      -0.0097,
+      0.1383
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "m_in_game_penalty": {
+     "delta": 0.17775825840232462,
+     "se": 0.02225962452254326,
+     "per_seed": [
+      0.1555,
+      0.2
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    }
+   },
+   "plan_over_behaviour_ratio": {
+    "mean": 0.34364823022990704,
+    "min": 0.26932637630863493,
+    "max": 0.40824449622041975,
+    "per_estimator": {
+     "strat_global": 0.40824449622041975,
+     "strat_finalround": 0.26932637630863493,
+     "logistic_adj": 0.3533738181606664
+    },
+    "note": "|plans-to-betray delta| / |final-round behaviour delta|, over the three length-adjusted estimators. The behaviour denominator is seed-fragile, so this is an order-of-magnitude quantity."
+   },
+   "floor_control_interval": {
+    "marker": "m_in_game_penalty",
+    "delta": -0.05438526483020434,
+    "se": 0.23249898710913403
+   }
+  },
+  "tft": {
+   "behaviour_final_round_defect": {
+    "delta": -0.4049940898345154,
+    "se": 0.2762271002811894,
+    "per_seed": [
+     -0.1299,
+     -0.1277,
+     -0.9574
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ]
+   },
+   "behaviour_drop_flagged": {
+    "delta": -0.5425531914893618,
+    "se": 0.4148936170212766,
+    "per_seed": [
+     -0.1277,
+     -0.9574
+    ],
+    "n_seeds": 2,
+    "train_seeds": [
+     1,
+     2
+    ]
+   },
+   "primary_estimator": "strat_global",
+   "markers_primary": {
+    "m_endgame_defect_plan": {
+     "delta": -0.06755050842124388,
+     "se": 0.04325436521563688,
+     "per_seed": [
+      -0.1421,
+      -0.0683,
+      0.0077
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "m_backward_induction": {
+     "delta": -0.08936232092106038,
+     "se": 0.026239627361341885,
+     "per_seed": [
+      -0.1335,
+      -0.0919,
+      -0.0427
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "m_endgame_hold": {
+     "delta": 0.049059284603623986,
+     "se": 0.029867060674246645,
+     "per_seed": [
+      0.0991,
+      -0.0042,
+      0.0523
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "m_in_game_penalty": {
+     "delta": 0.1173411749076869,
+     "se": 0.08890489349276488,
+     "per_seed": [
+      0.0694,
+      -0.007,
+      0.2896
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "markers_primary_drop_flagged": {
+    "m_endgame_defect_plan": {
+     "delta": -0.030284834278102357,
+     "se": 0.038034575357096756,
+     "per_seed": [
+      -0.0683,
+      0.0077
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "m_backward_induction": {
+     "delta": -0.06730514855514852,
+     "se": 0.024617017972281052,
+     "per_seed": [
+      -0.0919,
+      -0.0427
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "m_endgame_hold": {
+     "delta": 0.024035167425620313,
+     "se": 0.02824012426215608,
+     "per_seed": [
+      -0.0042,
+      0.0523
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "m_in_game_penalty": {
+     "delta": 0.14130637665521392,
+     "se": 0.14828771889971393,
+     "per_seed": [
+      -0.007,
+      0.2896
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    }
+   },
+   "plan_over_behaviour_ratio": {
+    "mean": 0.19779029304394538,
+    "min": 0.16679381284019648,
+    "max": 0.24384848472273343,
+    "per_estimator": {
+     "strat_global": 0.16679381284019648,
+     "strat_finalround": 0.24384848472273343,
+     "logistic_adj": 0.18272858156890626
+    },
+    "note": "|plans-to-betray delta| / |final-round behaviour delta|, over the three length-adjusted estimators. The behaviour denominator is seed-fragile, so this is an order-of-magnitude quantity."
+   },
+   "floor_control_interval": {
+    "marker": "m_in_game_penalty",
+    "delta": 0.1173411749076869,
+    "se": 0.08890489349276488
+   }
+  }
+ },
+ "panelB_four_length_adjustments": {
+  "grim": {
+   "m_endgame_defect_plan": {
+    "raw": {
+     "delta": -0.09349881796690311,
+     "se": 0.07500947126883424,
+     "per_seed": [
+      -0.0811,
+      0.0298,
+      -0.2292
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.08866455752610425,
+     "se": 0.047413520072385515,
+     "per_seed": [
+      0.001,
+      -0.1067,
+      -0.1602
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.05849363361072971,
+     "se": 0.03331914074039112,
+     "per_seed": [
+      0.0059,
+      -0.0759,
+      -0.1055
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.07674747245486158,
+     "se": 0.0418478778101025,
+     "per_seed": [
+      0.0057,
+      -0.1055,
+      -0.1305
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "m_backward_induction": {
+    "raw": {
+     "delta": -0.040382342244044356,
+     "se": 0.010922759766808985,
+     "per_seed": [
+      -0.0186,
+      -0.0496,
+      -0.0529
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.06763458373811193,
+     "se": 0.10874235722123704,
+     "per_seed": [
+      0.0501,
+      -0.2849,
+      0.0319
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.04238127645621792,
+     "se": 0.10726141745114655,
+     "per_seed": [
+      0.0431,
+      -0.2555,
+      0.0852
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.06864212031326795,
+     "se": 0.08568024300560005,
+     "per_seed": [
+      0.0288,
+      -0.2394,
+      0.0047
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "m_endgame_hold": {
+    "raw": {
+     "delta": 0.09621976723040554,
+     "se": 0.05586107562168642,
+     "per_seed": [
+      -0.004,
+      0.1035,
+      0.1891
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.08401932066507974,
+     "se": 0.0470581598776746,
+     "per_seed": [
+      -0.0097,
+      0.1235,
+      0.1383
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.12392322635296875,
+     "se": 0.04836956334930174,
+     "per_seed": [
+      0.0409,
+      0.1224,
+      0.2085
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.07137922371106462,
+     "se": 0.040664095857118075,
+     "per_seed": [
+      0.0166,
+      0.0467,
+      0.1508
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "m_in_game_penalty": {
+    "raw": {
+     "delta": 0.005287324968176077,
+     "se": 0.11230623645842462,
+     "per_seed": [
+      0.0887,
+      -0.217,
+      0.1442
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.05438526483020434,
+     "se": 0.23249898710913403,
+     "per_seed": [
+      0.1555,
+      -0.5187,
+      0.2
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.030873062664631745,
+     "se": 0.2312428040098515,
+     "per_seed": [
+      0.1432,
+      -0.489,
+      0.2531
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.02101180714257132,
+     "se": 0.22180993943928717,
+     "per_seed": [
+      0.1647,
+      -0.4628,
+      0.235
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   }
+  },
+  "tft": {
+   "m_endgame_defect_plan": {
+    "raw": {
+     "delta": 0.035165484633569756,
+     "se": 0.06355901437237743,
+     "per_seed": [
+      -0.0044,
+      -0.0496,
+      0.1596
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.06755050842124388,
+     "se": 0.04325436521563688,
+     "per_seed": [
+      -0.1421,
+      -0.0683,
+      0.0077
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.09875719512780916,
+     "se": 0.08242369575506613,
+     "per_seed": [
+      -0.2577,
+      -0.0571,
+      0.0185
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.07400399557925119,
+     "se": 0.012043094252640628,
+     "per_seed": [
+      -0.0868,
+      -0.0499,
+      -0.0852
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "m_backward_induction": {
+    "raw": {
+     "delta": 0.0007387706855791857,
+     "se": 0.04925091114828974,
+     "per_seed": [
+      0.0164,
+      -0.0913,
+      0.0771
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.08936232092106038,
+     "se": 0.026239627361341885,
+     "per_seed": [
+      -0.1335,
+      -0.0919,
+      -0.0427
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.09524803007259146,
+     "se": 0.061123859726311174,
+     "per_seed": [
+      -0.2075,
+      -0.0809,
+      0.0027
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.08643441767380977,
+     "se": 0.0025578161284759517,
+     "per_seed": [
+      -0.0846,
+      -0.0915,
+      -0.0832
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "m_endgame_hold": {
+    "raw": {
+     "delta": 0.09205082742316784,
+     "se": 0.04990744574620745,
+     "per_seed": [
+      0.1791,
+      0.0062,
+      0.0909
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.049059284603623986,
+     "se": 0.029867060674246645,
+     "per_seed": [
+      0.0991,
+      -0.0042,
+      0.0523
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.0136322611761208,
+     "se": 0.026989354429637718,
+     "per_seed": [
+      0.0412,
+      -0.0403,
+      0.0401
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.04461465076572183,
+     "se": 0.03399652041464343,
+     "per_seed": [
+      0.1124,
+      0.0061,
+      0.0154
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   },
+   "m_in_game_penalty": {
+    "raw": {
+     "delta": 0.17966903073286047,
+     "se": 0.11687688470415729,
+     "per_seed": [
+      0.2026,
+      -0.0332,
+      0.3697
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.1173411749076869,
+     "se": 0.08890489349276488,
+     "per_seed": [
+      0.0694,
+      -0.007,
+      0.2896
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.0913886734610419,
+     "se": 0.08813359557623217,
+     "per_seed": [
+      0.0138,
+      -0.0069,
+      0.2673
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.11571915044529456,
+     "se": 0.07694565443328079,
+     "per_seed": [
+      0.1545,
+      -0.0326,
+      0.2253
+     ],
+     "n_seeds": 3,
+     "train_seeds": [
+      0,
+      1,
+      2
+     ]
+    }
+   }
+  }
+ },
+ "panelC_length_reversal": {
+  "grim": {
+   "all_blocks": {
+    "delta": -19.47638888888889,
+    "se": 470.800281989418,
+    "per_seed": [
+     377.9,
+     521.1,
+     -957.4
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "eg_mean_chars": 1052.707986111111,
+    "nohole_mean_chars": 1072.184375
+   },
+   "final_round": {
+    "delta": 326.96401845790143,
+    "se": 309.72719535385477,
+    "per_seed": [
+     -127.8,
+     918.6,
+     190.1
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "eg_mean_chars": 1304.6641791044776,
+    "nohole_mean_chars": 1150.6818181818182
+   }
+  },
+  "tft": {
+   "all_blocks": {
+    "delta": -482.21701388888897,
+    "se": 212.11763233989765,
+    "per_seed": [
+     -61.1,
+     -648.1,
+     -737.4
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "eg_mean_chars": 885.2045138888889,
+    "nohole_mean_chars": 1367.4215277777778
+   },
+   "final_round": {
+    "delta": 218.42302009456264,
+    "se": 130.14766150885626,
+    "per_seed": [
+     228.3,
+     -11.8,
+     438.7
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "eg_mean_chars": 1082.6382978723404,
+    "nohole_mean_chars": 864.2152777777778
+   }
+  }
+ },
+ "panelD_pooled_vs_final_round": {
+  "grim": {
+   "m_endgame_defect_plan": {
+    "pooled_all_blocks_strat_delta": -0.046281397861505,
+    "pooled_all_blocks_strat_se": 0.09311372791010541,
+    "final_round_strat_global_delta": -0.08866455752610425,
+    "final_round_strat_global_se": 0.047413520072385515,
+    "shift": -0.04238315966459925
+   },
+   "m_backward_induction": {
+    "pooled_all_blocks_strat_delta": -0.04569181582848101,
+    "pooled_all_blocks_strat_se": 0.09087004303351444,
+    "final_round_strat_global_delta": -0.06763458373811193,
+    "final_round_strat_global_se": 0.10874235722123704,
+    "shift": -0.02194276790963092
+   },
+   "m_endgame_hold": {
+    "pooled_all_blocks_strat_delta": 0.0012278955422394672,
+    "pooled_all_blocks_strat_se": 0.03483962756594846,
+    "final_round_strat_global_delta": 0.08401932066507974,
+    "final_round_strat_global_se": 0.0470581598776746,
+    "shift": 0.08279142512284027
+   },
+   "m_in_game_penalty": {
+    "pooled_all_blocks_strat_delta": -0.009342265918797258,
+    "pooled_all_blocks_strat_se": 0.0917989541707493,
+    "final_round_strat_global_delta": -0.05438526483020434,
+    "final_round_strat_global_se": 0.23249898710913403,
+    "shift": -0.04504299891140708
+   }
+  },
+  "tft": {
+   "m_endgame_defect_plan": {
+    "pooled_all_blocks_strat_delta": -0.06461327976907737,
+    "pooled_all_blocks_strat_se": 0.022067940274496833,
+    "final_round_strat_global_delta": -0.06755050842124388,
+    "final_round_strat_global_se": 0.04325436521563688,
+    "shift": -0.0029372286521665153
+   },
+   "m_backward_induction": {
+    "pooled_all_blocks_strat_delta": -0.06116261173864018,
+    "pooled_all_blocks_strat_se": 0.019346974856372743,
+    "final_round_strat_global_delta": -0.08936232092106038,
+    "final_round_strat_global_se": 0.026239627361341885,
+    "shift": -0.028199709182420193
+   },
+   "m_endgame_hold": {
+    "pooled_all_blocks_strat_delta": 0.0321565321512748,
+    "pooled_all_blocks_strat_se": 0.02096335002242419,
+    "final_round_strat_global_delta": 0.049059284603623986,
+    "final_round_strat_global_se": 0.029867060674246645,
+    "shift": 0.016902752452349186
+   },
+   "m_in_game_penalty": {
+    "pooled_all_blocks_strat_delta": -0.05885012929055847,
+    "pooled_all_blocks_strat_se": 0.04221707772356459,
+    "final_round_strat_global_delta": 0.1173411749076869,
+    "final_round_strat_global_se": 0.08890489349276488,
+    "shift": 0.17619130419824536
+   }
+  }
+ },
+ "panelE_cell_census": {
+  "grim": {
+   "grim/nohole/s0": {
+    "n_final_blocks": 47,
+    "mean_chars": 1207.0,
+    "defect_rate": 0.7234,
+    "m_endgame_defect_plan": 0.8936,
+    "m_backward_induction": 0.8936,
+    "m_endgame_hold": 0.1915,
+    "m_in_game_penalty": 0.7447,
+    "n_final_round_defections": 34,
+    "empty_answer_rate_decision_turns": 0.11041666666666666
+   },
+   "grim/nohole/s1": {
+    "n_final_blocks": 15,
+    "mean_chars": 450.6,
+    "defect_rate": 0.9333,
+    "m_endgame_defect_plan": 0.8,
+    "m_backward_induction": 0.6667,
+    "m_endgame_hold": 0.0667,
+    "m_in_game_penalty": 0.6,
+    "n_final_round_defections": 14,
+    "empty_answer_rate_decision_turns": 0.6083333333333333
+   },
+   "grim/nohole/s2": {
+    "n_final_blocks": 48,
+    "mean_chars": 1314.4,
+    "defect_rate": 0.9792,
+    "m_endgame_defect_plan": 0.8958,
+    "m_backward_induction": 0.7708,
+    "m_endgame_hold": 0.0417,
+    "m_in_game_penalty": 0.625,
+    "n_final_round_defections": 47,
+    "empty_answer_rate_decision_turns": 0.15416666666666667
+   },
+   "grim/eg/s0": {
+    "n_final_blocks": 48,
+    "mean_chars": 1079.1,
+    "defect_rate": 0.8125,
+    "m_endgame_defect_plan": 0.8125,
+    "m_backward_induction": 0.875,
+    "m_endgame_hold": 0.1875,
+    "m_in_game_penalty": 0.8333,
+    "n_final_round_defections": 39,
+    "empty_answer_rate_decision_turns": 0.11666666666666667
+   },
+   "grim/eg/s1": {
+    "n_final_blocks": 47,
+    "mean_chars": 1369.2,
+    "defect_rate": 0.7872,
+    "m_endgame_defect_plan": 0.8298,
+    "m_backward_induction": 0.617,
+    "m_endgame_hold": 0.1702,
+    "m_in_game_penalty": 0.383,
+    "n_final_round_defections": 37,
+    "empty_answer_rate_decision_turns": 0.05
+   },
+   "grim/eg/s2": {
+    "n_final_blocks": 39,
+    "mean_chars": 1504.5,
+    "defect_rate": 0.3846,
+    "m_endgame_defect_plan": 0.6667,
+    "m_backward_induction": 0.7179,
+    "m_endgame_hold": 0.2308,
+    "m_in_game_penalty": 0.7692,
+    "n_final_round_defections": 15,
+    "empty_answer_rate_decision_turns": 0.058333333333333334
+   }
+  },
+  "tft": {
+   "tft/nohole/s0": {
+    "n_final_blocks": 48,
+    "mean_chars": 1087.5,
+    "defect_rate": 0.8958,
+    "m_endgame_defect_plan": 0.7917,
+    "m_backward_induction": 0.7708,
+    "m_endgame_hold": 0.4167,
+    "m_in_game_penalty": 0.5208,
+    "n_final_round_defections": 43,
+    "empty_answer_rate_decision_turns": 0.3125
+   },
+   "tft/nohole/s1": {
+    "n_final_blocks": 48,
+    "mean_chars": 890.4,
+    "defect_rate": 1.0,
+    "m_endgame_defect_plan": 0.6667,
+    "m_backward_induction": 0.7083,
+    "m_endgame_hold": 0.2917,
+    "m_in_game_penalty": 0.4375,
+    "n_final_round_defections": 48,
+    "empty_answer_rate_decision_turns": 0.0875
+   },
+   "tft/nohole/s2": {
+    "n_final_blocks": 48,
+    "mean_chars": 614.8,
+    "defect_rate": 1.0,
+    "m_endgame_defect_plan": 0.5,
+    "m_backward_induction": 0.625,
+    "m_endgame_hold": 0.2708,
+    "m_in_game_penalty": 0.375,
+    "n_final_round_defections": 48,
+    "empty_answer_rate_decision_turns": 0.07083333333333333
+   },
+   "tft/eg/s0": {
+    "n_final_blocks": 47,
+    "mean_chars": 1315.8,
+    "defect_rate": 0.766,
+    "m_endgame_defect_plan": 0.7872,
+    "m_backward_induction": 0.7872,
+    "m_endgame_hold": 0.5957,
+    "m_in_game_penalty": 0.7234,
+    "n_final_round_defections": 36,
+    "empty_answer_rate_decision_turns": 0.08958333333333333
+   },
+   "tft/eg/s1": {
+    "n_final_blocks": 47,
+    "mean_chars": 878.6,
+    "defect_rate": 0.8723,
+    "m_endgame_defect_plan": 0.617,
+    "m_backward_induction": 0.617,
+    "m_endgame_hold": 0.2979,
+    "m_in_game_penalty": 0.4043,
+    "n_final_round_defections": 41,
+    "empty_answer_rate_decision_turns": 0.041666666666666664
+   },
+   "tft/eg/s2": {
+    "n_final_blocks": 47,
+    "mean_chars": 1053.5,
+    "defect_rate": 0.0426,
+    "m_endgame_defect_plan": 0.6596,
+    "m_backward_induction": 0.7021,
+    "m_endgame_hold": 0.3617,
+    "m_in_game_penalty": 0.7447,
+    "n_final_round_defections": 2,
+    "empty_answer_rate_decision_turns": 0.00625
+   }
+  }
+ },
+ "per_cell": {
+  "grim/eg/s0": {
+   "n_final_blocks": 48,
+   "mean_chars": 1079.1,
+   "defect_rate": 0.8125,
+   "m_endgame_defect_plan": 0.8125,
+   "m_backward_induction": 0.875,
+   "m_endgame_hold": 0.1875,
+   "m_in_game_penalty": 0.8333,
+   "n_final_round_defections": 39,
+   "empty_answer_rate_decision_turns": 0.11666666666666667
+  },
+  "grim/eg/s1": {
+   "n_final_blocks": 47,
+   "mean_chars": 1369.2,
+   "defect_rate": 0.7872,
+   "m_endgame_defect_plan": 0.8298,
+   "m_backward_induction": 0.617,
+   "m_endgame_hold": 0.1702,
+   "m_in_game_penalty": 0.383,
+   "n_final_round_defections": 37,
+   "empty_answer_rate_decision_turns": 0.05
+  },
+  "grim/eg/s2": {
+   "n_final_blocks": 39,
+   "mean_chars": 1504.5,
+   "defect_rate": 0.3846,
+   "m_endgame_defect_plan": 0.6667,
+   "m_backward_induction": 0.7179,
+   "m_endgame_hold": 0.2308,
+   "m_in_game_penalty": 0.7692,
+   "n_final_round_defections": 15,
+   "empty_answer_rate_decision_turns": 0.058333333333333334
+  },
+  "grim/nohole/s0": {
+   "n_final_blocks": 47,
+   "mean_chars": 1207.0,
+   "defect_rate": 0.7234,
+   "m_endgame_defect_plan": 0.8936,
+   "m_backward_induction": 0.8936,
+   "m_endgame_hold": 0.1915,
+   "m_in_game_penalty": 0.7447,
+   "n_final_round_defections": 34,
+   "empty_answer_rate_decision_turns": 0.11041666666666666
+  },
+  "grim/nohole/s1": {
+   "n_final_blocks": 15,
+   "mean_chars": 450.6,
+   "defect_rate": 0.9333,
+   "m_endgame_defect_plan": 0.8,
+   "m_backward_induction": 0.6667,
+   "m_endgame_hold": 0.0667,
+   "m_in_game_penalty": 0.6,
+   "n_final_round_defections": 14,
+   "empty_answer_rate_decision_turns": 0.6083333333333333
+  },
+  "grim/nohole/s2": {
+   "n_final_blocks": 48,
+   "mean_chars": 1314.4,
+   "defect_rate": 0.9792,
+   "m_endgame_defect_plan": 0.8958,
+   "m_backward_induction": 0.7708,
+   "m_endgame_hold": 0.0417,
+   "m_in_game_penalty": 0.625,
+   "n_final_round_defections": 47,
+   "empty_answer_rate_decision_turns": 0.15416666666666667
+  },
+  "tft/eg/s0": {
+   "n_final_blocks": 47,
+   "mean_chars": 1315.8,
+   "defect_rate": 0.766,
+   "m_endgame_defect_plan": 0.7872,
+   "m_backward_induction": 0.7872,
+   "m_endgame_hold": 0.5957,
+   "m_in_game_penalty": 0.7234,
+   "n_final_round_defections": 36,
+   "empty_answer_rate_decision_turns": 0.08958333333333333
+  },
+  "tft/eg/s1": {
+   "n_final_blocks": 47,
+   "mean_chars": 878.6,
+   "defect_rate": 0.8723,
+   "m_endgame_defect_plan": 0.617,
+   "m_backward_induction": 0.617,
+   "m_endgame_hold": 0.2979,
+   "m_in_game_penalty": 0.4043,
+   "n_final_round_defections": 41,
+   "empty_answer_rate_decision_turns": 0.041666666666666664
+  },
+  "tft/eg/s2": {
+   "n_final_blocks": 47,
+   "mean_chars": 1053.5,
+   "defect_rate": 0.0426,
+   "m_endgame_defect_plan": 0.6596,
+   "m_backward_induction": 0.7021,
+   "m_endgame_hold": 0.3617,
+   "m_in_game_penalty": 0.7447,
+   "n_final_round_defections": 2,
+   "empty_answer_rate_decision_turns": 0.00625
+  },
+  "tft/nohole/s0": {
+   "n_final_blocks": 48,
+   "mean_chars": 1087.5,
+   "defect_rate": 0.8958,
+   "m_endgame_defect_plan": 0.7917,
+   "m_backward_induction": 0.7708,
+   "m_endgame_hold": 0.4167,
+   "m_in_game_penalty": 0.5208,
+   "n_final_round_defections": 43,
+   "empty_answer_rate_decision_turns": 0.3125
+  },
+  "tft/nohole/s1": {
+   "n_final_blocks": 48,
+   "mean_chars": 890.4,
+   "defect_rate": 1.0,
+   "m_endgame_defect_plan": 0.6667,
+   "m_backward_induction": 0.7083,
+   "m_endgame_hold": 0.2917,
+   "m_in_game_penalty": 0.4375,
+   "n_final_round_defections": 48,
+   "empty_answer_rate_decision_turns": 0.0875
+  },
+  "tft/nohole/s2": {
+   "n_final_blocks": 48,
+   "mean_chars": 614.8,
+   "defect_rate": 1.0,
+   "m_endgame_defect_plan": 0.5,
+   "m_backward_induction": 0.625,
+   "m_endgame_hold": 0.2708,
+   "m_in_game_penalty": 0.375,
+   "n_final_round_defections": 48,
+   "empty_answer_rate_decision_turns": 0.07083333333333333
+  }
+ },
+ "sigma_on_primary_estimator": {
+  "grim/behaviour": 1.0830710081030825,
+  "grim/m_endgame_defect_plan": 1.8700268908687099,
+  "grim/m_backward_induction": 0.6219709179239965,
+  "grim/m_endgame_hold": 1.7854357434180146,
+  "grim/m_in_game_penalty": 0.2339161366095592,
+  "tft/behaviour": 1.4661634916423687,
+  "tft/m_endgame_defect_plan": 1.5617038438659991,
+  "tft/m_backward_induction": 3.4056246184622045,
+  "tft/m_endgame_hold": 1.6425883061846172,
+  "tft/m_in_game_penalty": 1.3198505762479338
+ },
+ "intervals_not_crossing_zero": [
+  "grim/behaviour",
+  "grim/m_endgame_defect_plan",
+  "grim/m_endgame_hold",
+  "tft/behaviour",
+  "tft/m_backward_induction",
+  "tft/m_endgame_defect_plan",
+  "tft/m_endgame_hold",
+  "tft/m_in_game_penalty"
+ ],
+ "secondary_post_treatment_conditioning": {
+  "grim": {
+   "n_blocks_per_cell": {
+    "grim/eg/s0": 39,
+    "grim/eg/s1": 37,
+    "grim/eg/s2": 15,
+    "grim/nohole/s0": 34,
+    "grim/nohole/s1": 14,
+    "grim/nohole/s2": 47
+   },
+   "seeds_with_too_few_defections": [],
+   "min_defections_threshold": 5,
+   "m_endgame_defect_plan": {
+    "delta": -0.07581259483637455,
+    "se": 0.07758660143090126,
+    "per_seed": [
+     -0.1463,
+     0.0792,
+     -0.1603
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": null
+   },
+   "m_backward_induction": {
+    "delta": -0.0056449757325852295,
+    "se": 0.05352542935728781,
+    "per_seed": [
+     -0.0694,
+     -0.0483,
+     0.1007
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": null
+   },
+   "m_endgame_hold": {
+    "delta": 0.09615063081896624,
+    "se": 0.07236632274346771,
+    "per_seed": [
+     -0.0264,
+     0.0907,
+     0.2241
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": null
+   },
+   "m_in_game_penalty": {
+    "delta": -0.04255110162494393,
+    "se": 0.11843046027730787,
+    "per_seed": [
+     0.0302,
+     -0.2741,
+     0.1163
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": null
+   },
+   "sign_agreement_with_primary": {
+    "m_endgame_defect_plan": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    },
+    "m_backward_induction": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    },
+    "m_endgame_hold": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    },
+    "m_in_game_penalty": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    }
+   },
+   "caveat": "Post-treatment conditioning: the set of blocks is selected on the outcome the treatment moves, so this is a collider and is carried for completeness only, never as primary. The smallest cell has 14 blocks. `drop_tiny_cells` repeats it without the seeds whose defection count is under 5."
+  },
+  "tft": {
+   "n_blocks_per_cell": {
+    "tft/eg/s0": 36,
+    "tft/eg/s1": 41,
+    "tft/eg/s2": 2,
+    "tft/nohole/s0": 43,
+    "tft/nohole/s1": 48,
+    "tft/nohole/s2": 48
+   },
+   "seeds_with_too_few_defections": [
+    2
+   ],
+   "min_defections_threshold": 5,
+   "m_endgame_defect_plan": {
+    "delta": -0.039536984517131946,
+    "se": 0.033286643482431495,
+    "per_seed": [
+     -0.0129,
+     -0.1057,
+     0.0
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": {
+     "delta": -0.05930547677569792,
+     "se": 0.04638558013487109,
+     "per_seed": [
+      -0.0129,
+      -0.1057
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      1
+     ]
+    }
+   },
+   "m_backward_induction": {
+    "delta": -0.08884792336295455,
+    "se": 0.04776895835739224,
+    "per_seed": [
+     0.0058,
+     -0.1474,
+     -0.125
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": {
+     "delta": -0.07077188504443183,
+     "se": 0.07658583853280393,
+     "per_seed": [
+      0.0058,
+      -0.1474
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      1
+     ]
+    }
+   },
+   "m_endgame_hold": {
+    "delta": -0.05505530346001134,
+    "se": 0.11196006266029702,
+    "per_seed": [
+     0.1047,
+     0.001,
+     -0.2708
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": {
+     "delta": 0.05283371147664964,
+     "se": 0.051817451314048045,
+     "per_seed": [
+      0.1047,
+      0.001
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      1
+     ]
+    }
+   },
+   "m_in_game_penalty": {
+    "delta": 0.07683793407701518,
+    "se": 0.0892173190674714,
+    "per_seed": [
+     0.2016,
+     -0.096,
+     0.125
+    ],
+    "n_seeds": 3,
+    "train_seeds": [
+     0,
+     1,
+     2
+    ],
+    "drop_tiny_cells": {
+     "delta": 0.05275690111552278,
+     "se": 0.1487934864813764,
+     "per_seed": [
+      0.2016,
+      -0.096
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      1
+     ]
+    }
+   },
+   "sign_agreement_with_primary": {
+    "m_endgame_defect_plan": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    },
+    "m_backward_induction": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    },
+    "m_endgame_hold": {
+     "all_seeds": false,
+     "drop_tiny_cells": true
+    },
+    "m_in_game_penalty": {
+     "all_seeds": true,
+     "drop_tiny_cells": true
+    }
+   },
+   "caveat": "Post-treatment conditioning: the set of blocks is selected on the outcome the treatment moves, so this is a collider and is carried for completeness only, never as primary. The smallest cell has 2 blocks. `drop_tiny_cells` repeats it without the seeds whose defection count is under 5."
+  }
+ },
+ "sensitivity_drop_flagged": {
+  "grim": {
+   "dropped_seed": 1,
+   "kept_seeds": [
+    0,
+    2
+   ],
+   "dropped_because": "grim/nohole seed 1 emits an empty answer on 0.608 of its decision turns",
+   "behaviour": {
+    "delta": -0.25272776868521546,
+    "se": 0.3418235133660665,
+    "per_seed": [
+     0.0891,
+     -0.5946
+    ],
+    "n_seeds": 2,
+    "train_seeds": [
+     0,
+     2
+    ]
+   },
+   "m_endgame_defect_plan": {
+    "raw": {
+     "delta": -0.15514184397163122,
+     "se": 0.07402482269503552,
+     "per_seed": [
+      -0.0811,
+      -0.2292
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.07962627242678921,
+     "se": 0.08061670958525913,
+     "per_seed": [
+      0.001,
+      -0.1602
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.04977624834182215,
+     "se": 0.055700242380570246,
+     "per_seed": [
+      0.0059,
+      -0.1055
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.06239586243614653,
+     "se": 0.06808691872334921,
+     "per_seed": [
+      0.0057,
+      -0.1305
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    }
+   },
+   "m_backward_induction": {
+    "raw": {
+     "delta": -0.03575081833060556,
+     "se": 0.01713379705400986,
+     "per_seed": [
+      -0.0186,
+      -0.0529
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.04098086924360972,
+     "se": 0.009096751223354902,
+     "per_seed": [
+      0.0501,
+      0.0319
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.06418972648480842,
+     "se": 0.021045166127133304,
+     "per_seed": [
+      0.0431,
+      0.0852
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.01675549472415372,
+     "se": 0.01204384333412811,
+     "per_seed": [
+      0.0288,
+      0.0047
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    }
+   },
+   "m_endgame_hold": {
+    "raw": {
+     "delta": 0.09255660120021823,
+     "se": 0.09654596290234588,
+     "per_seed": [
+      -0.004,
+      0.1891
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.06430061373646548,
+     "se": 0.0740062769257352,
+     "per_seed": [
+      -0.0097,
+      0.1383
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.12469557992098976,
+     "se": 0.08376786009982727,
+     "per_seed": [
+      0.0409,
+      0.2085
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.08370370137951429,
+     "se": 0.06711950406722562,
+     "per_seed": [
+      0.0166,
+      0.1508
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    }
+   },
+   "m_in_game_penalty": {
+    "raw": {
+     "delta": 0.11644162575013645,
+     "se": 0.027789143480632827,
+     "per_seed": [
+      0.0887,
+      0.1442
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.17775825840232462,
+     "se": 0.02225962452254326,
+     "per_seed": [
+      0.1555,
+      0.2
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.19818207748535616,
+     "se": 0.05496300147939486,
+     "per_seed": [
+      0.1432,
+      0.2531
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.19986891505119292,
+     "se": 0.035129295348243994,
+     "per_seed": [
+      0.1647,
+      0.235
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      0,
+      2
+     ]
+    }
+   }
+  },
+  "tft": {
+   "dropped_seed": 0,
+   "kept_seeds": [
+    1,
+    2
+   ],
+   "dropped_because": "tft/nohole seed 0 emits an empty answer on 0.312 of its decision turns",
+   "behaviour": {
+    "delta": -0.5425531914893618,
+    "se": 0.4148936170212766,
+    "per_seed": [
+     -0.1277,
+     -0.9574
+    ],
+    "n_seeds": 2,
+    "train_seeds": [
+     1,
+     2
+    ]
+   },
+   "m_endgame_defect_plan": {
+    "raw": {
+     "delta": 0.054964539007092195,
+     "se": 0.10460992907801413,
+     "per_seed": [
+      -0.0496,
+      0.1596
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.030284834278102357,
+     "se": 0.038034575357096756,
+     "per_seed": [
+      -0.0683,
+      0.0077
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.019271966459466494,
+     "se": 0.037779520065704286,
+     "per_seed": [
+      -0.0571,
+      0.0185
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.0675892668568211,
+     "se": 0.017653954904973786,
+     "per_seed": [
+      -0.0499,
+      -0.0852
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    }
+   },
+   "m_backward_induction": {
+    "raw": {
+     "delta": -0.007092198581560294,
+     "se": 0.08421985815602838,
+     "per_seed": [
+      -0.0913,
+      0.0771
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": -0.06730514855514852,
+     "se": 0.024617017972281052,
+     "per_seed": [
+      -0.0919,
+      -0.0427
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.039098722914512385,
+     "se": 0.04183472959788753,
+     "per_seed": [
+      -0.0809,
+      0.0027
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": -0.08735798303058906,
+     "se": 0.004131386103542799,
+     "per_seed": [
+      -0.0915,
+      -0.0832
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    }
+   },
+   "m_endgame_hold": {
+    "raw": {
+     "delta": 0.048537234042553196,
+     "se": 0.04233156028368798,
+     "per_seed": [
+      0.0062,
+      0.0909
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.024035167425620313,
+     "se": 0.02824012426215608,
+     "per_seed": [
+      -0.0042,
+      0.0523
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": -0.00012830249672357574,
+     "se": 0.04021462942515574,
+     "per_seed": [
+      -0.0403,
+      0.0401
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.010724339529436161,
+     "se": 0.0046508723733154345,
+     "per_seed": [
+      0.0061,
+      0.0154
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    }
+   },
+   "m_in_game_penalty": {
+    "raw": {
+     "delta": 0.16821808510638295,
+     "se": 0.2014627659574468,
+     "per_seed": [
+      -0.0332,
+      0.3697
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_global": {
+     "delta": 0.14130637665521392,
+     "se": 0.14828771889971393,
+     "per_seed": [
+      -0.007,
+      0.2896
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "strat_finalround": {
+     "delta": 0.13019520988270986,
+     "se": 0.13705747042918098,
+     "per_seed": [
+      -0.0069,
+      0.2673
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    },
+    "logistic_adj": {
+     "delta": 0.09632991631542284,
+     "se": 0.128973152276234,
+     "per_seed": [
+      -0.0326,
+      0.2253
+     ],
+     "n_seeds": 2,
+     "train_seeds": [
+      1,
+      2
+     ]
+    }
+   }
+  }
+ }
+}

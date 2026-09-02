@@ -167,6 +167,11 @@ class SpecModule:
         take_total = 0.0
         n_exploit = n_invalid = n_scored = 0
         exploit_steps: List[bool] = []
+        # Unscored rounds are DROPPED from `exploit_steps` rather than
+        # recorded False, so a position in it stops being a round number the
+        # moment anything is dropped. The endgame window is cut on the round
+        # axis, so the rounds have to travel alongside the decisions.
+        exploit_rounds: List[int] = []
         detections = 0
         removed = False
 
@@ -195,6 +200,7 @@ class SpecModule:
             else:
                 n_scored += 1
                 exploit_steps.append(choice == s.exploit_token)
+                exploit_rounds.append(rnd)
 
             if choice == s.exploit_token:
                 # Out-of-range takes CLAMP (the trust-cell lesson: a number
@@ -240,6 +246,7 @@ class SpecModule:
             opponent=opponent.name, payoff=payoff, turns=turns,
             exploit_decisions=n_exploit, scored_decisions=n_scored,
             invalid_decisions=n_invalid, exploit_steps=exploit_steps,
+            exploit_rounds=exploit_rounds,
             stats={
                 "take_total": take_total,
                 "detected": float(detections > 0),

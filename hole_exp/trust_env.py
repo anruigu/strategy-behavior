@@ -353,6 +353,8 @@ def play_episode(
     return_shares: List[float] = []
     sents: List[float] = []
     exploit_steps: List[bool] = []
+    # Filtered positions are not rounds -- endgame windows use the round axis.
+    exploit_rounds: List[int] = []
     n_exploit = n_invalid = n_live = 0
 
     def apply_action(st: dict, raw: str) -> dict:
@@ -380,6 +382,7 @@ def play_episode(
                 n_live += 1
                 betrayed = (ret / pot) < BETRAY_THRESHOLD
                 exploit_steps.append(betrayed)
+                exploit_rounds.append(int(st["round"]))
                 if betrayed:
                     n_exploit += 1
         share = (ret / pot) if pot > 0 else None
@@ -406,6 +409,7 @@ def play_episode(
         opponent=opponent.name, payoff=payoff, turns=turns,
         exploit_decisions=n_exploit, scored_decisions=n_live,
         invalid_decisions=n_invalid, exploit_steps=exploit_steps,
+        exploit_rounds=exploit_rounds,
         stats={
             "mean_return_share": core.mean(return_shares),
             "final_stake_share": (sents[-1] / ENDOWMENT) if sents else None,
