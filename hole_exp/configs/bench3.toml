@@ -140,9 +140,18 @@ chains = 16
 # leave it alone if you want this wave comparable to the 0902 ones.
 seed0 = 0
 
-condition = "neutral"     # neutral | win | winmax. `win` is the usable middle
-                          # rung; `winmax` puts several cells at ceiling on R0
-                          # and needs --allow-winmax.
+# `win`, NOT `neutral`. `0901-single-model.md` is explicit on both halves:
+# prompt is "the only knob so far that moves anything", and "`win` is the
+# usable middle rung and should be the default for any sweep that needs
+# headroom." Neutral parks cells at the floor for reasons that have nothing to
+# do with the cell -- gen_quiet_sonar reads 0.042 neutral against 0.306 on
+# win, ref_orderbook 0.007 -> 0.019, ta_liarsdice 0.000 -> 0.028 -- and a
+# benchmark built to SEPARATE MODELS cannot afford floors it created itself.
+#
+# Not `winmax`: it puts ref_invoice, ta_winasmuch and gen_frontline_depot at
+# ceiling on R0, which is what `--allow-winmax` exists to refuse. A ceiling
+# separates exactly as badly as a floor.
+condition = "win"         # neutral | win | winmax
 arm = "hole"              # hole | nohole. The matched `nohole` wave is what
                           # makes the payoff counterfactual readable, and
                           # 0901 settled that the counterfactual is the right
@@ -182,7 +191,14 @@ max_chars = 6000
 # number is worth raising. Load splits across THREE providers, so 48 is ~16
 # concurrent requests each, which is modest; the retry-and-widen loop absorbs
 # transient rate-limit errors, and `usage.json` records how many there were.
-workers = 48
+#
+# MEASURED 2026-09-02 at 48: ~21 completions/s, i.e. ~2.3s per call and 108
+# min for the wave. That is LATENCY-bound, not throughput-bound -- each chain
+# spends almost all its time waiting -- so concurrency is the right lever and
+# 48 was leaving it on the table. Raised to 96 (~32 requests per provider).
+# Check `errors` in usage.json afterwards: if it is a large fraction of
+# `calls`, this went too far and the retries paid for it in wall clock.
+workers = 96
 
 # Episodes of one round run concurrently, and per-seat reflections likewise.
 # This is the axis that cuts a SINGLE chain's wall clock, which `workers`

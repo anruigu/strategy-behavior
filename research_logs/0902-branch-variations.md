@@ -7,6 +7,20 @@ are stated at the end.
 Eval under prediction: <http://localhost:8801> (`viz/variant_server.py`, reading
 `results/0902_variants/catalogue.json`).
 
+> **THE ROSTER MOVED OUT OF THIS FILE — 2026-09-03.** Membership now lives in
+> **`hole_exp/configs/roster.toml`**, with the measurement behind every cut, and
+> `python hole_exp/roster.py --check` asserts it against the code. This file is
+> a *dated prediction*: it is frozen at the moment it was written and must not
+> be edited to track later cuts, or the predictions stop being predictions. The
+> counts and the table below are therefore a **snapshot of 2026-09-02**, correct
+> as of that date and deliberately not maintained.
+>
+> Already diverged: **`ref_orderbook` was cut on 2026-09-03** (all seven models
+> across two tiers reach exactly 0.000 by R3), so the 79-variant menu below now
+> reads 74 on the live roster (the cell's five surviving variants —
+> `@shipped`, `@shortfall-30`, `@mandate-6`, `@impact-0`, `@impact-25` —
+> go with it). `roster.toml` is authoritative; this is history.
+
 ## First, the count: 84 → 80 → 79 on the menu, of 89 built
 
 **This file tables all 89 variants** and marks which are off the menu.
@@ -364,4 +378,13 @@ browser.
 
 
 ok now I want to do a Proof-of-concept Of this suite as a benchmark that can separate models. 
-So maybe choose like a couple of representative games from each category and see if it--the resulting dynamics matches our predictions in /shared/allie/strategy-behavior/research_logs/0902-branch-variations.md run it for three different models (claude-opus, gpt-5.5, gemini-3.1-pro) 
+So maybe choose like a couple of representative games from each category and see if it--the resulting dynamics matches our predictions in /shared/allie/strategy-behavior/research_logs/0902-branch-variations.md run it for three different models (candidates: qwen-3.8-27b, fleet-glm53, fleet-kimi3, claude-haiku-4.5, gemini-3.8-flash, gpt-5.5-mini)
+
+before you start, give me a setting file I can tune (sampling parameters, thinking on, number of episodes, number of rounds, etc)
+
+
+opus - 2x sonnet
+sonnet - 5x haiku
+
+(claude-haiku-4.5, gpt-5-mini, gemini-3.7-flash)
+qwen-3.8-27b, glm-flash (170b) -- are deployed locally on this cluster so they're free 

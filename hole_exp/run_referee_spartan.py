@@ -598,6 +598,10 @@ def main() -> int:
     # TEXTARENA10 for why the ports do not silently join it, and the note on
     # DEDUP14 for why the duplicates do not silently leave it.
     expand = {"all": list(SP.ALL19), "textarena": list(SP.TEXTARENA10),
+              # The 2026-09-03 official roster; see configs/roster.toml for
+              # what is on it and the measurement behind every cut.
+              "roster": list(SP.ROSTER),
+              "holecross": list(SP.HOLECROSS8),
               "generated": list(SP.GENERATED8), "referee": list(SP.REFEREE11),
               "deduped": list(SP.DEDUP14),
               "native": list(SP.NATIVE8),

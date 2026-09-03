@@ -48,6 +48,7 @@ results/           MASK metrics summaries + confound-aware comparison         ->
 delegation/        NewRecruit as a delegation game: control vs cooperation    -> delegation/README.md
 docs/methodology.md  the full eval battery (deception / personality / social-eng / reward-hacking)
 docs/delegation-games.md  the delegation eval: design, metrics, pilot
+docs/hackable-games.md    games with holes: the arena, the separability pilots, what the exploits pay
 ```
 
 This repo holds the **glue**: training configs, the eval harness wrappers, the
