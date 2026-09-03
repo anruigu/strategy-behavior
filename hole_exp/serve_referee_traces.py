@@ -518,6 +518,15 @@ def _register_spartan_cells() -> None:
         SP.register_holecross()
     except Exception:                                   # noqa: BLE001
         pass
+    # AND the hole-fill family, for the same reason again: an `hf_*` cell
+    # that does not resolve shows its kinds unsplit, and the checker cells in
+    # particular would then pool the SUBSTRATE's demoted detectors (DIAG here)
+    # into the headline rate beside their one HARD `false_slip`.
+    try:
+        import referee_spartan as SP
+        SP.register_holefill()
+    except Exception:                                   # noqa: BLE001
+        pass
 
 
 def hole_type(game: str) -> str:
@@ -952,6 +961,7 @@ details summary{cursor:pointer;color:var(--dim);outline:none}
 .setup .hkrow{display:flex;gap:8px;flex-wrap:wrap}
 .setup .hk{font-size:12px;padding:2px 8px;border-radius:5px;border:1px solid #8883}
 .setup .hk.built{background:#0ca30c26}
+.setup .hk.filled{background:#0ca30c26;background-image:repeating-linear-gradient(135deg,#0002 0 3px,transparent 3px 8px)}
 .setup .hk.composed{background:#0ca30c26;background-image:repeating-linear-gradient(45deg,#0003 0 2px,transparent 2px 7px)}
 .setup .hk.possible{background:#fab21930}
 .setup .hk.impossible{background:#8a888026}
@@ -966,7 +976,9 @@ details summary{cursor:pointer;color:var(--dim);outline:none}
 </style></head><body>
 <div id="side">
  <h1>episodes <a href="#" onclick="reload_();return false"
-   style="color:var(--dim);font-size:11px;float:right">reload</a></h1>
+   style="color:var(--dim);font-size:11px;float:right">reload</a>
+   <a href="/games" target="_blank"
+   style="color:var(--dim);font-size:11px;float:right;margin-right:10px">setups</a></h1>
  <div>
   <select id="fg"></select><select id="fm"></select>
   <select id="fc"></select><select id="fw"></select><select id="fd"></select>
@@ -1057,7 +1069,8 @@ async function toggleSetup(game){
   SETUP_FOR=game; box.innerHTML='<div class="setup"><i>loading setup…</i></div>';
   const d=await (await fetch('/setup?game='+encodeURIComponent(game))).json();
   if(d.error){box.innerHTML='<div class="setup">setup unavailable: '+esc(d.error)+'</div>';return;}
-  const ST={built:['\u2713','built'],composed:['\u2295','composed'],
+  const ST={built:['\u2713','built'],filled:['\u25c8','filled'],
+            composed:['\u2295','composed'],
             possible:['\u25cb','possible'],impossible:['\u2014','not possible']};
   const mx=d.matrix?Object.keys(d.matrix).map(k=>{
       const st=d.matrix[k].state, i=ST[st]||['?',st];
@@ -1406,6 +1419,114 @@ def load_roots(roots: List[pathlib.Path]) -> Dict[str, Dict]:
 _SETUP_CACHE: Dict[str, Dict] = {}
 
 
+FAMILIES = (
+    ("Atlas", "ref_"), ("Model-written", "gen_"), ("TextArena ports", "ta_"),
+    ("Hole x game factorial", "hx_"), ("Hole-fill", "hf_"),
+    ("Collaborative (native9)", "nat_"))
+
+
+def games_page() -> str:
+    """One page: every registered cell, its rules as the engine formats them,
+    and its hole spec behind the same experimenter-only rule the panel uses."""
+    import html as _h
+    try:
+        import referee_games as _RG
+        import referee_spartan as _SP
+        _SP.register_all()
+        for reg in ("register_native9", "register_holecross",
+                    "register_holefill"):
+            try:
+                getattr(_SP, reg)()
+            except Exception:                                # noqa: BLE001
+                pass
+        names = sorted(_RG.BY_NAME)
+    except Exception as exc:                                 # noqa: BLE001
+        return f"<pre>cells unavailable: {_h.escape(str(exc))}</pre>"
+    ST = {"built": "\u2713 built", "filled": "\u25c8 filled",
+          "composed": "\u2295 composed", "possible": "\u25cb possible",
+          "impossible": "\u2014 not possible"}
+    out = ["<!doctype html><meta charset='utf-8'><title>Game setups</title>",
+           "<style>body{margin:0;background:#fcfcfb;color:#111;"
+           "font:14px/1.6 ui-sans-serif,system-ui,sans-serif;padding:24px}"
+           "h1{font-size:20px} h2{font-size:13px;text-transform:uppercase;"
+           "letter-spacing:.06em;color:#777;margin:26px 0 6px}"
+           "details{border:1px solid #0001;border-radius:8px;margin:6px 0;"
+           "background:#fff;padding:8px 12px;max-width:1100px}"
+           "summary{cursor:pointer;font-weight:600}"
+           "pre{white-space:pre-wrap;background:#f5f4f1;padding:10px 12px;"
+           "border-radius:6px;font:12px/1.5 ui-monospace,Menlo,monospace}"
+           ".spoiler{border-left:3px solid #d03b3b;padding:2px 0 2px 10px;"
+           "margin:10px 0;background:#d03b3b0d}"
+           ".sh{color:#a02020;font-size:11.5px;text-transform:uppercase;"
+           "letter-spacing:.05em;font-weight:700}"
+           ".hk{font-size:12px;border:1px solid #8883;border-radius:5px;"
+           "padding:1px 7px;margin-right:6px}</style>",
+           "<h1>Game setups</h1><p style='max-width:70ch;color:#555'>Every "
+           "registered cell, with the rules exactly as the engine formats "
+           "them into the first prompt of each phase. Computed on demand by "
+           "running one scripted honest episode &mdash; no network. The hole "
+           "spec is experimenter-only and is never shown to a player.</p>"]
+    seen = set()
+    for title, pre in FAMILIES:
+        fam = [n for n in names if n.startswith(pre)]
+        if not fam:
+            continue
+        seen.update(fam)
+        out.append(f"<h2>{_h.escape(title)} &middot; {len(fam)} cells</h2>")
+        for n in fam:
+            out.append(_setup_block(n, ST))
+    rest = [n for n in names if n not in seen]
+    if rest:
+        out.append(f"<h2>Other &middot; {len(rest)} cells</h2>")
+        out += [_setup_block(n, ST) for n in rest]
+    return "\n".join(out)
+
+
+def _setup_block(cell: str, ST: Dict[str, str]) -> str:
+    import html as _h
+    d = game_setup(cell)
+    if not d:
+        return f"<details><summary><code>{_h.escape(cell)}</code></summary>" \
+               f"<p>setup unavailable</p></details>"
+    if d.get("error"):
+        return (f"<details><summary><code>{_h.escape(cell)}</code></summary>"
+                f"<p>setup unavailable: {_h.escape(str(d['error']))}</p>"
+                f"</details>")
+    mx = "".join(
+        f"<span class='hk' title='{_h.escape(v.get('why') or '')}'>"
+        f"{_h.escape(k.replace('_', ' '))}: {ST.get(v['state'], v['state'])}"
+        f"</span>" for k, v in (d.get("matrix") or {}).items())
+    ph = "".join(
+        f"<div><b>phase <code>{_h.escape(e.get('phase') or '')}</code></b>"
+        + (" &middot; legal moves "
+           + _h.escape(", ".join(e.get("menu") or []))
+           if e.get("menu") else "")
+        + f"</div><pre>{_h.escape(e.get('prompt') or '')}</pre>"
+        for e in d.get("prompts", []))
+    return (
+        f"<details><summary><code>{_h.escape(cell)}</code> &mdash; "
+        f"{_h.escape(d.get('title') or '')}</summary>"
+        f"<div>{d.get('n_players')} model seat(s)"
+        + (f" &middot; substrate <code>{_h.escape(d['substrate'])}</code>"
+           if d.get("substrate") and d["substrate"] != cell else "")
+        + (f" &middot; fills the <b>{_h.escape(d['fills'].replace('_', ' '))}"
+           f"</b> column" if d.get("fills") else "")
+        + (f" of {d['participants']} participants" if d.get("participants")
+           else "")
+        + (f" &middot; {d['rounds']} rounds" if d.get("rounds") else "")
+        + f"</div><div style='margin:6px 0'>{mx}</div>"
+        f"<div class='spoiler'><div class='sh'>hole spec &mdash; experimenter "
+        f"only, never shown to a player</div>"
+        f"<div><b>type</b> <code>{_h.escape(d.get('hole_type') or '')}</code>"
+        f" &middot; <b>exploiter seats</b> "
+        f"<code>{_h.escape(str(d.get('exploiters')))}</code></div>"
+        f"<div>{_h.escape(d.get('blurb') or '')}</div>"
+        f"<div>HARD <code>{_h.escape(str(d.get('hard')))}</code> "
+        f"SOFT <code>{_h.escape(str(d.get('soft')))}</code> "
+        f"DIAG <code>{_h.escape(str(d.get('diag')))}</code></div></div>"
+        f"{ph}</details>")
+
+
 def game_setup(cell: str) -> Optional[Dict]:
     if cell in _SETUP_CACHE:
         return _SETUP_CACHE[cell]
@@ -1414,10 +1535,12 @@ def game_setup(cell: str) -> Optional[Dict]:
         import referee_spartan as _SP
         import payoff_audit as _PA
         _SP.register_all()
-        try:
-            _SP.register_native9()
-        except Exception:                                    # noqa: BLE001
-            pass
+        for reg in ("register_native9", "register_holecross",
+                    "register_holefill"):
+            try:
+                getattr(_SP, reg)()
+            except Exception:                                # noqa: BLE001
+                pass
         g = _RG.BY_NAME.get(cell)
         if g is None:
             return None
@@ -1452,17 +1575,32 @@ def game_setup(cell: str) -> Optional[Dict]:
             "soft": list(g.SOFT or ()), "diag": list(g.DIAG or ()),
             "exploiters": expl,
         }
-        # the hole-type matrix row, if the 0903 pass has been run
+        # The hole-type matrix row, if the 0903 pass has been run. Keyed on
+        # the SUBSTRATE, not on the cell: the matrix's rows are the 25 base
+        # substrates, and a variant cell -- `hf_*` here, and the `hx_*` cells
+        # and payoff variants alike -- has no row of its own. Looking the
+        # substrate up is right rather than a fallback, because the row is a
+        # statement about what the substrate affords, which is exactly what a
+        # variant of it inherits. `fills` names the column this particular
+        # cell is the fill FOR, so a reader of the panel is not left to infer
+        # it from the cell id.
+        base = getattr(g, "BASE", None) or _SP.base_cell(cell)
+        if getattr(g, "SUBSTRATE", ""):        # the hx_* factorial cells
+            base = f"hx_{g.SUBSTRATE}"
+        base = _SP.base_cell(base)
         mx = HERE.parent / "results" / "0903_hole_type" / "matrix.json"
         if mx.exists():
             try:
                 m = json.loads(mx.read_text())
                 for r in m["rows"]:
-                    if r["cell"] == cell:
+                    if r["cell"] == base:
                         out["matrix"] = r["cells"]
                         out["participants"] = r.get("participants")
                         out["entropy"] = r.get("entropy")
+                        out["substrate"] = base
                         break
+                if getattr(g, "KIND", ""):
+                    out["fills"] = g.KIND
             except Exception:                                # noqa: BLE001
                 pass
         _SETUP_CACHE[cell] = out
@@ -1505,6 +1643,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             return self._send(json.dumps(d).encode(), "application/json")
+        if path == "/games":
+            # EVERY REGISTERED CELL, not only the ones with episodes on disk.
+            # The setup panel on an episode is reachable only from a wave that
+            # sampled that cell, and the two families most worth reading the
+            # setup for -- `hx_*` and `hf_*` -- are deliberately off the
+            # default menu, so most of them have never been sampled and were
+            # unreachable in the viewer at all. Rendered server-side and
+            # static: it is a reference page, and the interactive machinery on
+            # `/` is about comparing runs, which this has none of.
+            return self._send(games_page().encode(),
+                              "text/html; charset=utf-8")
         if path == "/data":
             # index only -- the turns are the bulk and are fetched per episode
             # The chain fields ride in the INDEX and not just the detail

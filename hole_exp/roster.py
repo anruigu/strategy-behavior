@@ -76,6 +76,49 @@ def check(cfg: dict) -> list[str]:
             bad.append(f"{c} is cut but no longer registers; a cut must leave "
                        f"the cell reachable by name")
 
+    # The hole-fill family: the file's list against the code's tuple, and the
+    # base-roster's counts against both. Same discipline as `dedup14_frozen`
+    # -- the tuple in `referee_spartan` is the thing waves read, and a config
+    # that had drifted from it would name cells no wave could run.
+    SP.register_holefill()
+    hf = tuple(cfg["families"].get("holefill", ()))
+    if hf != tuple(SP.HOLEFILL26):
+        bad.append(f"families.holefill differs from "
+                   f"referee_spartan.HOLEFILL26: only in file "
+                   f"{[c for c in hf if c not in SP.HOLEFILL26]}, only in code "
+                   f"{[c for c in SP.HOLEFILL26 if c not in hf]}")
+    missing = [c for c in hf if c not in RG.BY_NAME]
+    if missing:
+        bad.append(f"families.holefill names cells that do not register: "
+                   f"{missing}")
+    try:
+        base = load(HERE / "configs" / "base_roster.toml")
+        import engines_holefill as HF
+        hfc = base["hole_fill"]
+        if hfc["count"] != len(SP.HOLEFILL26):
+            bad.append(f"base_roster hole_fill.count {hfc['count']} but the "
+                       f"code has {len(SP.HOLEFILL26)}")
+        n_nerf = sum(1 for g in HF.HOLEFILL if g.KIND == "nerfed_opponent")
+        n_chk = sum(1 for g in HF.HOLEFILL if g.KIND == "broken_checker")
+        if (hfc["nerfed"], hfc["checker"]) != (n_nerf, n_chk):
+            bad.append(f"base_roster hole_fill nerfed/checker "
+                       f"{hfc['nerfed']}/{hfc['checker']} but the code has "
+                       f"{n_nerf}/{n_chk}")
+        if tuple(hfc["unpaid"]) != tuple(HF.HOLEFILL_UNPAID):
+            bad.append(f"base_roster hole_fill.unpaid {hfc['unpaid']} but the "
+                       f"code has {list(HF.HOLEFILL_UNPAID)}")
+        kinds = list(base["hole_types"]["kinds"])
+        import hole_matrix as HM
+        if tuple(kinds) != HM.KINDS:
+            bad.append(f"base_roster hole_types.kinds {kinds} but "
+                       f"hole_matrix.KINDS is {list(HM.KINDS)}")
+        for k in kinds:
+            if base["hole_types"][k] != HM.AFFORDANCE[k]:
+                bad.append(f"the affordance test for `{k}` differs between "
+                           f"base_roster.toml and hole_matrix.AFFORDANCE")
+    except FileNotFoundError:
+        bad.append("configs/base_roster.toml is missing")
+
     frozen = tuple(cfg["families"]["dedup14_frozen"])
     if frozen != tuple(SP.DEDUP14):
         bad.append("dedup14_frozen no longer matches referee_spartan.DEDUP14 "
