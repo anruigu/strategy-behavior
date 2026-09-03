@@ -117,6 +117,14 @@ def scripted(game, mode: str, seed: int = 0):
         # substrate that parses. See `referee_spartan._factory`.
         import bots_holecross
         return bots_holecross.Scripted(mode, seed, game)
+    if name in SP.HOLEFILL26:
+        # SIX FAMILIES. Like `hx_*` the game is a constructor argument, and
+        # for a second reason on top of that one: this bot delegates every
+        # phase but `file` back through THIS function on the substrate, so
+        # without the game it cannot find the vocabulary it is supposed to
+        # speak.
+        import bots_holefill
+        return bots_holefill.Scripted(mode, seed, game)
     import test_referee_games as T
     return T.Scripted(mode)
 

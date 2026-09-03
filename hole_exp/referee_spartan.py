@@ -377,6 +377,73 @@ def register_holecross() -> None:
             f"and engines_holecross have drifted apart")
 
 
+# The 2026-09-03 hole-fill family: the empty half of the game x hole-type
+# matrix, built. 19 `nerfed` cells (the shipped substrate plus a rival with a
+# promise it may or may not keep) and 7 `checker` cells (the shipped substrate
+# with its own hole SHUT, plus a scoresheet the seat files itself). SEPARATE
+# FROM `register_all` for the same reason `NATIVE9` is: folding them in would
+# change what `--games all` means for every wave, tag and figure already in
+# the tree that reads `RG.GAMES`.
+HOLEFILL26: Tuple[str, ...] = (
+    "hf_estate_nerfed", "hf_auction_nerfed", "hf_commons_nerfed",
+    "hf_quiet_sonar_nerfed", "hf_icebound_nerfed",
+    "hf_frontline_depot_nerfed", "hf_liarsdice_nerfed", "hf_kuhn_nerfed",
+    "hf_sidebar_nerfed", "hf_exchange_nerfed", "hf_hanabi_nerfed",
+    "hf_invoice_nerfed", "hf_seven_seal_nerfed",
+    "hf_sovereign_vaults_nerfed", "hf_harbor_customs_nerfed",
+    "hf_letterauction_nerfed", "hf_negotiation_nerfed",
+    "hf_pubgoods_nerfed", "hf_winasmuch_nerfed",
+    "hf_sidebar_checker", "hf_hanabi_checker", "hf_ipd_checker",
+    "hf_staghunt_checker", "hf_ipd3_checker", "hf_winasmuch_checker",
+    "hf_blindauction_checker")
+
+# `hf_hanabi_nerfed` is built and gated and does NOT ship: `ref_hanabi`'s
+# exploit runs at a loss against scripted partners, so there is no temptation
+# for a deterrent to leave unpunished and PAYS cannot pass. This is the
+# roster to sample -- same shape as NATIVE8 against NATIVE9.
+HOLEFILL25: Tuple[str, ...] = tuple(
+    n for n in HOLEFILL26 if n != "hf_hanabi_nerfed")
+
+
+def register_holefill() -> None:
+    """Register the 26 hole-fill cells. Idempotent.
+
+    REQUIRES `register_all()` FIRST, and asserts it rather than importing it:
+    every cell here is a wrapper that reads its substrate out of `RG.BY_NAME`
+    at run time, so registering this family against a half-built registry
+    would produce cells that import cleanly and raise KeyError on their first
+    episode.
+    """
+    gen = HERE / "hackable_games"
+    if str(gen) not in sys.path:
+        sys.path.insert(0, str(gen))
+    import engines_holefill as HF  # noqa: E402
+    absent = sorted({g.BASE for g in HF.HOLEFILL} - set(RG.BY_NAME))
+    if absent:
+        raise RuntimeError(
+            f"register_holefill() needs the substrates {absent} registered "
+            f"first; call register_all() (and register_native9() if a "
+            f"hole-fill cell is ever built on a nat_ substrate)")
+    for g in HF.HOLEFILL:
+        npc = [s for s, _n in getattr(g, "NPC_SEATS", ())]
+        if npc and sorted(npc) != list(range(g.N_PLAYERS,
+                                             g.N_PLAYERS + len(npc))):
+            raise RuntimeError(
+                f"{g.NAME}: NPC seats {sorted(npc)} are not the high "
+                f"contiguous block above the {g.N_PLAYERS} focal seats. The "
+                f"runner staffs seats 0..N_PLAYERS-1 and the engine addresses "
+                f"seats by their own index, so a gap makes the two disagree "
+                f"about who is who.")
+    new = [g for g in HF.HOLEFILL if g.NAME not in RG.BY_NAME]
+    RG.GAMES = tuple(RG.GAMES) + tuple(new)
+    RG.BY_NAME.update({g.NAME: g for g in new})
+    missing = [n for n in HOLEFILL26 if n not in RG.BY_NAME]
+    if missing:
+        raise RuntimeError(
+            f"register_holefill() left {missing} unregistered; HOLEFILL26 "
+            f"and engines_holefill have drifted apart")
+
+
 def games_of(names: Sequence[str]) -> List[RG.RefereeGame]:
     register_all()
     # The collaborative and hole-cross corpora register too, so `--gate
@@ -1292,6 +1359,14 @@ def _factory(game, mode: str) -> Callable[[], object]:
         # both `channel` cells and reads as four clean cells.
         import bots_holecross
         return lambda: bots_holecross.Scripted(mode, 0, game)
+    if name in HOLEFILL26:
+        # A sixth, and a DELEGATING one: a hole-fill cell is a shipped
+        # substrate plus one brought-in surface, so its bot answers the
+        # `file` phase itself and hands every other phase to whichever of the
+        # five families the SUBSTRATE speaks. The game is a constructor
+        # argument for that reason, as with `bots_holecross`.
+        import bots_holefill
+        return lambda: bots_holefill.Scripted(mode, 0, game)
     return lambda: T.Scripted(mode)
 
 
