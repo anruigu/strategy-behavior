@@ -30,6 +30,12 @@ As a baseline, I ran [SPARTAN](https://arxiv.org/html/2608.09128), a reflective 
 
 Counterfactual runs are important, and most of what follows depends on them. An exploit rate says a seat took the hole; only a matched honest replay of the same board says whether taking it was worth anything.
 
+**Future work**
+
+Multiple holes, and composability of holes.
+
+Self-play for asymmetric strategies — how do you share parameters without sharing strategies? Role-conditioned advantages are still fundamentally the same strategy: DRQ, [arXiv:2507.06466](https://arxiv.org/abs/2507.06466), MAP-Elites.
+
 ## 3. Can the suite tell models apart? (0902/03 separability pilots)
 
 Before any of this is worth training on, the suite has to *separate* models: a cell every model saturates or floors separates nothing, however interesting its hole is. So the pilots below are ordered by **spread** — highest model minus lowest — rather than by rate, and none is a "which model is best" ranking.
