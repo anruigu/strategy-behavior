@@ -133,9 +133,35 @@ MODELS = {
     # measured on 3.7. Any row or figure legend saying `gemini-flash38` is
     # 3.8 and is NOT comparable to those waves without saying so.
     "gemini-flash38": "google/gemini-3.8-flash",
+    # SMALL TIERS OF THE FRONTIER FAMILIES, for the 0902 discoverability
+    # cross-play. The question they answer is not "which model is best" but
+    # "is the hole findable at all at this price", which decides whether the
+    # cheap tier can carry the wide waves and the frontier tier is spent only
+    # on the cells that move.
+    "haiku": "anthropic/claude-haiku-4.5",
+    "gpt-mini": "openai/gpt-5-mini",
+    # ---- FLEET, the cluster's own inference gateway -------------------------
+    # Served on this cluster and billed to nobody, so these are the models a
+    # wide sweep should be built on and the API tiers reserved for the cells
+    # that move. Routed in DIRECT below; the ids are the gateway's own
+    # (un-namespaced), and `/v1/models` is the list of record.
+    "fleet-qwen38": "qwen3.8-27b",
+    "fleet-glm53": "glm-5.3",
+    "fleet-kimi3": "kimi-k3",
+    "fleet-qwen38-flash": "qwen3.8-flash-next",
 }
 
-ENV_FILE = pathlib.Path.home() / ".research_env"
+# WHERE THE SECRETS LIVE, in order. `$HOME/.research_env` was the only entry
+# and on this box $HOME is ephemeral -- preemption wipes it -- so the file was
+# simply gone and every key fell back to whatever the shell happened to carry.
+# The durable copy is on /shared. `$RESEARCH_ENV` wins so a caller can point
+# at another one without editing this.
+ENV_FILES = tuple(pathlib.Path(x) for x in (
+    os.environ.get("RESEARCH_ENV", ""),
+    pathlib.Path.home() / ".research_env",
+    "/shared/allie/.research_env",
+) if x)
+ENV_FILE = ENV_FILES[1]          # kept: other modules import this name
 
 OPENROUTER = "https://openrouter.ai/api/v1"
 
@@ -197,21 +223,85 @@ DIRECT: Dict[str, Endpoint] = {
     # the vendor default.
     "sonnet": Endpoint("https://api.anthropic.com/v1", "ANTHROPIC_API_KEY",
                        "claude-sonnet-5", True),
+    # Same argument as `sonnet`, one tier down. Not routed direct because a
+    # refusal was observed -- because when one happens the reply is empty, is
+    # scored `invalid`, falls back to the HONEST move, and reads as a model
+    # declining to exploit. `nat_cg1` is the cautionary case: 716 of claude's
+    # 2016 turns came back `content_filter` through OpenRouter and deflated its
+    # measured rates by a third before anyone noticed.
+    #
+    # `claude-haiku-4.5` accepts `temperature`, unlike `claude-opus-5`.
+    # THE DIRECT ID IS NOT THE OPENROUTER SLUG. OpenRouter namespaces and
+    # dots (`anthropic/claude-haiku-4.5`); api.anthropic.com uses dashes and
+    # pins a date (`claude-haiku-4-5-20251001`). Reusing the slug 404s, which
+    # `preflight` catches -- but only because it exists: without it the wave
+    # would have run to completion scoring every reply `invalid`, falling back
+    # to the HONEST move, and reporting haiku at 0.000 discovery on every cell.
+    # `claude-opus-5` and `claude-sonnet-5` happen to be spelled the same both
+    # ways, which is why this had not bitten before.
+    "haiku": Endpoint("https://api.anthropic.com/v1", "ANTHROPIC_API_KEY",
+                      "claude-haiku-4-5-20251001", True),
+    # THE CLUSTER GATEWAY. Not OpenRouter, not a vendor -- an OpenAI-compatible
+    # endpoint in front of locally served weights, so these cost nothing and
+    # are the right models to spend breadth on.
+    #
+    # `FLEET_API_KEY` is the one that works. `FLEET_RESEARCH_API_KEY` and
+    # `FLEET_QA_API_KEY` are both 403 `team_not_allowed`, and so is the STALE
+    # copy of `FLEET_API_KEY` that this box carries in its shell environment --
+    # see the warning in `load_env_key`. Source
+    # /shared/allie/.research_env before a wave.
+    **{k: Endpoint("https://inference.flt.build/v1", "FLEET_API_KEY", v, True)
+       for k, v in (("fleet-qwen38", "qwen3.8-27b"),
+                    ("fleet-glm53", "glm-5.3"),
+                    ("fleet-kimi3", "kimi-k3"),
+                    ("fleet-qwen38-flash", "qwen3.8-flash-next"))},
 }
 
 
-def load_env_key(name: str) -> str:
-    """Read one API key from the environment or ~/.research_env."""
-    key = os.environ.get(name)
-    if key:
-        return key
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text().splitlines():
+def _from_files(name: str) -> Optional[str]:
+    for f in ENV_FILES:
+        try:
+            if not f.exists():
+                continue
+        except OSError:
+            continue
+        for line in f.read_text().splitlines():
             m = re.match(r'\s*(?:export\s+)?' + name + r'\s*=\s*"?([^"\s]+)',
                          line)
             if m:
                 return m.group(1)
-    raise SystemExit(f"{name} not set and not found in ~/.research_env")
+    return None
+
+
+def load_env_key(name: str) -> str:
+    """Read one API key from the environment, else from a research env file.
+
+    ENVIRONMENT STILL WINS, which is the documented behaviour and what every
+    wave so far was sampled under -- but it is also a live hazard, so it warns
+    rather than resolving in silence. Measured 2026-09-03: the shell carried a
+    STALE `FLEET_API_KEY` that the inference gateway answers with 403
+    `team_not_allowed`, while `/shared/allie/.research_env` carried a working
+    one. Env-first picked the broken key, and a 403 on every call is
+    indistinguishable at the row level from a model that answers nothing --
+    which scores `invalid` and falls back to the HONEST move.
+
+    Flipping the precedence globally would change which OpenRouter key every
+    other runner uses, so the disagreement is reported instead of resolved.
+    """
+    env, filed = os.environ.get(name), _from_files(name)
+    if env and filed and env != filed:
+        print(f"[keys] WARNING: ${name} in the environment differs from the "
+              f"one in {[str(f) for f in ENV_FILES if f.exists()]}. Using the "
+              f"ENVIRONMENT. If calls 401/403, `set -a; . "
+              f"/shared/allie/.research_env; set +a` and re-run.",
+              file=sys.stderr)
+    if env:
+        return env
+    if filed:
+        return filed
+    raise SystemExit(
+        f"{name} not set and not found in any of "
+        f"{[str(f) for f in ENV_FILES]}")
 
 
 def load_key() -> str:

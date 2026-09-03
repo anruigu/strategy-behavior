@@ -172,6 +172,33 @@ DEDUP14: Tuple[str, ...] = (
     "ref_commons", "ref_orderbook", "ref_invoice",
     "gen_seven_seal", "gen_quiet_sonar", "gen_icebound",
     "gen_sovereign_vaults", "gen_frontline_depot", "gen_harbor_customs")
+# THE OFFICIAL ROSTER as of 2026-09-03. Declared in `configs/roster.toml`,
+# where each cut carries the measurement that justified it; asserted against
+# this literal by `roster.py --check` rather than read from it, for the reason
+# `_check_dedup_matches` gives -- a tuple that reads itself off a config file
+# changes what `--games roster` means the moment the file is edited, and every
+# tag already on disk stops describing what was sampled.
+#
+# = DEDUP14 - {ref_orderbook} + TEXTARENA10 + HOLECROSS8.
+#
+# `ref_orderbook` left on 2026-09-03: seven models across two tiers all reach
+# exactly 0.000 by R3 from R0 rates of 0.014-0.194. A cell every model abandons
+# separates nothing. It keeps its engine, gates and detectors and is still
+# reachable by name -- DEDUP14 below is FROZEN and still contains it, so
+# `--games deduped` means in September what it meant in August.
+ROSTER: Tuple[str, ...] = (
+    "ref_estate", "ref_sidebar", "ref_exchange", "ref_hanabi", "ref_auction",
+    "ref_commons", "ref_invoice",
+    "gen_seven_seal", "gen_quiet_sonar", "gen_icebound",
+    "gen_sovereign_vaults", "gen_frontline_depot", "gen_harbor_customs",
+    "ta_ipd", "ta_ipd3", "ta_staghunt", "ta_pubgoods", "ta_winasmuch",
+    "ta_liarsdice", "ta_kuhn", "ta_negotiation", "ta_blindauction",
+    "ta_letterauction",
+    "hx_picket_checker", "hx_picket_nerfed",
+    "hx_picket_collusion", "hx_picket_channel",
+    "hx_quota_checker", "hx_quota_nerfed",
+    "hx_quota_collusion", "hx_quota_channel")
+
 DUPLICATES_EXCLUDED: Tuple[str, ...] = (
     "gen_antiquities", "ref_lemons", "gen_vault_duel", "ref_battleship",
     "ref_signal")
@@ -1632,7 +1659,9 @@ def main() -> int:
     # Same roster shorthands the sampling runner takes, so `--gate --games
     # textarena` and a wave over `--games textarena` cannot mean two things.
     _expand = {"all": list(ALL19), "textarena": list(TEXTARENA10),
-               "generated": list(GENERATED8), "referee": list(REFEREE11)}
+               "generated": list(GENERATED8), "referee": list(REFEREE11),
+               "roster": list(ROSTER), "holecross": list(HOLECROSS8),
+               "deduped": list(DEDUP14)}
     names: List[str] = []
     for _g in a.games:
         names.extend(_expand.get(_g, [_g]))
