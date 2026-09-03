@@ -253,6 +253,8 @@ should.
 
 ## Absolute vs counterfactual payoff: SETTLED — use the counterfactual
 
+> **SUPERSEDED IN PART.** `gen_icebound`'s payoff changed after this wave: `STEAL_PTS` 3.0 → 5.0 shipped as an engine default on 2026-09-03, recorded in [`0903-repair-in-place.md`](0903-repair-in-place.md). Headline: this section's paired read for that cell — hole 11.0 against nohole 18.0, **Δ −6.0** — and its place in "three cells exploit at a LOSS" are v1 measurements that have not been re-run. A raid now transfers 5.0 rather than the 3.0 that equalled `SCOUT_PTS`, and that transfer is exactly the term this Δ prices. Do not read the repair as flipping the sign: `gen_icebound`'s all-exploit corner is unchanged at −20.00 and the cell is still on the self-defeating list. `gen_frontline_depot` and `ref_auction`, the collusion-basis caveat, and the section's actual conclusion — that absolute score ranks the roster backwards and the matched counterfactual ranks it correctly — are untouched, as is every exploit rate in this log.
+
 `tune_nohole` is the baseline wave re-run with `--arm nohole`, same 29 cells,
 same seeds, same everything. Paired by (cell, chain, round, episode), so the
 board cancels and what is left is the referee. Median paired difference in

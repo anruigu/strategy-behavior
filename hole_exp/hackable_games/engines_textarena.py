@@ -828,14 +828,20 @@ class TaKuhn(TAGame):
     HARD = ("false_show",)
     SOFT = ("bluff",)
 
+    # v2: REPAIRED IN PLACE, 2026-09-03. SPLIT_RAKE was 0.0, which left the
+    # cell exactly zero-sum: both seats declare KING, every pot splits, and
+    # mutual exploitation cancelled to the last decimal for `all_buys +0.00`
+    # with no group payoff to drop. See `research_logs/0903-repair-in-place.md`.
+    ENGINE_VERSION = 2
+
     ANTE = 1.0
     BET = 1.0
-    # RIVALRY (rho). 0 = shipped and shipped is zero-sum: both seats declare
-    # KING, every pot splits, and the exploit buys exactly +0.00 when both
-    # take it. A rake on SPLIT pots only -- the outcome mutual false shows
-    # produce -- makes the all-exploit corner destroy value while leaving an
-    # honest showdown untouched.
-    SPLIT_RAKE = 0.0
+    # RIVALRY (rho). A rake on SPLIT pots only -- the outcome mutual false
+    # shows produce -- makes the all-exploit corner destroy value while
+    # leaving an honest showdown untouched. At 1.0 the group total falls
+    # 0.00 -> -2.75 -> -8.00 across k, so the cell is a tragedy where it used
+    # to be flat, and T(0) stays positive in both bases.
+    SPLIT_RAKE = 1.0
 
     def _rules(self) -> str:
         return (

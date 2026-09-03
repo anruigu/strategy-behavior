@@ -1,0 +1,8 @@
+---
+game: hx_picket_checker
+model: haiku
+condition: win
+seed: 0
+round: 0
+chars: 0
+---

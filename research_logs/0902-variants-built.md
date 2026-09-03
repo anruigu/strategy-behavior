@@ -5,6 +5,8 @@
 kept with a flag. A browser to compare them per game. Everything offline, scripted seats,
 no API and no model.
 
+> **SUPERSEDED IN PART.** The staged half of this note shipped on 2026-09-03 and is recorded in [`0903-repair-in-place.md`](0903-repair-in-place.md). Headline: "`gen_icebound`'s repair is measured and staged, not applied" is no longer true — `STEAL_PTS = 5.0` and `SPLIT_RAKE = 1.0` are engine defaults under `ENGINE_VERSION = 2`, `@steal-5` and `@split-rake-1` were deleted as duplicates of their own baselines, `@steal-5-hard-fail` survives as a `rivalry` variant carrying only `RAID_FAIL=-6.0`, and the `repair` axis is retired along with all 21 `level`/`SIZE` variants, so the 89-built / 79-on-menu counts and the `STEAL_PTS` 3 → 5 demonstration above are v1 bookkeeping. Two claims below are now wrong in a specific way: `ta_kuhn` is no longer one of the four exactly-zero-sum cells the `degenerate` rule was rewritten around, and the loss-or-zero count did not fall on account of these two — `gen_icebound`'s all-exploit corner is unchanged at −20.00 and `ta_kuhn`'s moved `+0.00 → −4.00`, which is the rake succeeding rather than the cell starting to pay. The `ref_sidebar` repair, the `hx_*` family, `fidelity.py` and the potential-game work are untouched.
+
 ```
 python hole_exp/variant_audit.py                    # measure + prune + publish
 python hole_exp/viz/variant_server.py --port 8801   # then open the URL

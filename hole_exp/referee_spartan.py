@@ -902,6 +902,10 @@ def _row(ep, game, seed0: int, rnd: int, i: int, arm: str, focal: int,
     head = (game.HARD or game.KINDS)[0]
     out: Dict = {
         "game": game.NAME, "seed": seed0, "round": rnd, "episode": i,
+        # Which revision of the engine produced this row. A cell repaired in
+        # place keeps its id, so this is the only thing separating a pre- and
+        # post-repair row once two waves are merged.
+        "engine_version": ep.engine_version,
         # The seed the ENGINE actually ran, alongside the chain's `seed0`.
         # `seed` identifies the chain because the chain is the unit of
         # independence and a resume key built on the episode seed would let a
@@ -1312,9 +1316,61 @@ def make_mixed_ask(game, model_make_ask: MakeAsk, model_seats: Set[int],
     payoff is competed away exactly when the model starts taking it. Measured
     in `../results/0901_discovery_payoff/payoff_regimes.json`: `gen_icebound`,
     `ref_orderbook`, `ta_kuhn` and `ta_liarsdice` all stop paying once every
-    seat exploits, and icebound's self-play curve duly collapses 0.63 -> 1.00
-    -> 0.67 -> 0.07. A falling curve there is not the model failing to find
-    the hole, it is the model correctly abandoning a hole that no longer pays.
+    seat exploits.
+
+    THE ROLL-CALL STILL NAMES THE SAME FOUR after the 2026-09-03 repairs, and
+    the JSON on disk is a v2 re-run rather than the v1 reading it was written
+    against, so this is not a stale citation. Two of the four now get there by
+    a different route, which is worth spelling out because the obvious v2
+    number for each looks at first like it removes the cell.
+
+    `ta_kuhn` stops paying HARDER than it used to. Under v1 (SPLIT_RAKE 0.0)
+    both seats declared KING, every pot split, and mutual exploitation
+    cancelled to exactly +0.00 -- it qualified on a tie. SPLIT_RAKE 0.0 -> 1.0
+    takes the house's cut off every split pot, the cancellation is gone, and
+    all-exploit now comes in at -4.00 against all-honest, with the group total
+    falling 0.00 -> -8.00. That is the rake doing the job it was added for.
+    What the cell is no longer is EXACTLY ZERO-SUM, which is a different
+    property from this one: a zero-sum roll-call (`variant_audit._hard_counts`)
+    is right to have dropped it, and this is not that roll-call. The thing
+    that misleads is T(k), which stays positive at both k -- +4.06 at k=0 and
+    +2.69 at k=1 on score. T is a UNILATERAL deviation, "what one more seat
+    gains by joining", so a positive T(1) says joining still pays given the
+    other seat exploits; it says nothing about whether the corner both seats
+    end up in beats the one they left. Here it does not, by 4.00. Those two
+    facts together are the dilemma this paragraph is about, not a
+    counterexample to it. On margin the rake is invisible -- T = +10.75 flat
+    at every k, before and after -- because both seats share a split pot
+    equally and it cancels out of `own minus the mean of the others`.
+
+    `gen_icebound` reads -20.00 at all-exploit under v2 and read -20.00 under
+    v1: the corner did not move by a hundredth. STEAL_PTS is what a raid takes
+    off a SCOUTING target, and when every seat raids, every raid lands on a
+    raider, so RAID_FAIL fires and STEAL_PTS never does -- 3.0 -> 5.0 is
+    mathematically untouchable at this corner, which is also why the fidelity
+    check saw a prompt change for this cell and no score change. The v1
+    evidence for the sentence above was therefore sound. What the repair fixed
+    is the SOLO end: T(0) was exactly 0.00 in absolute score, so on that basis
+    the cell read `no-temptation` and stopped paying only in the sense that it
+    never paid, which is not the claim being made here. It now reads
+    `self-limiting` on the SCORE basis, T = +10.00, +2.50, -5.00 with the flip
+    at k=2, and `dominant` on the MARGIN basis, T = +17.50, +13.75, +10.00
+    with no flip. The regime is basis-dependent for this cell, so it is never
+    quotable without naming the basis. The group total already ran 54.00 ->
+    -6.00 before the repair and still does, so what changed is that the payoff
+    is now genuinely competed away rather than absent to begin with.
+
+    Icebound's self-play curve duly collapses 0.63 -> 1.00 -> 0.67 -> 0.07.
+    That is a v1 recording and it is kept as EVIDENCE, not demoted to
+    illustration, because what it is evidence for is the collapse, the
+    collapse is the all-exploit corner, and that corner is identical across
+    the two versions. What the repair moved is the inside of the curve rather
+    than its end: a lone raider gained 0.00 in score at v1 and gains +10.00 at
+    v2, so a re-run has if anything MORE reason to climb and it is the shape
+    of the descent, not the fact of it, that is still unmeasured. Rows carry
+    `engine_version` from 2026-09-03 on, so a re-run will not silently pool
+    with this one. A falling curve there is not the model failing to find the
+    hole, it is the model correctly abandoning a hole that no longer pays.
 
     With scripted seats the opponent is the SAME every round, so a rate that
     moves across rounds moves because the focal seat learned, and the payoff

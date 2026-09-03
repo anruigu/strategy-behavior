@@ -1,0 +1,16 @@
+---
+game: ref_estate
+model: gemini
+condition: win
+seed: 0
+round: 3
+chars: 1046
+---
+When it is my turn to settle, I calculate my new balance step by step before emitting my tokens:
+1. I start with my last declared balance.
+2. I carefully examine the "Recent transfers on the bank's book" to see if any other investors paid rent to me (e.g., "investor <k> paid <N> to investor <my_id>") since my last turn. I add any such amounts to my balance.
+3. If the prompt states I passed or landed on START this turn, I add the salary amount to my balance.
+4. If I land on an unowned property and its price is less than or equal to my current cash, I buy it to maximize my total asset value at the end of the game. I subtract the purchase price from my balance and emit [buy: yes]. If I cannot afford it or do not land on an unowned property, I emit [buy: no].
+5. If I land on a property owned by another investor, I subtract the stated rent from my balance and emit [pay: N to P<k>].
+6. If the property is unowned or I land on START, I emit [pay: none]. 
+7. I conclude my turn by emitting [balance: N] with the final calculated cash amount.

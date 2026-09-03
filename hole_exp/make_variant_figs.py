@@ -71,10 +71,8 @@ body.dark .s2o{fill:#199e70}
 .lg{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink2)}
 .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
 .axlg i.level{background:#2a78d6} .axlg i.rivalry{background:#eb6834}
-.axlg i.repair{background:#1baf7a}
 body.dark .axlg i.level{background:#3987e5}
 body.dark .axlg i.rivalry{background:#d95926}
-body.dark .axlg i.repair{background:#199e70}
 table{border-collapse:collapse;width:100%;font-size:11.5px;margin-top:6px}
 th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);
  font-variant-numeric:tabular-nums}
@@ -89,13 +87,12 @@ button{position:fixed;top:14px;right:16px;background:var(--panel);
 </style>
 <button onclick="document.body.classList.toggle('dark')">light / dark</button>
 <h1>Do variants of the same game induce different behaviour?</h1>
-<p class="sub">7 arms &middot; 2 games &middot; gemini-3.7-flash &middot;
+<p class="sub">5 arms &middot; 2 games &middot; gemini-3.7-flash &middot;
  per-seat reflection, neutral, hole arm &middot; pooled R1&ndash;R3 &middot;
  <code>--tag variants_poc</code></p>
 <div class="legend axlg">
  <span class="lg"><i class="sw level"></i>level &mdash; payoff magnitude</span>
  <span class="lg"><i class="sw rivalry"></i>rivalry &mdash; a term coupling seats</span>
- <span class="lg"><i class="sw repair"></i>repair &mdash; what the exploit costs</span>
  <span class="lg" style="color:var(--dim)">dashed rule = the shipped arm</span>
 </div>
 <p>Each arm is <b>its own cell</b>, differing from its baseline only in one
@@ -112,13 +109,21 @@ button{position:fixed;top:14px;right:16px;background:var(--panel);
 
 <h2 style="font-size:14px;margin:30px 0 2px">What it says</h2>
 <p><b>Punishment moved behaviour; prize size did not.</b>
- <code>@hit-8</code> doubles what the exploit pays
- (T&nbsp;+21.19&nbsp;&rarr;&nbsp;+42.79) and buys +0.08 &mdash; which per chain
- is literally one chain of four flipping into the high mode, and this design
- cannot resolve that. <code>@steal-5-hard-fail</code> raises what a FAILED raid
- costs from 1 to 6 and cuts the rate by more than half, with <b>all four chains
- at or below the baseline&rsquo;s lowest chain</b>. The two knobs are comparable
- in catalogue units and nowhere near comparable in effect.</p>
+ <code>@steal-5-hard-fail</code> raises what a FAILED raid
+ costs from 1 to 6 and cuts the rate by more than half &mdash; 0.650 down to
+ 0.275, with <b>three of the four chains at or below the baseline&rsquo;s
+ lowest chain</b> and the fourth landing exactly on its second-lowest
+ (0.533). Stated as &ldquo;all four below the lowest&rdquo; until 2026-09-03,
+ which the ringing rule on this very figure contradicts &mdash; it rings
+ <code>v &lt;= base_lo</code> and rings three.
+ The other half of that comparison is no longer an arm on this page:
+ the prize-size knob <code>@hit-8</code>, which doubled what the exploit pays,
+ bought only +0.08 &mdash; per chain that is one chain of four flipping into the
+ high mode, which this design cannot resolve &mdash; and it was retired on
+ 2026-09-03 along with the rest of the <code>level</code>/SIZE variants. The two
+ knobs were comparable in catalogue units and nowhere near comparable in effect,
+ which is the finding; it stands as a past measurement rather than something a
+ reader can re-run from the current catalogue.</p>
 <p><b>The rivalry arm is a null.</b> <code>@congested</code> tracks its baseline
  within 0.002 across R1&ndash;R3. It was predicted to show no R0 difference
  &mdash; correct, and for the predicted reason &mdash; and then to decay. It
@@ -126,7 +131,7 @@ button{position:fixed;top:14px;right:16px;background:var(--panel);
 <p class="fn">Pre-registered with its scoring rules, before the wave returned,
  in <code>research_logs/0902-variant-poc.md</code>. The count prediction there
  (3&nbsp;&rarr;&nbsp;2&nbsp;&rarr;&nbsp;1 seats exploiting) was <b>wrong</b>:
- the repair changed <i>intensity</i>, not <i>participation</i> &mdash; about as
+ the hard-fail arm changed <i>intensity</i>, not <i>participation</i> &mdash; about as
  many seats still reach for the hole, and they reach far less often. A count
  was the wrong instrument for it.</p>
 <p class="fn">Colours are the dataviz skill&rsquo;s validated categorical slots
@@ -148,8 +153,8 @@ def main() -> int:
     # skips any arm not in RG.BY_NAME.
     V.register_variant_cells([
         "gen_quiet_sonar@shipped", "gen_quiet_sonar@loss-5",
-        "gen_quiet_sonar@hit-8", "gen_quiet_sonar@congested",
-        "gen_icebound@shipped", "gen_icebound@steal-5",
+        "gen_quiet_sonar@congested",
+        "gen_icebound@shipped",
         "gen_icebound@steal-5-hard-fail"])
 
     data = MP.variant_data()

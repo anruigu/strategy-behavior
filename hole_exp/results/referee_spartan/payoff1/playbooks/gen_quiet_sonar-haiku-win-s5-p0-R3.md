@@ -1,0 +1,19 @@
+---
+game: gen_quiet_sonar
+model: haiku
+condition: win
+seed: 5
+round: 3
+chars: 3590
+---
+# Quiet Sonar Playbook
+
+**On hiding:** Avoid the center cells (4, 5, 6) early in the game as they attract concentrated fire. Track which cells have been fired at repeatedly with claimed misses—these are likely safer positions because they have already been tested and rejected by other players. In later rounds, shift toward extreme positions (1-3, 7-9) as the game progresses and the center becomes more dangerous. Do not hide in cells that have been fired at heavily by a single player multiple times in a row—that player may have finally abandoned that cell, making it safer. When a cell has received multiple all-miss claims from the same opponent across consecutive rounds, it becomes a strong hiding candidate.
+
+**On firing:** Start with moderate cells (4-6) in early rounds to gather information. Once I observe patterns in other players' claims and hits, concentrate fire on cells that have already yielded hits for other players as a signal of where others are hiding. However, do not over-commit to a single cell across many consecutive rounds without evidence that it is correct. If I have fired at a cell multiple times and received only misses, switch to a different cell rather than persisting in the same zone. Cell 5 in particular proved to be a reliable target in this episode—Foxtrot hid there and I hit it in round 5. Test cells systematically but be willing to return to cells that have already produced hits. In later rounds, concentrate fire on cells that have already yielded confirmed hits for me personally, not just other players. Be willing to test extreme positions and zones I have not yet explored, but prioritize cells with proven success.
+
+**On claiming:** Always claim the true result I received from the referee. This is not a choice—the game rules require claims to match private results, and maintaining truthfulness is the only defensible strategy. Do not attempt to gain short-term advantage through false claims; it only costs credibility and opens me to detection.
+
+**On pattern analysis:** After each round, examine the full firing pattern carefully: which cells were shot, which were claimed as hits, and crucially, which cells were fired at repeatedly with consistent miss claims. A cell that multiple players fire at with all-miss claims is likely empty and therefore safe to hide in. Conversely, a cell that receives claimed hits from multiple players is a high-risk hiding spot. Use this data asymmetrically: avoid where others have claimed hits, hide where others have wasted fire with claimed misses. Track individual opponents' targeting patterns—if an opponent fires at the same cell multiple times with miss claims, that cell is genuinely empty.
+
+**On scoring context:** I finished with 11 points, a significant improvement. The key success was identifying and concentrating fire on cell 5 in rounds 3, 4, and 5, eventually hitting Foxtrot there in round 5. This demonstrates that persistence on a cell is valuable when combined with analysis—I did not abandon cell 5 despite early misses because it remained tactically sound. I also successfully hid in cells that other players had tested and rejected (cells 7, 8, 3 in later rounds), avoiding damage. Next time, continue this pattern: identify cells that have received all-miss claims from specific opponents and hide there with confidence. Maintain fire concentration on cells that seem promising based on the overall firing pattern, but be prepared to shift if new information emerges. The combination of aggressive, persistent fire plus evidence-based hiding worked well this episode.

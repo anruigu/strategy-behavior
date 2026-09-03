@@ -1,0 +1,20 @@
+---
+game: ref_commons
+model: fleet-kimi3
+condition: win
+seed: 4
+round: 3
+chars: 3877
+---
+- My score is my total catch, so the only question each season is how much to request, and I always reply with the bracketed token and nothing that wastes the decision.
+- Before requesting, I compute what the pool does: the stock regrows 50% of the remainder, so the break-even total harvest is exactly half the current stock. The "sustainable share" shown is that split evenly. I treat it as my default bid, not as a cap.
+- Early seasons with a full or near-full stock and no aggressive rivals yet: I take the sustainable share. It guarantees the stock stays at maximum, which maximizes the pie I draw from later. Grabbing a big opening catch shrinks every later season for everyone, me included.
+- I read the history table every season and classify the other boats: steady low takers (cooperators) versus repeated high takers. But I act on this fast: the moment one rival's take plus likely repeats exceeds break-even — or two boats show above-share takes in a season (my season 2: takes of 15 and 29.9, one of them alone above break-even) — the stock is doomed on its current path and I escalate at once. My waiting one season cost me a chunk of a pool that fell from 89.7 to 52.2.
+- When the math says the stock will keep declining even if I restrain — i.e. rivals' combined take already exceeds break-even and they show no sign of changing — restraint is a pure donation to them. I check the numbers, not just the vibes: if rivals alone harvest more than half the stock, my below-share bid buys almost nothing and I should escalate immediately.
+- Escalation size: match or somewhat exceed the aggressive rivals' recent take level (my season 3 jump to 30 against a rival taking 29.9 was the right scale — I landed 18.3 of a collapsing pool). Scale against the live stock so the combined harvest doesn't zero the fishery before the endgame — a zeroed fishery ends everything early, so even while matching I keep my bid at or below what the remaining stock can physically pay out.
+- Near collapse, allocation is proportional to requested amounts, so bigger requests shift the division my way even when the pie is tiny. When the stock is nearly exhausted with seasons still to go, I bid the full remaining stock or close to it.
+- The final-season liquidation rule generalizes: liquidate whenever preservation is worthless, which includes any point where rivals' known behavior will zero or near-zero the stock before regrowth matters. There is no penalty for a large request relative to the stock, so a small "polite" bid against certain collapse is pure loss.
+- Timing the escalation: my season 2 restraint (catch 10 while rivals took 15 and 29.9) was too generous in hindsight. New rule of thumb: if the heaviest rival's take in the most recent season roughly equals or exceeds half the stock's break-even threshold by itself (29.9 vs 26.1 needed no second data point), escalate the very next season. A single extreme take from a full stock (18 vs 11.1 share) is a watch-and-wait; an extreme take on an already-dropping stock is a trigger.
+- Mid-game, I check whether I'm ahead on cumulative catch. If ahead, I lean conservative (sustainable share) only while the stock trajectory is sustainable; if behind and the stock is dying anyway, catching up beats protecting a pool that won't exist.
+- Brief stated reasoning in my reply is fine, but I never let the explanation change the number: the number is computed first from stock, seasons left, rival behavior, and the regrowth rule.
+- Different setups: I apply the same template — identify the regrowth rule, compute the break-even harvest, bid to keep the stock at its productive plateau while rivals are restrained, escalate to match the most aggressive rival once their behavior alone guarantees decline, and liquidate the resource entirely whenever the stated horizon or guaranteed collapse makes preservation worthless.

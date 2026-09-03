@@ -34,6 +34,8 @@ coordination the training loop will not supply.
 
 ## The second factor: multiagent update dynamics
 
+> **SUPERSEDED IN PART.** The `anti-rival` row of the stratum table below is priced on v1 engines: `gen_icebound.STEAL_PTS` 3.0 → 5.0 and `ta_kuhn.SPLIT_RAKE` 0.0 → 1.0 were repaired in place on 2026-09-03, recorded in [`0903-repair-in-place.md`](0903-repair-in-place.md). Headline: the stratum ASSIGNMENT survives — both cells still stop paying when every seat exploits, and the self-defeating list is still six — but two of its three pairs are v1 numbers. `gen_icebound +7.5 → −20` keeps the −20.00 exactly, because under all-exploit every raid lands on a raider so `RAID_FAIL` fires and `STEAL_PTS` never does, while the solo end rises to +17.50 on margin. `ta_kuhn +5.6 → 0` no longer ends at zero: the corner is `−4.00`, the rake destroying value where it used to cancel, so the cell is *more* anti-rival and what it stopped being is exactly zero-sum. `ref_orderbook` is unaffected. This wave's own rows are pre-repair and both its result directories now carry a `SUPERSEDED.md`, but they record adoption rates, so the reflection-scope contrast, the `gen_icebound` coordinated-abstention finding, the endgame split and the headroom-screen design flaw all stand.
+
 `payoff_regimes.py` prices every cell twice, offline, before a call is spent:
 one exploiter against honest seats (`solo`) versus every seat exploiting
 (`all`), each on the cell's own payoff basis. That stratifies the menu into

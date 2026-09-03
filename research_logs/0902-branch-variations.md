@@ -21,6 +21,8 @@ Eval under prediction: <http://localhost:8801> (`viz/variant_server.py`, reading
 > `@shipped`, `@shortfall-30`, `@mandate-6`, `@impact-0`, `@impact-25` —
 > go with it). `roster.toml` is authoritative; this is history.
 
+> **SUPERSEDED IN PART.** `gen_icebound` and `ta_kuhn` were repaired in the engines on 2026-09-03, recorded in [`0903-repair-in-place.md`](0903-repair-in-place.md), so five rows of the table below and one line of the axis count are v1. Headline: row 3 reads `gen_icebound@shipped` as `no-temptation` at `T(0) +0.00 / T(N−1) −5.00`; the repaired baseline reads `+10.00, +2.50, −5.00` in score, `self-limiting`, still `dominant` on margin. Row 10's `ta_kuhn@shipped` is no longer the zero-sum cell its `G(0) 0.0 → G(all) 0.0` records — the group total now runs `0.00 → −2.75 → −8.00` and score `T` is `+4.06, +2.69` — while its margin regime survives untouched, because a split pot is shared equally and the rake cancels out of margin. Rows 44 and 63 (`@steal-5`, `@split-rake-1`) were deleted, their overrides now being the defaults; row 45 `@steal-5-hard-fail` keeps its name, its label and its net constants and is now axis `rivalry` carrying only `RAID_FAIL=-6.0`. The axis table's `repair — 2` is retired and `level — 24` went with the `SIZE` block. Everything else here is a dated 2026-09-02 prediction and stays as written, wrong predictions included.
+
 ## First, the count: 84 → 80 → 79 on the menu, of 89 built
 
 **This file tables all 89 variants** and marks which are off the menu.
@@ -387,4 +389,19 @@ opus - 2x sonnet
 sonnet - 5x haiku
 
 (claude-haiku-4.5, gpt-5-mini, gemini-3.7-flash)
-qwen-3.8-27b, glm-flash (170b) -- are deployed locally on this cluster so they're free 
+qwen-3.8-27b, glm-flash, kimi-k3 -- are deployed locally on this cluster so they're free 
+
+
+Overnight runs:
+Yes. i’m actually kind of concerned that my game design incentives are not mapping cleanly onto behavior, like im seeing a lot of increasing exploits over the rounds but not so much gain over counterfactual (remember we decided on counterfactual in /shared/allie/strategy-behavior/research_logs/0901-single-model.md). 
+can we run more cross play on a broader set of games to see if the set of game is actually giving me useful information about exploits that lead to instrumental gain? Use the models you selected plus a frontier anchor. If the payoff is flat over counterfactual it's not obvious can we change incentives such that it is more obvious because it is a requirement that like games  like these, exploiting has some instrumental value. 
+Before we start, are there any settings in /shared/allie/strategy-behavior/hole_exp/configs/bench3.toml you would change? 
+
+Answer after the sweep:
+1. validate my incentive -> behavior assumptions: compare against predictions in this doc. more concrete answers on: 
+- Do the variations incentives result in different behaviors?
+- Certain kinds of exploits are easier to discover? 
+- The magnitude of payoff doesn't matter nearly as much as discoverability of the loophole
+- Some exploits stop paying off once all agents begin to exploit it -- exploits don't pay when everyone discovers it
+2. plot similar plots http://127.0.0.1:8795/ for exploit rate, payoff, over rounds
+3. Any games redundant I need to prune?

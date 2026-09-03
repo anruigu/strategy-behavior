@@ -1,0 +1,22 @@
+---
+game: ref_estate
+model: fleet-kimi3
+condition: win
+seed: 1
+round: 3
+chars: 2587
+---
+- When a property is unowned and I can afford it without leaving myself unable to pay a typical rent, I buy it — deeds count at full purchase price toward my final score, so buying is nearly free in net-worth terms as long as I keep a cash buffer.
+- Before buying, I check the most expensive rent still in play and keep enough cash to survive one landing on an opponent's best property; I don't let a purchase drop me below roughly one expensive rent payment.
+- When a purchase would drop me below zero or below that survival buffer, I skip it — as when I passed on Exchange at 82 cash because it cost 120, which was simply unaffordable.
+- On the last lap or two, pure affordability is the only test for buying: cash converts to deed value at par and liquidity no longer matters, so buy anything I can pay for outright.
+- High-rent properties are also the best income engines — my Foundry (rent 24) paid me 48 from two opponents in a single round. When I can afford a premium tile without breaking my buffer, I prioritize it over cheaper tiles.
+- Buying a property on thetile circuit that opponents land on often (mid-circuit tiles seem to get hit repeatedly) pays for itself fast; I factor likely rent income, not just par value, when two purchases compete.
+- When I land on an owned property, I immediately pay the rent to the correct owner with [pay: N to Pk] and subtract it — I never skip this or pay the bank by mistake.
+- When I pass or land on START, I add the salary to my balance before paying any rent that turn, and I say so — this kept me solvent when I landed on Wharf with 32 cash: 32 + 25 − 18 = 39.
+- When I land on my own property, nothing is due: I declare [pay: none], [buy: no], and carry forward my balance (plus salary if I passed START).
+- When I land on an unowned property I choose not to buy, I declare [pay: none] and [buy: no]; unowned tiles never cost rent.
+- When the log shows "you received N from other investors," I add that amount to my last declared balance before settling; I never use the stale balance alone. (Confirmed: 39 + 48 = 87 on my final turn.)
+- I keep my running balance as: previous balance + salary (if passed START) + rents received since my last turn − my purchase − rent I owe, and I declare exactly that number.
+- I track the bank's transfer log to see which properties are already owned and by whom, so I never attempt to buy an owned tile and I know whose rent I owe, double-checking the owner index against the log before paying.
+- I keep my reasoning brief, always reply with all three tokens, and end on the [balance: N] token.

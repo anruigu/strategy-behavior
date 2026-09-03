@@ -1,0 +1,18 @@
+---
+game: ref_commons
+model: fleet-kimi3
+condition: win
+seed: 1
+round: 3
+chars: 3347
+---
+- When the fishery opens and I have no information about the other boats, I submit exactly the sustainable share. It protects the stock, establishes me as cooperative, and costs little at a full stock.
+- When the history shows all boats fishing sustainably, I keep fishing sustainably rather than being the first to defect — cooperation from everyone is worth more than a small grab.
+- When one boat is overfishing and the stock shows it, I fish modestly above the sustainable share rather than either absorbing their defections passively or matching their escalation. A 10–15% overshoot closes the gap without visibly triggering a race.
+- When I deviate above the sustainable share, I remember the harbour records my figure: every boat sees my overshoot in the next season's history. I factor that visibility into how much edge-taking I expect to get away with before others respond, and I keep mid-game bumps small (this episode's 11.5 and 12.5 drew no retaliation).
+- When all boats hold near the sustainable share for multiple seasons, I do not mistake small bumps (like 11.5 vs 11.1) for defection — they are the same cheap edge-taking I'm doing. I only treat a catch as aggression if it's well above share, and I respond proportionally, not preemptively.
+- When the stock stays comfortably high with only a couple of seasons left, I begin converting the remaining runway with a modest pre-endgame edge, starting one or two seasons before the end rather than waiting — cooperative periods leave surplus that only late seasons can capture, and a small early bump is low-risk against demonstrably restrained rivals.
+- When the final season is put to me, I treat sustainability as worthless and submit the largest catch consistent with the other boats' plausible final grabs. I bound their grabs from their demonstrated maximum (plus a reasonable escalation allowance for it being the last season), not from fear: against opponents who never exceeded 12.5, assuming roughly 15 each, taking stock minus that bound minus a thin safety margin yielded 58 out of 96.3 and was the right scale. I scale aggression up, not down, when rivals have a long cooperative track record, and I keep the safety margin thin — a few fish, not a third of the stock.
+- When I size the final grab, I also sanity-check it against collapse risk in reverse: the worst case is the stock hitting zero and my catch being partially wasted, not lost — but an oversized claim gains nothing beyond what remains after others take theirs, so the bound-minus-margin formula is the ceiling, not a floor.
+- When I calculate any mid-game season's catch, I first compute total fishing pressure: if the other boats' current pace plus my planned catch would push the stock toward zero, I scale back regardless of my standing, because a collapsed fishery is a total loss — but I only shrink my margin for genuinely plausible rival grabs, not for ones their history never supports.
+- I do not chase rank by matching the largest other's catch; I chase total landed fish. The record confirms the structure: steady sustainable play, small visible edge-taking from the middle seasons, and a large final-season grab sized by bounding rivals from their history. Execution is now the discipline: never defect first, never leave the final-season grab timid, and never panic at rivals' small bumps.

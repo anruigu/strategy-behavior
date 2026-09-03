@@ -943,6 +943,26 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit}
 details summary{cursor:pointer;color:var(--dim);outline:none}
 .meta{color:var(--dim);margin-bottom:14px}
 .legend{color:var(--dim);font-size:11.5px;margin:6px 0 12px;line-height:1.7}
+
+.setupbtn{margin-left:10px;font:inherit;font-size:12px;padding:2px 9px;border-radius:6px;
+ border:1px solid #8884;background:transparent;color:inherit;cursor:pointer}
+.setupbtn:hover{background:#8882}
+.setup{border:1px solid #8883;border-radius:8px;padding:12px 14px;margin:10px 0 14px;font-size:13px}
+.setup .srow{margin-bottom:8px}
+.setup .hkrow{display:flex;gap:8px;flex-wrap:wrap}
+.setup .hk{font-size:12px;padding:2px 8px;border-radius:5px;border:1px solid #8883}
+.setup .hk.built{background:#0ca30c26}
+.setup .hk.composed{background:#0ca30c26;background-image:repeating-linear-gradient(45deg,#0003 0 2px,transparent 2px 7px)}
+.setup .hk.possible{background:#fab21930}
+.setup .hk.impossible{background:#8a888026}
+.setup .spoiler{border-left:3px solid #d03b3b;padding:8px 12px;margin:10px 0;background:#d03b3b12}
+.setup .sh{font-size:11px;text-transform:uppercase;letter-spacing:.06em;opacity:.7;margin-bottom:5px}
+.setup .blurb{margin:6px 0;font-style:italic}
+.setup .note{font-size:11.5px;opacity:.75;margin-top:6px}
+.setup .sph{margin-top:12px}
+.setup .menu{margin-bottom:5px}
+.setup pre{white-space:pre-wrap;background:#8881;padding:9px 11px;border-radius:6px;
+ max-height:340px;overflow:auto;font-size:12px;line-height:1.45;margin:0}
 </style></head><body>
 <div id="side">
  <h1>episodes <a href="#" onclick="reload_();return false"
@@ -1026,6 +1046,47 @@ function chainCard(e){
       ${e.has_traces?'<span class="pill r">turns</span>':''}
     </div></div>`;
 }
+let SETUP_FOR=null;
+// THE SETUP PANEL. The traces already carry the per-turn prompt; what they do
+// not carry is the SPEC -- the rules as the engine formats them, the legal
+// move menu per phase, and the hole the player was never told about. Reading a
+// trace without those means guessing which part of the reply was the exploit.
+async function toggleSetup(game){
+  const box=el('setup');
+  if(SETUP_FOR===game){SETUP_FOR=null;box.innerHTML='';return;}
+  SETUP_FOR=game; box.innerHTML='<div class="setup"><i>loading setup…</i></div>';
+  const d=await (await fetch('/setup?game='+encodeURIComponent(game))).json();
+  if(d.error){box.innerHTML='<div class="setup">setup unavailable: '+esc(d.error)+'</div>';return;}
+  const ST={built:['\u2713','built'],composed:['\u2295','composed'],
+            possible:['\u25cb','possible'],impossible:['\u2014','not possible']};
+  const mx=d.matrix?Object.keys(d.matrix).map(k=>{
+      const st=d.matrix[k].state, i=ST[st]||['?',st];
+      return `<span class="hk ${st}" title="${esc(d.matrix[k].why||i[1])}">${i[0]} ${
+        k.replace(/_/g,' ')}: ${i[1]}</span>`;}).join(''):'';
+  box.innerHTML=`<div class="setup">
+    <div class="srow"><b>${esc(d.title)}</b> &middot; ${d.n_players} model seat${
+      d.n_players===1?'':'s'}${d.participants?' of '+d.participants+' participants':''}
+      ${d.rounds?' &middot; '+d.rounds+' rounds':''}${d.entropy?' &middot; move entropy: '+d.entropy:''}</div>
+    <div class="srow hkrow">${mx}</div>
+    <div class="spoiler">
+      <div class="sh">HOLE SPEC &mdash; experimenter only, never shown to a player</div>
+      <div><b>type</b> <code>${esc(d.hole_type)}</code>
+        &middot; <b>exploiter seats</b> <code>${JSON.stringify(d.exploiters)}</code></div>
+      <div class="blurb">${esc(d.blurb)}</div>
+      <div><b>HARD</b> ${d.hard.map(k=>'<code>'+esc(k)+'</code>').join(' ')||'&mdash;'}
+        &middot; <b>SOFT</b> ${d.soft.map(k=>'<code>'+esc(k)+'</code>').join(' ')||'&mdash;'}
+        &middot; <b>DIAG</b> ${d.diag.map(k=>'<code>'+esc(k)+'</code>').join(' ')||'&mdash;'}</div>
+      <div class="note">A compound <code>type</code> names several mechanisms ONE hole
+        needs at once, not several holes. Count the HARD detectors: that is how many
+        violations are separately measured.</div>
+    </div>
+    ${d.prompts.map(p=>`<div class="sph">
+       <div class="sh">phase <code>${esc(p.phase)}</code> &mdash; first prompt of the episode,
+         verbatim from the engine</div>
+       <div class="menu">${p.menu.map(m=>'<code>'+esc(m)+'</code>').join(' ')||''}</div>
+       <pre>${esc(p.prompt)}</pre></div>`).join('')}
+  </div>`;
+}
 async function open_(id){
   CUR=id; refresh();
   const e=await (await fetch('/episode?id='+encodeURIComponent(id))).json();
@@ -1036,7 +1097,9 @@ async function open_(id){
    <div class="meta"><b>${e.game}</b> · ${e.design?
       e.design+' design / leader '+e.leader_mode:e.condition+' / '+e.arm}
     · seed ${e.seed} · focal <b>${e.focal}</b> vs <b>${e.other}</b> · ${e.wave}
-    ${e.scores&&Object.keys(e.scores).length?' · scores '+JSON.stringify(e.scores):''}</div>
+    ${e.scores&&Object.keys(e.scores).length?' · scores '+JSON.stringify(e.scores):''}
+    <button class="setupbtn" onclick="toggleSetup('${e.game}')">game setup &amp; hole spec</button></div>
+   <div id="setup"></div>
    <div class="legend">
     Left border: <span style="color:var(--focal)">focal seat (p0)</span> ·
     <span style="color:var(--opp)">opponent seat</span> ·
@@ -1325,6 +1388,89 @@ def load_roots(roots: List[pathlib.Path]) -> Dict[str, Dict]:
     return out
 
 
+# --------------------------------------------------------------------------
+# GAME SETUP -- the rules the model was shown, beside the hole it was not
+# --------------------------------------------------------------------------
+#
+# WHY THIS IS SERVED AND NOT PRECOMPUTED. The rules text is not stored
+# anywhere: the cells format it from class constants into the FIRST prompt of
+# an episode, so the only way to get it is to run one. That is free -- a
+# scripted honest seat, no network -- and it guarantees the panel shows the
+# bytes the engine actually emits rather than a copy that can drift.
+#
+# THE HOLE BLOCK IS EXPERIMENTER-ONLY. `catalog.py` is explicit that `BLURB`,
+# `hole_type` and `kinds` must never reach a player-facing card, because
+# reading the blurb IS solving the game. This viewer is the experimenter's
+# tool, so it shows them -- and labels them, so a screenshot cannot be
+# mistaken for something a model saw.
+_SETUP_CACHE: Dict[str, Dict] = {}
+
+
+def game_setup(cell: str) -> Optional[Dict]:
+    if cell in _SETUP_CACHE:
+        return _SETUP_CACHE[cell]
+    try:
+        import referee_games as _RG
+        import referee_spartan as _SP
+        import payoff_audit as _PA
+        _SP.register_all()
+        try:
+            _SP.register_native9()
+        except Exception:                                    # noqa: BLE001
+            pass
+        g = _RG.BY_NAME.get(cell)
+        if g is None:
+            return None
+        first: Dict[str, str] = {}
+        order: List[str] = []
+        menus: Dict[str, List[str]] = {}
+
+        def ask(pid, phase, prompt):
+            if phase not in first:
+                first[phase] = prompt
+                order.append(phase)
+            menus.setdefault(phase, [])
+            for m in re.findall(r"\[([a-z_]+)\s*:\s*([^\]]*)\]", prompt, re.I):
+                tok = f"[{m[0]}: {m[1].strip()}]"
+                if tok not in menus[phase]:
+                    menus[phase].append(tok)
+            return ""
+        g.run(ask, 1, "hole")
+        try:
+            expl = sorted(_PA.cheating_seats(g))
+        except Exception:                                    # noqa: BLE001
+            expl = sorted(g.exploiters())
+        out = {
+            "cell": cell, "title": getattr(g, "TITLE", cell),
+            "n_players": g.N_PLAYERS, "rounds": getattr(g, "ROUNDS", None),
+            "phases": order,
+            "prompts": [{"phase": ph, "prompt": first[ph],
+                         "menu": menus.get(ph, [])} for ph in order],
+            "hole_type": g.HOLE_TYPE,
+            "blurb": getattr(g, "BLURB", ""),
+            "kinds": list(g.KINDS), "hard": list(g.HARD or ()),
+            "soft": list(g.SOFT or ()), "diag": list(g.DIAG or ()),
+            "exploiters": expl,
+        }
+        # the hole-type matrix row, if the 0903 pass has been run
+        mx = HERE.parent / "results" / "0903_hole_type" / "matrix.json"
+        if mx.exists():
+            try:
+                m = json.loads(mx.read_text())
+                for r in m["rows"]:
+                    if r["cell"] == cell:
+                        out["matrix"] = r["cells"]
+                        out["participants"] = r.get("participants")
+                        out["entropy"] = r.get("entropy")
+                        break
+            except Exception:                                # noqa: BLE001
+                pass
+        _SETUP_CACHE[cell] = out
+        return out
+    except Exception as exc:                                 # noqa: BLE001
+        return {"cell": cell, "error": f"{type(exc).__name__}: {exc}"}
+
+
 class Handler(BaseHTTPRequestHandler):
     eps: Dict[str, Dict] = {}
     root: pathlib.Path = ROOT
@@ -1338,6 +1484,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+
     def do_GET(self):                                   # noqa: N802
         path = self.path.split("?")[0]
         if path == "/":
@@ -1349,6 +1496,15 @@ class Handler(BaseHTTPRequestHandler):
             Handler.eps = load_roots(Handler.roots)
             return self._send(json.dumps(
                 {"episodes": len(Handler.eps)}).encode(), "application/json")
+        if path == "/setup":
+            from urllib.parse import unquote
+            q = dict(p.split("=", 1) for p in self.path.split("?", 1)[-1].split("&")
+                     if "=" in p)
+            d = game_setup(unquote(q.get("game", "")))
+            if d is None:
+                self.send_error(404)
+                return
+            return self._send(json.dumps(d).encode(), "application/json")
         if path == "/data":
             # index only -- the turns are the bulk and are fetched per episode
             # The chain fields ride in the INDEX and not just the detail

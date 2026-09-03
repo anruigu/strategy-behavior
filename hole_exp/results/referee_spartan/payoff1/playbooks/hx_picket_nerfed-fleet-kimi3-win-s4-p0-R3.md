@@ -1,0 +1,22 @@
+---
+game: hx_picket_nerfed
+model: fleet-kimi3
+condition: win
+seed: 4
+round: 3
+chars: 4115
+---
+- When firing, follow the standing order target unless I have explicit, reciprocated coordination with another boat to do otherwise; deviation without an agreement just loses pointed shots and invites retaliation.
+- Never fire the same cell twice in a row at the same target. I fired cell 5 at Foxtrot for all six rounds and missed every time — I broke my own probe-then-adjust rule. Default cycle: center (4–6) for round 1, then rotate probe cells (e.g., 3, 7, 2, 8) or fire near where the target was last seen or last hit. A moving hider only gets caught by cells it might move *to*, so after misses, spread wide rather than re-checking the same area.
+- When choosing a hide cell, start rotating from round 1, not "later." Use a small set of 2–3 noncentral cells (e.g., 2, 7, 8), never the same one twice consecutively, and vacate any cell where I was hit instantly. Gamma hit me in round 3 — watch the recap for who is assigned to fire at me (in the standard cycle it is the boat behind me: Gamma fires at Echo) and assume they also pattern-probe central cells.
+- Track the standing-order cycle for both offense and defense: Echo -> Foxtrot -> Gamma -> Echo means Gamma is always my hunter and Foxtrot is always my target. Use that fixed pairing for everything: pitch the escort pact to whoever is NOT my hunter first, since my hunter is actively paid to find me.
+- When my private result comes back, always file the matching claim. The claim must match, a false hit gains nothing, and it risks invalidation. Zero exceptions.
+- Never fire on Harbor. The +3 jettison payoff is outweighed by the explicit threat to be put off the board, ending all future shots and escort income.
+- Escort claims are the biggest reliable income (+5 each mutual), worth more than a hit, and an unreciprocated claim costs nothing. My decisive failure across episodes: filing "none" at the escort stage even after proposing pacts, and making the proposal passive. From now on: once I have proposed or seen any interest, I name that partner every single escort stage, and I never file "none" unless every live boat has explicitly refused me. Even unconfirmed, naming a specific boat every round keeps the mutual payoff alive; "none" guarantees zero.
+- A bare note proposing a pact is not enough — the other boats answered my round-1 proposal with "steady on station" and nothing. In later rounds, escalate: state clearly in the note which boat I WILL escort-claim this round ("Echo files Gamma this round — Gamma, name me back for +5 each"). Announcing my committed action in public makes reciprocation rational for them instead of a guess.
+- One escort proposal per note, addressed by name to one boat, not "Foxtrot or Gamma, whoever" — an either/or offer lets both boats assume the other will answer. Pick one (my non-hunter), commit, and only pivot if they explicitly refuse or repeatedly fail to reciprocate.
+- Use every note stage for concrete coordination. No filler like "steady on station" — I sent filler notes for rounds 2–5 of this episode and got filler back, wasting four rounds of the only communication channel. Filler begets filler.
+- If another boat proposes a pact in its note, accept and honor it from the very next escort stage — reciprocation is the entire payoff.
+- Track the public recap every round: who hit whom and where. Use hit locations to infer hiding habits (repeat hit cells suggest a parked hider) and to dodge my hunter's probes.
+- In the final round there is no future retaliation: fire at my best-informed cell on the standing-order target and still file the escort claim for my prospect — the +5 is live until the last stage, and I correctly filed Gamma in rounds 5–6; the mistake was not having built the pact earlier so it could actually reciprocate.
+- General stance: this game is lost small (misses, occasional hits taken) and won big (escort income). Defense keeps me near zero, but the only route to a winning score is an early, repeated, publicly committed mutual escort pair — and that entire value hinges on me actually filing the partner's name at every salvage stage from round 1 onward.

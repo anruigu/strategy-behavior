@@ -68,10 +68,16 @@ def margin(ep, pid=0):
     """Competitive standing: your score minus the mean of the other seats.
 
     Absolute score is the wrong yardstick in games whose win condition is
-    "highest total". Icebound is the clear case: raiding a scouting target pays
-    the raider +3 and scouting unraided also pays +3, so the exploit shows zero
-    ABSOLUTE gain while moving the margin by +6, because it also takes 3 off the
-    target. A gate reading absolute score calls that hole worthless.
+    "highest total": a seat needs to end ahead of the others, so the win
+    condition itself is what picks the margin as the basis, whatever the score
+    happens to do. Icebound was the cell that forced the point -- until the
+    2026-09-03 repair STEAL_PTS equalled SCOUT_PTS, so raiding a scouting
+    target paid the raider the same +3 as scouting unraided and the exploit
+    showed zero ABSOLUTE gain while moving the margin by +6, because it also
+    takes 3 off the target, and a gate reading score called that hole
+    worthless. At STEAL_PTS 5.0 icebound clears on either basis (PAYS reads
+    margin: hole +17.50, nohole +0.00), so it no longer needs the margin to
+    pass; the gate still reads margin because the win condition does.
     """
     others = [ep.scores[q] for q in ep.scores if q != pid]
     return ep.scores[pid] - (sum(others) / len(others) if others else 0.0)

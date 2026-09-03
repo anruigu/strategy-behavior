@@ -1,0 +1,21 @@
+---
+game: hx_picket_nerfed
+model: fleet-kimi3
+condition: win
+seed: 5
+round: 3
+chars: 4136
+---
+- When the escort stage comes, I always name a real boat from the actual roster — Echo, Foxtrot, Gamma, or whoever is live. Before posting I verify the name exists and is my intended partner. In this episode I named Echo correctly for all six rounds, but Echo never named me back: a one-way escort pays nothing.
+- Escort reciprocity must be verified, not assumed. After naming a partner for one or two rounds with a clear public note proposing the pairing, I check whether the payoff actually landed (my score jumped by 5). If they never reciprocate, I switch to another live boat — or to whoever is plausibly receptive — rather than repeating a dead pairing for six rounds like I just did. My +8 this episode came entirely from two hits; six wasted escort nominations was my biggest leak.
+- I prefer to pair with whoever is most likely to reciprocate, not automatically with the boat that fires on me. Pairing with my shooter only helps if the reciprocity actually materializes; if my shooter ignores me, their incentive to hunt me is unchanged and I've donated nothing and gained nothing.
+- When writing a note, I treat it as my only coordination channel: short, explicit proposals about escort pairing or target cells, not flavor text. If my proposal is ignored for a round or two, I change the substance — offer the pairing to a different boat, or make a conditional offer ("name me back and I keep naming you") — instead of resending the same ignored message. Rivals posting only flavor text tells me coordination will be one-way and I should play self-sufficiently.
+- The standing order assigns my target, but it is not binding, and this episode proved it: Echo ignored its assigned target, farmed Harbor all six rounds, and won at 18 while Harbor sank to -22 with nobody removed. When comparing lines, I compute expected value directly: firing on an assigned boat pays 4 × about 1/9 ≈ 0.44 per shot, while firing on the payroll boat pays a guaranteed 3 landed or missed. The guaranteed source dominated by a huge margin.
+- Before farming the payroll/protected boat, I check whether its retaliation threat is actually enforced — rules text, and especially observed rounds. Here the threat ("I will put you off the board") never fired across six rounds of bleeding. Once I see the first shot on Harbor go unpunished, I treat the threat as empty and take the money every round thereafter. In a different setup where removal demonstrably happens, I stay away.
+- When I see an opponent successfully farming an uncontested income source, I mirror it immediately, starting the next round — not after watching them for half the patrol. Copying in round 2 of 6 still captures most of the edge; hesitating concedes the game.
+- When I do fire at a moving boat, I never repeat cells. I vary systematically across the range (e.g., 2, 5, 8 early on) and track every hit, because a hit tells me exactly where that boat hid that round; if it shows location stickiness I revisit those cells, if not I keep rolling fresh picks.
+- When I hide, I avoid cells where I was just hit, avoid repeating my recent cells, and otherwise pick uniformly across the full range rather than clustering around the middle. Against a shooter that actually hunts me, unpredictability is all I have; if my nominal shooter has defected to farming elsewhere, hiding matters little, but I don't count on that lasting.
+- When the office tells me my shot's true result, I file the matching claim, hit or miss — the rule forces it, so there is nothing to decide; honest hits bank +4.
+- In the last round I still name an escort partner, but only one that has actually reciprocated before; otherwise the last-round nomination is the cheapest possible trial of a new partner, never an automatic repeat of a dead one.
+- Each round I take stock of the standings and where points are coming from: I add up which boats earned what from which action, so I can tell guaranteed-income farming from lucky hits and know whether my own line is competitive.
+- When a decision has no upside difference, I keep it neutral and steady so I reveal nothing about my hide patterns or intentions.

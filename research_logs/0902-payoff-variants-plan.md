@@ -52,6 +52,8 @@ Results: `results/0902_exploit_curves/curves.json`.
 
 > **BUILT.** This plan was executed on the same day; what shipped, what it measured and where it differs from the design is in [`0902-variants-built.md`](0902-variants-built.md). Headline: the roster went from 0 self-limiting cells to 8, from 3 multi-seat group tragedies to 23, and from no profitably-colluding multi-seat cell to two. Sections 6 and 7 below are the design; section 9a's repairs are measured and staged rather than applied.
 
+> **SUPERSEDED IN PART.** Two of §9a's staged repairs were applied to the engines on 2026-09-03 and are recorded in [`0903-repair-in-place.md`](0903-repair-in-place.md). Headline: `gen_icebound.STEAL_PTS` 3.0 → 5.0 and `ta_kuhn.SPLIT_RAKE` 0.0 → 1.0 are now defaults under `ENGINE_VERSION = 2`, so §2's `gen_icebound` `no-temptation` reading at `T(0) = 0.00` score and `ta_kuhn`'s exactly-zero-sum row describe v1 only, and §3.3's two-constant sweep is now one default plus one `rivalry` variant. Getting §9a's own framing right: the repair did NOT make either cell collectively profitable — `gen_icebound`'s `all_buys` is unchanged at −20.00 and `ta_kuhn`'s went `+0.00 → −4.00`, so both remain on the do-not-pay list this section builds. §11 step 0's four-point discipline was followed as written. The other five repair targets, both other axes and §§6–8 are untouched.
+
 ---
 
 ## 1. What is measured, and why two curves

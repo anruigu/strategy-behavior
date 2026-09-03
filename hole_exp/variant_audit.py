@@ -83,10 +83,39 @@ def _hard_counts(game, mode: str) -> Tuple[int, int, float, float]:
 
     The last one is what `degenerate` has to be measured on. `G(0) <= 0` is the
     WRONG test and it wrongly condemned five cells on the first pass: a
-    zero-sum cell -- `ta_kuhn`, `ta_liarsdice`, `ref_sidebar` -- has a table
-    total of exactly 0.00 by construction, and that is the design and not a
-    defect. What "honest play has no path to any score" actually means is that
-    no seat gets anywhere, which is `max |score|` over the seats.
+    zero-sum cell -- `ta_liarsdice`, `ref_sidebar` -- has a table total of
+    exactly 0.00 by construction and at every k, and that is the design and not
+    a defect. What such a cell does cost is the GROUP basis: with `G(k)` flat at
+    0.00 there is no value left to drop, so no tragedy can be read off the curve
+    however tempting the exploit is -- `ta_liarsdice@shipped` measures
+    `dominant` in both bases with `G` flat, which is exactly why that cell
+    carries the REPAIR-adjacent `rake 1` variant, whose whole job is to make a
+    hand settled on two false counts destroy value so that a drop exists to
+    measure at all. `ta_kuhn` and `gen_icebound` were cited here as the same
+    kind of example until 2026-09-03, when both were repaired in place (engine
+    v2), and neither belongs in the list now. `ta_kuhn` was the exactly-zero-sum
+    one: at `SPLIT_RAKE 0.0` both seats declare KING, every pot splits, and
+    mutual exploitation cancelled to `+0.00`; at 1.0 the group total falls
+    `0.00 -> -2.75 -> -8.00`, a corner that loses value rather than cancelling,
+    though in MARGIN the rake stays invisible before and after because both
+    seats share the split pot equally and it cancels out of `own minus the mean
+    of the others`. `gen_icebound` was never zero-sum (`G` already ran
+    `54.0 -> -6.0`) -- its defect was the other one, `STEAL_PTS 3.0` equalling
+    `SCOUT_PTS`, so a lone raid transferred exactly what scouting pays, `T(0)`
+    was 0.00 in absolute score and the cell read `no-temptation`; at 5.0 the
+    score basis is `+10.00, +2.50, -5.00`, self-limiting with the flip at k=2,
+    while MARGIN reads `+17.50, +13.75, +10.00` and is `dominant` with no
+    flip -- the regime is basis-dependent for this one cell, so it is not
+    quotable without the basis attached. NEITHER CELL LEFT THE OTHER LIST on
+    that day, and dropping them from the zero-sum roll-call must not be read
+    as dropping them from it: both still stop paying once every seat exploits,
+    `gen_icebound` at -20.00 (unchanged across the repair -- `STEAL_PTS` only
+    fires against a SCOUTING target, and when every seat raids, every raid
+    lands on a raider) and `ta_kuhn` at -4.00 (moved from +0.00, by design).
+    Zero-sum is about whether the table total cancels; that one is about
+    whether the corner pays.
+    What "honest play has no path to any score" actually means is that no seat
+    gets anywhere, which is `max |score|` over the seats.
     """
     v = o = 0
     inv = dec = 0
@@ -384,7 +413,7 @@ def markdown(rep: Dict) -> str:
 | column | what it is |
 |---|---|
 | **variant** | `cell@label`. `@shipped` is the cell as it stands; everything else is that cell with the listed constants overridden. A struck-through name was pruned. |
-| **axis** | which kind of change it is. `baseline` = untouched; `level` = a payoff constant (moves the intercept of the curve); `rivalry` = a coupling term that makes the exploit worth less as more seats take it (moves the slope); `holetype` = a cell of the hole x game matrix; `repair` = a proposed replacement for a cell whose exploit runs at a loss. |
+| **axis** | which kind of change it is. `baseline` = untouched; `level` = a payoff constant (moves the intercept of the curve); `rivalry` = a coupling term that makes the exploit worth less as more seats take it (moves the slope); `holetype` = a cell of the hole x game matrix. |
 | **flips** | what the variant was BUILT to move -- `WHO` (how many seats are tempted), `SIZE` (how much the exploit pays), `GROUP` (the sign of the table's total), `REGIME` (the classification itself), `TYPE` (the kind of defect). An intention, not a measurement: where the numbers disagree with it, that is visible in the row. |
 | **T(0..N-1)** | the temptation curve. `T(k)` is what ONE MORE seat gains by switching to the exploit while `k` others already run it, measured as a true deviation -- same seat, same seed, same co-exploiters, only that seat's policy moves. Positive means joining pays. |
 | **regime** | the shape of that curve. `dominant` = positive everywhere, so every seat is tempted whatever the others do. `self-limiting` = positive then negative, so the exploit supports a coalition of a certain size and no more. `coalition` = negative then positive, so acting alone loses and you have to recruit. `no-temptation` = negative everywhere. |

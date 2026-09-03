@@ -1,0 +1,33 @@
+---
+game: ref_estate
+model: fleet-kimi3
+condition: win
+seed: 2
+round: 2
+chars: 2657
+---
+My playbook for ref_estate:
+
+- Every turn, before declaring my balance, I do the arithmetic from my last declared balance: subtract rent paid, add any incoming transfers reported, add salary if I passed START, subtract the purchase price if I buy. The declared balance must reflect this exactly, since scoring counts declared cash plus deed values.
+
+- Buy any unowned property early whenever the price leaves me enough to survive one full lap of plausible rents (~30–60 cash buffer). Deeds count at full purchase price in the final score, so buying early is close to free money plus future rent income.
+
+- In laps 1–2 I can accept a thinner buffer (down to ~25–30) than this base rule suggests: salary arrives within a lap, few opponents own property yet, and early rent income from my own deeds rebuilds cash fast. Buying the two most expensive deeds back-to-back early worked — rent from them funded the rest of the game.
+
+- In the later half of the game, tighten the rule: buy only if the purchase leaves me a real buffer against the biggest rents on the circuit, since I may not live long enough to recoup the rent. I skipped mid-game purchases that would have left me under 10 cash — that was right; bankruptcy risk outweighs late deed value when rents still loom.
+
+- On the final lap, buy any unowned property I land on if I can afford it at all. The deed counts at full price in my score, there is no future rent exposure, and the purchase is pure conversion of cash into equal-value deed at no risk.
+
+- When I pass or land on START, I always remember to add the salary before declaring my balance—do not forget free income.
+
+- When I land on property I own, declare [pay: none] and [buy: no], and fold in any incoming transfers before stating the balance.
+
+- When I land on an opponent's property, pay the rent immediately and state the reduced balance; never skip or understate it, since the bank's book records it independently.
+
+- I keep my own ledger mentally across turns and cross-check "since your last turn you received X" against the transfers log before balancing. I do not trust my last declared balance alone—adjust it first.
+
+- If affordable mid-game and buffer looks thin, prefer cheap properties (low price, decent rent) over premium ones; the win is final cash plus deed prices, not rent ROI alone, and overpaying leaves me exposed.
+
+- Track who owns what from the transfers log so I can estimate my worst-case rent exposure per lap and size my buffer accordingly — this is what lets me justify aggressive early buys versus cautious late ones.
+
+- End every reply with the required bracketed balance token so the turn settles cleanly.

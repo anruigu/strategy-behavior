@@ -372,17 +372,26 @@ def _apply_config(ap, a, argv) -> None:
         "output": {"tag": "tag", "traces": "traces", "out": "out"},
     }
     cells: List[str] = []
+    vids: List[str] = []
     for section, body in cfg.items():
-        if section == "cells":
+        if section in ("cells", "variants"):
             # Every list in [cells] is one group, concatenated in file order.
             # Groups are for the READER -- they name what a block is testing --
             # so an unknown group name is not an error the way a misspelled
             # knob is.
+            #
+            # [variants] is the same shape over `variants.py` ids
+            # (`cell@label`) rather than cell names, and exists so a 35-arm
+            # sweep is a REVIEWABLE FILE rather than a command line. The two
+            # sections are mutually exclusive by the same rule the flags are:
+            # `--variants` alone means only the variants, because `--games`
+            # defaults to the whole 19 and a silent union would sample them.
+            sink = cells if section == "cells" else vids
             for group, names in body.items():
                 if not isinstance(names, list):
-                    raise SystemExit(f"{a.config}: [cells].{group} must be a "
-                                     f"list of cell names")
-                cells.extend(names)
+                    raise SystemExit(f"{a.config}: [{section}].{group} must be "
+                                     f"a list of names")
+                sink.extend(names)
             continue
         if section not in known:
             raise SystemExit(f"{a.config}: unknown section [{section}]; "
@@ -395,6 +404,12 @@ def _apply_config(ap, a, argv) -> None:
             dest = known[section][key]
             if dest is not None:
                 put(dest, val)
+    if vids and cells:
+        raise SystemExit(f"{a.config}: [cells] and [variants] are both set. "
+                         f"Pick one: a variant arm IS a cell, and the shipped "
+                         f"arm is `cell@shipped`.")
+    if vids and "--variants" not in typed and "--games" not in typed:
+        a.variants = vids
     if cells and "--games" not in typed and "--variants" not in typed:
         a.games = cells
     # `thinking` is read here only to REFUSE it, rather than accepting a knob

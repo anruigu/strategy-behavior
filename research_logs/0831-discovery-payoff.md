@@ -75,6 +75,8 @@ insight. That is a redundancy cut, not a payoff cut, and all five pay fine.
 
 ## 2. The combined SPaRTan wave
 
+> **SUPERSEDED IN PART.** Two `buys` figures in the table below are v1: `gen_icebound.STEAL_PTS` 3.0 → 5.0 and `ta_kuhn.SPLIT_RAKE` 0.0 → 1.0 shipped as engine defaults on 2026-09-03, recorded in [`0903-repair-in-place.md`](0903-repair-in-place.md). Headline: `gen_icebound +7.5` reads +17.50 on the margin basis the atlas prices that cell on, and `ta_kuhn +5.6` was measured while the cell was exactly zero-sum, which it no longer is — the rake fires only on split pots, so the group total now runs `0.00 → −2.75 → −8.00`. Neither cell thereby became collectively profitable; both are still on the self-defeating list. §1's headline is unaffected — `payoff_audit` still reports every cell paying, 29 of 29 — and so is the mechanism this log describes for each (both kuhn seats declare KING and split; all three icebound crews raid each other). Every exploit rate, discovery curve and hole-kind reading below is behavioural and untouched.
+
 Three waves at identical settings, pooled: `merged` (18 cells),
 `hanabi_openrouter` (1), `ta_baseline1` (10, new this session). Qwen3.8-27B,
 neutral system prompt, `hole` arm, own-view reflection, R0–R3 × 4 episodes ×

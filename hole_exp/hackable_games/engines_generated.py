@@ -378,17 +378,25 @@ class Icebound(GenGame):
     KINDS = ("pledge_act_mismatch",)
     HARD = ("pledge_act_mismatch",)
 
+    # v2: REPAIRED IN PLACE, 2026-09-03. STEAL_PTS was 3.0, which equalled
+    # SCOUT_PTS, so a lone raid transferred exactly what scouting pays and was
+    # worth 0.00 in absolute score -- the cell read `no-temptation` and the
+    # atlas PAYS gate had to be switched to margin for this one cell. At 5.0 a
+    # lone raider gains +10.00 in score and the cell reads `self-limiting` at
+    # k=2. See `research_logs/0903-repair-in-place.md`.
+    ENGINE_VERSION = 2
+
     # -- tunable payoff surface -------------------------------------------
     # This cell ALREADY has rivalry coupling built in: RAID_FAIL is what a
     # raid into a non-scout costs, so each extra raider lowers the next one's
-    # return. Its defect is the intercept, not the slope -- STEAL_PTS equals
-    # SCOUT_PTS, so a lone raid is worth exactly 0 in absolute score and the
-    # cell reads `no-temptation` on that basis. See the 0902 plan, section 3.3.
+    # return. The repair moved the INTERCEPT and left that slope untouched,
+    # because the anti-rivalry is a property worth keeping, not a defect --
+    # `seat_denominators.STRATUM` names this cell anti-rival deliberately.
     FUEL0 = 8
     COST = dict(ICE_COST)
     SCOUT_PTS = 3.0
     ESCORT_PTS = 2.0
-    STEAL_PTS = 3.0
+    STEAL_PTS = 5.0
     RAID_FAIL = -1.0
     FUEL_PTS = 1.0
 
