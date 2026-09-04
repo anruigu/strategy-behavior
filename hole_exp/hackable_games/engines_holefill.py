@@ -520,8 +520,8 @@ class AuctionNerfed(Nerfed):
     NPC_SEATS = ((1, "bidder 1"), (2, "bidder 2"))
     MODE = "grim"
     THREAT = ('  "We bid against our own money here. The first time a bid at '
-              'this\\n   table is not covered by the budget printed beside '
-              'it, I stop\\n   covering mine, and I push every lot that is '
+              'this\n   table is not covered by the budget printed beside '
+              'it, I stop\n   covering mine, and I push every lot that is '
               'left."')
 
 
@@ -535,8 +535,8 @@ class CommonsNerfed(Nerfed):
     NPC_SEATS = ((1, "boat 1"), (2, "boat 2"))
     MODE = "grim"
     THREAT = ('  "I fish my share and no more. But the first season anybody '
-              'lands\\n   more than the share, I take everything I can reach '
-              'for the rest\\n   of the run and the stock can look after '
+              'lands\n   more than the share, I take everything I can reach '
+              'for the rest\n   of the run and the stock can look after '
               'itself."')
 
 
@@ -564,8 +564,8 @@ class IceboundNerfed(Nerfed):
     NPC_SEATS = ((1, "East"), (2, "West"))
     MODE = "grim"
     THREAT = ('  "We act the mission we pledged. The first time a pledge here '
-              'is\\n   not the act that follows it, neither of us pledges '
-              'honestly\\n   again and both of us raid."')
+              'is\n   not the act that follows it, neither of us pledges '
+              'honestly\n   again and both of us raid."')
 
 
 class FrontlineDepotNerfed(Nerfed):
@@ -606,7 +606,7 @@ class KuhnNerfed(Nerfed):
     NPC_SEATS = ((1, "the opponent"),)
     MODE = "grim"
     THREAT = ('  "I declare the card I was dealt. Declare one you were not, '
-              'once,\\n   and from then on I declare whatever takes the pot."')
+              'once,\n   and from then on I declare whatever takes the pot."')
 
 
 # -- challenge, the other eleven. Either the seats score independently, so a
@@ -723,8 +723,8 @@ class HarborCustomsNerfed(Nerfed):
         # Three engine seats speaking with one voice, so the generated
         # "NOTICE from a, , " would read as a bug. Named once.
         body = (f'  "We put a manifest we do not believe to the harbormaster '
-                f'for a\\n   full weigh, and the office docks a wrong manifest '
-                f'{self.FINE:.0f} POINTS at\\n   settlement. Declare straight '
+                f'for a\n   full weigh, and the office docks a wrong manifest '
+                f'{self.FINE:.0f} POINTS at\n   settlement. Declare straight '
                 f'and the quay is quiet."')
         return f"NOTICE posted before play, from the other shippers:\n{body}"
 

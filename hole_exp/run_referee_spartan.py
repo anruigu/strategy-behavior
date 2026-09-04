@@ -443,6 +443,13 @@ def main() -> int:
     # decisive experiment in the catalogue, and until now the sampling runner
     # could not reach them at all.
     SP.register_holecross()
+    # AND the 2026-09-03 hole-fill family, kept out of `register_all` for the
+    # same reason as the two above: `--games all` must go on meaning ALL19.
+    # Named explicitly on `--games`, these now resolve -- 19 `hf_*_nerfed`
+    # cells and 7 `hf_*_checker` ones, which are the whole checker and nerfed
+    # columns of `results/0903_hole_type` and were unreachable from the
+    # sampling runner until now.
+    SP.register_holefill()
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", nargs="+", default=list(SP.ALL19))
@@ -703,35 +710,18 @@ def main() -> int:
 
     # Calls per episode are measured rather than guessed with a scripted seat:
     # it is free and cells differ sharply in how many decisions they request.
-    from test_referee_games import Scripted
+    #
+    # ROUTED THROUGH `SP._factory` RATHER THAN RE-IMPLEMENTED. This block used
+    # to carry its own copy of the family dispatch and drifted from the real
+    # one twice: once when `hx_*` arrived (the atlas bot raises `_hide` before
+    # counting a decision) and again when `hf_*` did. Both times the copy was
+    # the thing that was missing a branch, and both times the symptom was a
+    # crash in the COST ESTIMATE of a wave whose sampling path was fine. One
+    # dispatch, so a new family is routed everywhere the moment `_factory`
+    # knows about it.
     per_episode = {}
     for g in games:
-        if SP.base_cell(g.NAME) in SP.GENERATED8:
-            # Generated cells use a different bracket vocabulary; the atlas
-            # Scripted seat has no handlers for it and would fail before it
-            # could count decisions.
-            from hackable_games.bots import Scripted as GeneratedScripted
-            scripted = GeneratedScripted("honest", 0)
-        elif SP.base_cell(g.NAME) in SP.TEXTARENA10:
-            from hackable_games.bots_textarena import (
-                Scripted as TextarenaScripted)
-            scripted = TextarenaScripted("honest", 0)
-        elif SP.base_cell(g.NAME) in SP.NATIVE9:
-            from hackable_games.bots_native9 import (
-                Scripted as NativeScripted)
-            scripted = NativeScripted("honest", 0)
-        elif SP.base_cell(g.NAME) in SP.HOLECROSS8:
-            # Same omission as in `referee_spartan._factory`: without this the
-            # calls-per-episode probe runs the atlas bot against a hole-cross
-            # cell, which raises before it can count a single decision.
-            from hackable_games.bots_holecross import (
-                Scripted as HoleCrossScripted)
-            # Third positional is the GAME -- see the note in
-            # `referee_spartan._factory`. Without it the bot plays every
-            # hole-cross cell as the checker variant.
-            scripted = HoleCrossScripted("honest", 0, g)
-        else:
-            scripted = Scripted("honest")
+        scripted = SP._factory(g, "honest")()
         ep = g.run(scripted, 0, a.arm)
         # Only the seats the MODEL holds are billed. Under --opponents audit
         # that is usually one of N, so counting every seat's decisions would

@@ -192,6 +192,35 @@ def gate_deterministic(g) -> Tuple[bool, str]:
     return ok, "seeded" if ok else "same seed produced different episodes"
 
 
+def gate_escapes() -> Tuple[bool, str]:
+    r"""No prompt contains an unrendered escape -- a literal backslash-n.
+
+    Caught by the first smoke run and by no gate, which is why it is one now.
+    The notices are multi-line quoted speech, and five of them were written
+    through a shell heredoc that passes a backslash through verbatim, so the
+    Python source held a two-character escape rather than a newline. Every
+    player on those five cells read `anybody lands\n   more than the share`
+    -- inside the one paragraph the whole experiment asks it to reason about.
+
+    Nothing else notices, which is the point: the prompt is still a valid
+    prompt, the arms are still byte-identical, the exploit still pays, the
+    detectors still fire. REACHABLE, CLEAN, PAIRED, PAYS, DETERS and LEAK all
+    passed on all five.
+    """
+    bad: List[str] = []
+    for g in HF.HOLEFILL:
+        for arm in ("hole", "nohole"):
+            seen, _ = taped(g, bot(g, "exploit", 3), arm, 3)
+            for line in seen:
+                i = line.find(chr(92) + "n")
+                if i >= 0:
+                    bad.append(f"{g.NAME}/{arm}: "
+                               f"...{line[max(0, i - 70):i + 40]}...")
+                    break
+    return (not bad), ("no prompt carries an unrendered escape"
+                       if not bad else bad[0])
+
+
 def gate_leak() -> Tuple[bool, str]:
     """Family-wide: sweep every prompt either arm emits for the answer key."""
     bad: List[str] = []
@@ -248,9 +277,11 @@ GATES = [("REACHABLE", gate_reachable), ("CLEAN", gate_clean),
 
 def main() -> int:
     fails = 0
-    ok, detail = gate_leak()
-    print(f"[{'PASS' if ok else 'FAIL'}] LEAK  {detail}\n")
-    fails += (not ok)
+    for nm, fn in (("ESCAPES", gate_escapes), ("LEAK", gate_leak)):
+        ok, detail = fn()
+        print(f"[{'PASS' if ok else 'FAIL'}] {nm:8s} {detail}")
+        fails += (not ok)
+    print()
     for g in HF.HOLEFILL:
         note = "  [not on the roster: HOLEFILL_UNPAID]" \
             if g.NAME in HF.HOLEFILL_UNPAID else ""

@@ -454,6 +454,7 @@ def games_of(names: Sequence[str]) -> List[RG.RefereeGame]:
     # about to spend frontier-model money on.
     register_native9()
     register_holecross()
+    register_holefill()
     unknown = [n for n in names if n not in RG.BY_NAME]
     if unknown:
         raise SystemExit(f"unknown cell(s) {unknown}; have {sorted(RG.BY_NAME)}")
