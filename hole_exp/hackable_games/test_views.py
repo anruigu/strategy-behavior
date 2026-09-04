@@ -14,11 +14,13 @@ Six gates, and NO LEAK is the one that matters most:
              decorative: if a legal move exists that the view does not carry,
              this gate cannot finish the game without falling back.
 
-  NO LEAK    no payload the study server can hand a live client contains
-             hole_type, kinds, hard, detectors, blurb, gain, margin or the
-             family label. Checked against real payloads from a real run, not
-             against the code. This is the gate that stops a refactor from
-             quietly turning the study into a reading comprehension test.
+  NO LEAK    live-run payloads must not carry hole_type, kinds, hard,
+             detectors, blurb, gain, margin or the family label. The
+             catalogue may name hole KINDS via variants (operator debugging);
+             that is checked separately. Checked against real payloads from
+             a real run, not against the code. This is the gate that stops a
+             refactor from quietly turning the study into a reading
+             comprehension test.
 
   COPY       no player-visible text in play/ names a defect. Comments are
              stripped first -- they say "hole" constantly, on purpose.
@@ -62,6 +64,9 @@ FORBIDDEN_TEXT = ("broken_checker", "self_report", "local_ledger",
                   "private_channel", "metadata_channel", "unvalidated_trade",
                   "convention_channel", "false_miss", "sunk_denial",
                   "hole_type", "detector")
+CATALOGUE_FORBIDDEN_ROW_KEYS = ("family", "author", "blurb", "hole_type")
+CATALOGUE_ALLOWED_TEXT = ("broken_checker", "nerfed_opponent",
+                          "broken verifier", "nerfed opponent")
 
 
 # ---------------------------------------------------------------- players --
@@ -153,7 +158,7 @@ def gate_no_leak() -> int:
 
     tmp = Path(tempfile.mkdtemp(prefix="plays-leak-"))
     P.COLLECTOR = PlayCollector(tmp)
-    payloads = []
+    live_payloads = []
 
     run = P.Run("gate", "gen_quiet_sonar", "hole", 2, "honest", 0.0,
                 P.COLLECTOR, ui_aids=["board:gen_quiet_sonar"])
@@ -161,7 +166,7 @@ def gate_no_leak() -> int:
     run.start_next()
 
     h = P.Handler.__new__(P.Handler)          # methods only, no socket
-    payloads.append(P.public_catalogue())
+    catalogue = P.public_catalogue()
 
     guard = 0
     while guard < 400:
@@ -170,9 +175,9 @@ def gate_no_leak() -> int:
         if s is None:
             break
         pay = h._play_payload(run)
-        payloads.append(pay)
+        live_payloads.append(pay)
         if s.done.is_set():
-            payloads.append(h._settle(run))
+            live_payloads.append(h._settle(run))
             if run.remaining <= 0:
                 break
             run.start_next()
@@ -196,18 +201,57 @@ def gate_no_leak() -> int:
     P.RUNS.pop(run.id, None)
 
     bad = 0
-    blob = json.dumps(payloads)
+    live_blob = json.dumps(live_payloads)
     for key in FORBIDDEN_KEYS:
-        if f'"{key}"' in blob:
-            print(f"  FAIL leak: payloads carry key {key!r}")
+        if f'"{key}"' in live_blob:
+            print(f"  FAIL leak: live payloads carry key {key!r}")
             bad += 1
-    low = blob.lower()
+    live_low = live_blob.lower()
     for word in FORBIDDEN_TEXT:
-        if word in low:
-            print(f"  FAIL leak: payloads carry the string {word!r}")
+        if word in live_low:
+            print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
+
+    if len(catalogue) != 24:
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected 24")
+        bad += 1
+    hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
+    if hf_ids:
+        print(f"  FAIL leak: catalogue row id(s) start with hf_: {hf_ids}")
+        bad += 1
+    debug_ok = any(
+        v.get("cell", "").startswith("hf_")
+        and v.get("label") == "nerfed opponent"
+        for row in catalogue
+        for v in row.get("variants", [])
+    )
+    if not debug_ok:
+        print("  FAIL leak: no catalogue variant with hf_ cell and "
+              "'nerfed opponent' label")
+        bad += 1
+    for row in catalogue:
+        for key in CATALOGUE_FORBIDDEN_ROW_KEYS:
+            if key in row:
+                print(f"  FAIL leak: catalogue row {row['id']!r} carries "
+                      f"{key!r}")
+                bad += 1
+
+    cat_blob = json.dumps(catalogue)
+    for key in FORBIDDEN_KEYS:
+        if f'"{key}"' in cat_blob:
+            print(f"  FAIL leak: catalogue carries key {key!r}")
+            bad += 1
+    cat_low = cat_blob.lower()
+    for word in FORBIDDEN_TEXT:
+        if word in CATALOGUE_ALLOWED_TEXT:
+            continue
+        if word in cat_low:
+            print(f"  FAIL leak: catalogue carries the string {word!r}")
+            bad += 1
+
     if not bad:
-        print(f"  ok   no leak: {len(payloads)} payloads clean "
+        print(f"  ok   no leak: {len(live_payloads)} live payload(s) clean, "
+              f"catalogue {len(catalogue)} row(s) "
               f"({len(FORBIDDEN_KEYS)} keys, {len(FORBIDDEN_TEXT)} strings)")
     return bad
 

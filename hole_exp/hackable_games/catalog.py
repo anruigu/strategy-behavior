@@ -30,12 +30,15 @@ WHY THE HOLE-FILL FAMILY IS IN THE DICT BUT NOT IN THE DEFAULT VIEW. This one
 dict feeds two servers with opposite requirements. `server.py` is the
 experimenter arena and names holes out loud, so a cell whose whole identity is
 "ref_estate, but with a nerfed opponent" is exactly what belongs on its menu.
-`play_server.py` is a BLIND human-study client: a participant there must not
-learn that a defect exists at all, and a menu row reading "Estate -- the
-co-investors' books" alongside plain "Estate" would say it without a word of
-hole vocabulary. So `deduped()` drops the family and `public_list()` hides it
-behind `include_holefill=True`, which the blind client never passes. The
-default view is the study's menu and must stay 24 rows with the same 24 ids.
+`play_server.py` is the human-study client: live-run payloads must not reveal
+that a defect exists, and a menu row reading "Estate -- the co-investors'
+books" alongside plain "Estate" would say it without a word of hole vocabulary.
+So `deduped()` drops the family and `public_list()` hides it behind
+`include_holefill=True`, which lists hole-fill cells as their own tiles.
+`play_server.py` keeps the default 24-row menu (same 24 ids) but now forwards
+the `variants` field on those rows so an operator debugging the study build can
+pick a nerfed cell the same way the arena does; it still does not call
+`include_holefill=True`.
 """
 from __future__ import annotations
 
@@ -172,7 +175,7 @@ for g in RG.GAMES:
 #
 # The family label MUST be `hole-fill` and must never be `referee`.
 # `_selfcheck` picks its scripted seat by family, and `test_referee_games`'s
-# `Scripted` crashes on 12 of these 19 while `bots.Scripted` runs all of them:
+# `Scripted` crashes on 9 of these 15 while `bots.Scripted` runs all of them:
 # a mislabelled family would turn the self-check into a wall of failures that
 # say nothing about the tables it exists to police.
 SP.register_all()
@@ -188,7 +191,7 @@ for g in HF.HOLEFILL:
     GAMES[g.NAME] = {
         "id": g.NAME, "title": g.TITLE, "family": "hole-fill",
         "author": g.SOURCE, "n_players": g.N_PLAYERS,
-        # 17 of the 19 declare no ROUNDS of their own -- a hole-fill cell runs
+        # 13 of the 15 declare no ROUNDS of their own -- a hole-fill cell runs
         # its substrate's episode -- so the substrate is the only place the
         # number can honestly come from. The two that do declare one agree
         # with their substrate, so reading it here costs nothing and cannot
@@ -198,7 +201,7 @@ for g in HF.HOLEFILL:
         # The substrate's teaser, verbatim. These TITLEs are descriptive
         # ("Estate -- the co-investors' books") but a card still needs to say
         # what the game IS, and the substrate's line already does. Writing a
-        # new one per cell would be 19 fresh chances to break the rule at the
+        # new one per cell would be 15 fresh chances to break the rule at the
         # head of `TEASERS`: a teaser never names a check. Hole-fill ids are
         # deliberately absent from `TEASERS` itself for the same reason --
         # there is nothing to say there that the substrate has not said.
@@ -425,8 +428,10 @@ def deduped() -> List[str]:
     """Cell ids with the duplicates removed, MARSHAL-ready cells first.
 
     The hole-fill family is dropped here as well as the duplicates, which is
-    what keeps the blind study client's menu what it was: see the note at the
-    head of this file. `public_list(include_holefill=True)` is the way back in.
+    what keeps the study client's default menu at 24 rows: see the note at the
+    head of this file. `public_list(include_holefill=True)` lists hole-fill
+    cells as their own tiles; `play_server.py` instead forwards `variants` on
+    those 24 rows for operator debugging.
     """
     order = {"generated": 0, "textarena": 1, "referee": 2}
     ids = [g for g in GAMES
@@ -460,12 +465,12 @@ def public_list(include_duplicates: bool = False,
     complete roster.
 
     The hole-fill family is dropped by default too, and for a stricter reason
-    than tidiness. This list is the menu of BOTH `server.py`, the experimenter
-    arena that names holes out loud, and `play_server.py`, the blind human
-    study whose participants must not learn a defect exists -- and a row
-    reading "Estate -- the co-investors' books" next to plain "Estate" tells
-    them. Only the arena passes `include_holefill=True`. The default is the
-    study's menu and is expected to stay exactly 24 rows with 24 stable ids.
+    than tidiness. A row reading "Estate -- the co-investors' books" next to
+    plain "Estate" tells a participant a defect exists without a word of hole
+    vocabulary. Only the arena passes `include_holefill=True` to list hole-fill
+    cells as their own tiles. The default is the study's menu and is expected
+    to stay exactly 24 rows with 24 stable ids; `play_server.py` keeps that
+    id list but forwards each row's `variants` for operator debugging.
     """
     if include_duplicates:
         keep = [g for g in GAMES
@@ -487,10 +492,11 @@ def public_list(include_duplicates: bool = False,
         row["duplicate_of"] = DUPLICATES.get(gid, {}).get("canonical")
         # UNLIKE THE TWO ABOVE, this one DOES carry hole information -- a
         # label reading "broken verifier" is the answer to the game. It rides
-        # along anyway because `play_server.public_catalogue` whitelists the
-        # keys it forwards rather than blacklisting, so a key added here
-        # reaches the arena and stops at the blind client by construction.
-        # Anything else reading this list before play must whitelist too.
+        # along for the arena and for `play_server.public_catalogue`, which
+        # forwards only kind/label/cell/source/title on the 24 base rows
+        # (operator debugging) while still dropping family/author/blurb/
+        # hole_type. Anything else reading this list before play must
+        # whitelist too.
         row["variants"] = variants(gid)
         out.append(row)
     order = {"generated": 0, "textarena": 1, "referee": 2}

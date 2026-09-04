@@ -23,13 +23,12 @@ this is the human arm, and the two are deliberately built to be comparable.
 | spoiler control | `stuck? reveal where the hole is` | not present |
 | end screen | detector table, hole note, `gain` | own score |
 | family label | "model-written" / "hand-built" on every card | not sent |
+| hole-kind picker | pill buttons, verbatim labels | same buttons on the 24-row menu (operator debugging); hole-fill cells are not extra tiles |
 | persistence | none, reaped after an hour | JSONL per play |
 | unit of play | one episode | a **run** of K episodes with memory |
 | identity | none | a name, once |
 
-Every row of that table is the same decision made twice: the arena tells the
-experimenter everything because they already know, and the study tells the
-player nothing because whether they work it out **is the measurement**.
+Live-run payloads and memory still withhold hole_type / kinds / blurb / family / gain. The catalogue is the exception: it now forwards `variants` with the arena labels (`broken verifier` / `nerfed opponent`) so an operator can launch a nerfed cell from the study UI. Whether a naive player finds the defect is no longer what this page measures while those labels are on.
 
 The two builds share `server.Session`, `catalog.py` and the engines. There is
 one session driver, so the two cannot drift into two different games.
@@ -40,11 +39,21 @@ one session driver, so the two cannot drift into two different games.
 counterfactual — a non-zero `gain` *is* the news that the hole paid), `margin`,
 `blurb`, `family`, `author`.
 
+**Exception:** the study catalogue includes a per-card variant selector with
+the same labels as the arena (`broken verifier` / `nerfed opponent`). That is
+an operator-debugging affordance only; live-run payloads and memory still
+withhold `hole_type`, kinds, blurb, family, and gain.
+
+Hole-fill cells are not extra tiles on the menu. They are reached through the
+base row's `variants` array.
+
 This is not a convention, it is a gate. `test_views.py` drives a real run
-through the real handler and greps every payload the client would have
-received for all of it, plus the literal strings (`broken_checker`,
-`false_miss`, …). A refactor that starts sending the family label fails the
-suite rather than quietly turning the study into a reading-comprehension test.
+through the real handler and greps live-run payloads for all of the above, plus
+the literal strings (`broken_checker`, `false_miss`, …). The catalogue is
+checked separately — variant kind/label strings are allowed there, everything
+else on the forbidden list is not. A refactor that starts sending the family
+label in a live payload fails the suite rather than quietly turning the study
+into a reading-comprehension test.
 
 A second gate reads the player-visible text of `play/` — comments stripped —
 and fails on `broken`, `defect`, `hole`, `exploit`, `hack`, `cheat`, `flaw`,
@@ -149,10 +158,31 @@ Two things worth knowing before you analyse it:
 
 ## Deploying it
 
-The model to copy is `witness-plays.flt.build`: a plain Python process bound to
-localhost, a Caddy vhost in front doing TLS, and a DNS record. Nothing else.
+**https://strategy-behavior.flt.build deploys from a git commit, not from the
+working tree and not from `/shared/allie/plays`.** Measured 2026-09-04:
 
-On the box:
+- every collected play carries `frontend_build`, and on the live site that
+  field is a **40-character commit SHA of this repo** — `5fb5c279…` and
+  `18eeafad…` both resolve with `git log`. The `BUILD` constant in this file's
+  `play_server.py` is a literal (`"play-2"`), so the serving process is not
+  running this checkout; something in the deploy path substitutes the SHA.
+  Nothing in this repo does that substitution, so the mechanism lives
+  outside it.
+- it *does* share this filesystem: `HG_DATA_DIR=/shared/allie/plays_data`
+  collects real plays there.
+- it does **not** read `/shared/allie/plays`. `_static` re-reads from disk on
+  every request, so a file written there would appear with no restart; a probe
+  dropped into `play/ui/` returned 404 while `/ui/sonar.js` returned 200.
+
+**Consequence: uncommitted work is never live, and a `kubectl rollout restart`
+only re-deploys whatever commit is current.** To ship a change to the study
+client, commit and push it — staging into `/shared/allie/plays` does nothing
+for the public site.
+
+theseus does not deploy this hostname.
+
+Locally, the model to copy is a plain Python process bound to localhost with
+Caddy in front doing TLS:
 
 ```bash
 HG_SHARED=1 HG_DATA_DIR=/var/lib/plays \
@@ -163,30 +193,15 @@ HG_SHARED=1 HG_DATA_DIR=/var/lib/plays \
 plays). `/api/hint` does not exist in this build at all, and static serving is
 path-checked against `play/`.
 
-The Caddy vhost, for whoever owns the host — `witness-plays.flt.build`
-resolves to `44.249.206.251` and is served by Caddy on that machine, but the
-vhost file and the DNS record are host config that is not in any repo, so this
-is an ask rather than something to merge:
-
-```
-plays.flt.build {
-    reverse_proxy 127.0.0.1:8801
-}
-```
-
-plus an A record for `plays.flt.build` pointing at the same box.
-
 **Know what you are deploying.** `ThreadingHTTPServer` is a standard-library
-dev server: no TLS, no rate limiting, no request timeouts. Behind Caddy on a
-private-ish hostname that is acceptable for a small study, and it is the same
-posture witness-plays already runs (its Flask app is on the Werkzeug dev server
-under the same Caddy). What it is *not* is safe to bind to `0.0.0.0` on a
-public interface with no proxy.
+dev server: no TLS, no rate limiting, no request timeouts. Behind Caddy that
+is acceptable for a small study. What it is *not* is safe to bind to
+`0.0.0.0` on a public interface with no proxy.
 
-**There is no authentication**, on either site. The hostname is the whole gate.
-If participants will be outside the team, put a shared passphrase in front of
-it — Caddy `basic_auth` is two lines — and add a consent line to the name
-gate, which currently says only that moves and timings are recorded.
+**There is no authentication.** The hostname is the whole gate. If participants
+will be outside the team, put a shared passphrase in front of it — Caddy
+`basic_auth` is two lines — and add a consent line to the name gate, which
+currently says only that moves and timings are recorded.
 
 ## Gates
 
@@ -196,8 +211,9 @@ gate, which currently says only that moves and timings are recorded.
 PARSES / PLAYABLE   every human decision in a full episode of each boarded
                     cell produces a view, and the episode can be driven end to
                     end from the views alone with zero unparsed moves
-NO LEAK             41 real payloads from a real run, checked against 13
-                    forbidden keys and 11 forbidden strings
+NO LEAK             live-run payloads from a real run checked against 13
+                    forbidden keys and 11 forbidden strings; catalogue
+                    checked separately (variant kind/label strings allowed)
 COPY                player-visible text in play/ names no defect
 JS                  every client script parses (esprima; no build step here,
                     so a stray brace would otherwise ship silently)

@@ -34,6 +34,12 @@ of what they did and what it scored. `0829-repeated-play-memory.md` sweeps
 exactly this for models. `p_caught` is available here too and defaults to 0,
 which is the clean arm: with no audit there is nothing announced, so anything
 a player learns, they learned from the score.
+
+The catalogue now forwards `variants` (kind/label/cell/source/title only) on
+each of the 24 base rows so an operator debugging the study build can pick a
+nerfed hole-fill cell from the UI the same way the experimenter arena does.
+Live-run payloads from `/api/state`, moves, and memory still must not carry
+hole_type, kinds, blurb, family, or gain. The debrief route is unchanged.
 """
 from __future__ import annotations
 
@@ -63,7 +69,7 @@ from collector import PlayCollector, player_slug  # noqa: E402
 import referee_repeat as RR                     # noqa: E402
 
 PLAY_DIR = HERE / "play"
-BUILD = "play-1"
+BUILD = "play-2"
 
 SHARED = os.environ.get("HG_SHARED") == "1"
 # The debrief is the ONLY route that will name a hole, it is off unless asked
@@ -79,6 +85,12 @@ RUN_PLAYS = {"ref_battleship": 3, "ref_sidebar": 4,
 DEFAULT_PLAYS = 4
 
 TOKEN = re.compile(r"\[\s*([a-z_]+)\s*(?::\s*([^\]]*))?\]", re.I)
+
+_VARIANT_KEYS = ("kind", "label", "cell", "source", "title")
+
+
+def _board_gid(gid: str) -> str:
+    return catalog.GAMES[gid].get("base") or gid
 
 
 # ------------------------------------------------------------------ session --
@@ -103,7 +115,7 @@ class PlaySession(server.Session):
         if pid == self.seat:
             self.collector.record_move(
                 self.play_id, phase=phase, reply=reply, prompt=prompt,
-                view=views.build(self.gid, phase, prompt),
+                view=views.build(_board_gid(self.gid), phase, prompt),
                 source=self._via)
         return reply
 
@@ -136,7 +148,7 @@ class PlaySession(server.Session):
             out["pending"] = {
                 "phase": pending["phase"],
                 "prompt": pending["prompt"],
-                "view": views.build(self.gid, pending["phase"],
+                "view": views.build(_board_gid(self.gid), pending["phase"],
                                     pending["prompt"]),
             }
         if st["done"]:
@@ -321,14 +333,22 @@ def public_catalogue() -> List[dict]:
     `family` survives it and has to go here: the README says in plain text
     that all eight generated cells are broken_checker, so a card tagged
     "model-written" is a partial answer key for anyone who has read it.
+
+    Each row carries `variants` (kind/label/cell/source/title) so an operator
+    can launch hole-fill cells from the study UI; labels are verbatim from
+    `catalog.variants()`.
     """
     out = []
     for c in catalog.public_list():
-        out.append({"id": c["id"], "title": c["title"],
+        gid = c["id"]
+        bg = _board_gid(gid)
+        out.append({"id": gid, "title": c["title"],
                     "teaser": c["teaser"], "n_players": c["n_players"],
                     "rounds": c["rounds"],
-                    "board": c["id"] in views.ADAPTERS,
-                    "plays": RUN_PLAYS.get(c["id"], DEFAULT_PLAYS)})
+                    "board": bg in views.ADAPTERS,
+                    "plays": RUN_PLAYS.get(gid) or RUN_PLAYS.get(bg, DEFAULT_PLAYS),
+                    "variants": [{k: v[k] for k in _VARIANT_KEYS}
+                                 for v in catalog.variants(gid)]})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
@@ -479,7 +499,9 @@ class Handler(BaseHTTPRequestHandler):
         arm = body.get("arm", "hole")
         if arm not in ("hole", "nohole"):
             return self._json({"error": "bad arm"}, 400)
-        plays = int(body.get("plays") or RUN_PLAYS.get(gid, DEFAULT_PLAYS))
+        bg = _board_gid(gid)
+        plays = int(body.get("plays") or RUN_PLAYS.get(gid)
+                      or RUN_PLAYS.get(bg, DEFAULT_PLAYS))
         plays = max(1, min(plays, 12))
         p_caught = float(body.get("p_caught") or
                          os.environ.get("HG_P_CAUGHT") or 0.0)
@@ -499,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
                 prev.kill()
 
         r = Run(player, gid, arm, plays, body.get("bots", "honest"), p_caught,
-                COLLECTOR, ui_aids=([f"board:{gid}"] if gid in views.ADAPTERS
+                COLLECTOR, ui_aids=([f"board:{bg}"] if bg in views.ADAPTERS
                                     else []))
         with RLOCK:
             RUNS[r.id] = r

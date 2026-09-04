@@ -7,10 +7,11 @@
 // text and a composer. That fallback is not a degraded mode -- fifteen of the
 // nineteen cells have no bespoke board yet and are played entirely that way.
 //
-// The client is structurally incapable of leaking a hole: the server never
-// sends it one. There is no hole_type, no detector table and no `gain` in any
-// payload this file can receive while a run is live, so there is nothing to
-// find in devtools and nothing to accidentally render.
+// Catalogue rows may carry a `variants` array for operator debugging on
+// /api/games; live-run payloads still must not name the hole. There is no
+// hole_type, no detector table and no `gain` in any payload this file can
+// receive while a run is live, so there is nothing to find in devtools and
+// nothing to accidentally render mid-play.
 
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts) => (await fetch(path, opts)).json();
@@ -21,7 +22,7 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-let RUN = null;        // {run_id, game, title, plays}
+let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
 
@@ -47,6 +48,10 @@ $('namebox').addEventListener('submit', async (e) => {
   show('view-list');
 });
 
+function variantsOf(c) {
+  return Array.isArray(c.variants) ? c.variants : [];
+}
+
 // ── catalogue ───────────────────────────────────────────────────────
 async function loadGames() {
   GAMES = (await api('/api/games')).games || [];
@@ -55,24 +60,49 @@ async function loadGames() {
   GAMES.forEach(c => {
     const d = document.createElement('div');
     d.className = 'card';
+    const vs = variantsOf(c);
+    const row = vs.length
+      ? vs.map((v, i) =>
+          `<button class="variant ${v.source === 'filled' ? 'filled' : 'built'}" ` +
+          `data-variant="${i}">${esc(v.label)}</button>`
+        ).join('')
+      : '<span class="novariant">no other version</span>';
     d.innerHTML =
       `<h3>${esc(c.title)}</h3>
        <div class="blurb">${esc(c.teaser || '')}</div>
        <div class="foot">
          <span>${c.n_players} players &middot; ${esc(String(c.rounds))} rounds</span>
          <span>${c.plays} plays</span>
-       </div>`;
-    d.onclick = () => startRun(c);
+       </div>
+       <div class="variants">${row}</div>`;
+    d.onclick = () => startRun(vs.length ? vs[0].cell : c.id, c, vs.length ? vs[0] : null);
+    d.querySelectorAll('button.variant').forEach(b => {
+      b.onclick = (e) => {
+        e.stopPropagation();
+        const i = Number(b.dataset.variant);
+        startRun(vs[i].cell, c, vs[i]);
+      };
+    });
     g.appendChild(d);
   });
 }
 
 // ── run loop ────────────────────────────────────────────────────────
-async function startRun(card) {
-  const st = await post('/api/run/start', { player: PLAYER, game: card.id });
+async function startRun(gid, card, variantOrNull) {
+  const st = await post('/api/run/start', { player: PLAYER, game: gid });
   if (st.error) { alert(st.error); return; }
-  RUN = { run_id: st.run.run_id, game: card.id, title: card.title,
-          plays: st.run.plays };
+  RUN = {
+    run_id: st.run.run_id, game: gid,
+    title: (variantOrNull && variantOrNull.title) || card.title,
+    plays: st.run.plays, variant: variantOrNull || null
+  };
+  $('play-title').textContent = RUN.title;
+  const vt = $('play-variant');
+  const variant = variantOrNull || null;
+  vt.textContent = variant ? variant.label : '';
+  vt.className = variant
+    ? `vtag ${variant.source === 'filled' ? 'filled' : 'built'}`
+    : 'vtag hidden';
   show('view-play');
   paint(st);
 }
