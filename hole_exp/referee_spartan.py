@@ -397,12 +397,21 @@ HOLEFILL26: Tuple[str, ...] = (
     "hf_staghunt_checker", "hf_ipd3_checker", "hf_winasmuch_checker",
     "hf_blindauction_checker")
 
-# `hf_hanabi_nerfed` is built and gated and does NOT ship: `ref_hanabi`'s
-# exploit runs at a loss against scripted partners, so there is no temptation
-# for a deterrent to leave unpunished and PAYS cannot pass. This is the
-# roster to sample -- same shape as NATIVE8 against NATIVE9.
-HOLEFILL25: Tuple[str, ...] = tuple(
-    n for n in HOLEFILL26 if n != "hf_hanabi_nerfed")
+# Two of the 26 are built and gated and do NOT ship, each for a measured
+# reason recorded next to it in `engines_holefill`:
+#
+#   hf_hanabi_nerfed        `ref_hanabi`'s exploit runs at a loss against
+#                           scripted partners, so there is no temptation for a
+#                           deterrent to leave unpunished (HOLEFILL_UNPAID).
+#   hf_letterauction_nerfed the fine is levied and never surfaced: the cell's
+#                           only detector fires on the last decision of the
+#                           episode, so there is no later prompt to carry the
+#                           finding (HOLEFILL_LATE). 12 levied, 0 shown.
+#
+# This is the roster to sample -- same shape as NATIVE8 against NATIVE9.
+HOLEFILL24: Tuple[str, ...] = tuple(
+    n for n in HOLEFILL26
+    if n not in ("hf_hanabi_nerfed", "hf_letterauction_nerfed"))
 
 
 def register_holefill() -> None:

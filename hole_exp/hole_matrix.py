@@ -193,10 +193,16 @@ def holefill_index() -> Dict[Tuple[str, str], Dict]:
     import engines_holefill as HF
     out = {}
     for g in HF.HOLEFILL:
+        off = (("the substrate's exploit runs at a loss before any deterrent "
+                "exists, so there is nothing for one to deter"
+                if g.NAME in HF.HOLEFILL_UNPAID else "")
+               or ("the fine is levied and never surfaced: the only detector "
+                   "fires on the last decision of the episode, so no later "
+                   "prompt can carry the finding"
+                   if g.NAME in HF.HOLEFILL_LATE else ""))
         out[(g.BASE, g.KIND)] = {
-            "cell": g.NAME, "detector": g.HARD[0],
-            "on_roster": g.NAME not in HF.HOLEFILL_UNPAID,
-            "mode": getattr(g, "MODE", None)}
+            "cell": g.NAME, "detector": g.HARD[0], "off_roster": off,
+            "on_roster": not off, "mode": getattr(g, "MODE", None)}
     return out
 
 
@@ -240,9 +246,8 @@ def classify(c: str, kind: str, ev: Dict, fill: Dict) -> Dict:
     if (c, kind) in fill:
         f = fill[(c, kind)]
         tail = ("" if f["on_roster"] else
-                " -- built and gated, and OFF the sampling roster because the "
-                "substrate's exploit runs at a loss before any deterrent "
-                "exists, so there is nothing for one to deter")
+                " -- built and gated, and OFF the sampling roster: "
+                + f["off_roster"])
         mode = (f" ({f['mode']} enforcement)" if f["mode"] else "")
         return {"state": "filled",
                 "why": f"`{f['cell']}`{mode}, HARD detector "

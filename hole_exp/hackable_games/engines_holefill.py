@@ -964,3 +964,20 @@ HOLEFILL: Tuple[RG.RefereeGame, ...] = NERFED19 + CHECKER7
 # leave unpunished. Named here rather than deleted so that "hanabi has no
 # nerfed cell" reads as a measured fact with a reason attached.
 HOLEFILL_UNPAID: Tuple[str, ...] = ("hf_hanabi_nerfed",)
+
+# Built, gated, and OFF the sampling roster for a SECOND reason: the fine is
+# levied and the player never sees it.
+#
+# A `challenge` deterrent is delivered as a FINDING on the seat's next prompt,
+# and `ta_letterauction`'s only HARD detector fires on the submitted word --
+# the last decision of the episode. There is no next prompt, so the seat is
+# docked 34 points at settlement and is never told why. Measured over 12
+# seeds of scripted exploitation: 12 fines levied, 0 surfaced. Every other
+# challenge cell surfaces 75-100%.
+#
+# That is fatal to what the cell is for. A nerfed hole is discovered by
+# TESTING a threat and seeing nothing happen, and a seat that cannot see the
+# `nohole` consequence either cannot tell the two arms apart except through a
+# final number with no explanation attached. Off the menu, reachable by name,
+# and recorded rather than quietly sampled.
+HOLEFILL_LATE: Tuple[str, ...] = ("hf_letterauction_nerfed",)

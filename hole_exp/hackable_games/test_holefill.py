@@ -185,6 +185,38 @@ def gate_deters(g) -> Tuple[bool, str]:
                      f"to seat 0")
 
 
+def gate_surfaced(g) -> Tuple[bool, str]:
+    """A fine the player never sees is not a deterrent it can learn from.
+
+    `challenge` cells only. The finding is delivered on the seat's NEXT
+    prompt, so a detector that fires on the last decision of the episode
+    levies a fine that nothing carries -- the seat is docked at settlement and
+    told nothing. `ta_letterauction` is exactly that shape (its only detector
+    is the submitted word) and surfaced 0 of 12; every other challenge cell
+    surfaces 75-100%. The floor is half, because the remainder is the ordinary
+    case of a violation on a seat's final turn and is not a defect.
+    """
+    if getattr(g, "MODE", "") != "challenge":
+        return True, "not a challenge cell"
+    levied = shown = 0
+    for s in SEEDS:
+        seen: List[str] = []
+        b = bot(g, "exploit", s)
+
+        def wrap(pid, phase, prompt, _b=b, _seen=seen):
+            _seen.append(prompt)
+            return _b(pid, phase, prompt)
+
+        ep = g.run(wrap, s, "nohole")
+        levied += (ep.extras.get("_holefill", {}).get("fines") or {}).get(0, 0)
+        shown += sum(p.count("FINDING --") for p in seen)
+    if not levied:
+        return False, "no fine was levied at all over 12 seeds"
+    frac = shown / levied
+    return frac >= 0.5, (f"{shown}/{levied} fines reached a prompt "
+                         f"({frac:.0%})")
+
+
 def gate_deterministic(g) -> Tuple[bool, str]:
     a = play(g, bot(g, "exploit", 5), "hole", 5)
     b = play(g, bot(g, "exploit", 5), "hole", 5)
@@ -271,7 +303,7 @@ def gate_blurb(g) -> Tuple[bool, str]:
 
 GATES = [("REACHABLE", gate_reachable), ("CLEAN", gate_clean),
          ("PAIRED", gate_paired), ("PAYS", gate_pays),
-         ("DETERS", gate_deters),
+         ("DETERS", gate_deters), ("SURFACED", gate_surfaced),
          ("DETERMINISTIC", gate_deterministic), ("BLURB", gate_blurb)]
 
 
@@ -283,8 +315,9 @@ def main() -> int:
         fails += (not ok)
     print()
     for g in HF.HOLEFILL:
-        note = "  [not on the roster: HOLEFILL_UNPAID]" \
-            if g.NAME in HF.HOLEFILL_UNPAID else ""
+        off = (("HOLEFILL_UNPAID" if g.NAME in HF.HOLEFILL_UNPAID else "")
+               or ("HOLEFILL_LATE" if g.NAME in HF.HOLEFILL_LATE else ""))
+        note = f"  [not on the roster: {off}]" if off else ""
         print(f"=== {g.NAME}  ({g.HOLE_TYPE} on {g.BASE}){note}")
         for name, fn in GATES:
             good, detail = fn(g)
@@ -292,8 +325,10 @@ def main() -> int:
             # off the sampling roster for exactly that reason; counting it as
             # a failure here would leave the suite permanently red and train
             # everybody to ignore it.
-            waived = (name in ("PAYS", "DETERS")
-                      and g.NAME in HF.HOLEFILL_UNPAID)
+            waived = ((name in ("PAYS", "DETERS")
+                       and g.NAME in HF.HOLEFILL_UNPAID)
+                      or (name == "SURFACED"
+                          and g.NAME in HF.HOLEFILL_LATE))
             fails += (not good and not waived)
             tag = "WAIVED" if (waived and not good) else \
                   ("PASS" if good else "FAIL")
