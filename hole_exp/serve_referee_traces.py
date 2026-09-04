@@ -473,14 +473,23 @@ COND = r"(neutral|winmax|win)"
 # whole question is whether two seats wrote the same thing. Without the group
 # here every one of those files failed to match and the wave rendered as
 # though no seat had reflected at all.
-PB_NAME = re.compile(r"((?:ref|gen|ta|nat|hx)_\w+)-(.+)-" + COND +
+# The cell-id families, as one alternation used by BOTH filename patterns.
+# It was written out twice and neither copy knew about `hf_`, so every
+# hole-fill playbook and every hole-fill trace parsed as no match and was
+# dropped -- silently, because a name that does not match is simply skipped.
+# The wave still showed up (chains are built from `rows.jsonl`, which is not
+# parsed by name), so the page listed 222 chains whose text and turns were
+# both unreadable. One constant, so the next family is added in one place.
+FAMILY = r"(?:ref|gen|ta|nat|hx|hf)_\w+"
+
+PB_NAME = re.compile(r"(" + FAMILY + r")-(.+)-" + COND +
                      r"-s(\d+)(?:-p(\d+))?-R(\d+)$")
 
 # <game>-<model>-<condition>-<arm>-s<seed>-R<round>-e<episode>.json.
 # Round AND episode: a chain replays one cell under one seed up to 16 times,
 # so a crossplay-shaped name would collapse the chain into one file. There is
 # no seat here on purpose -- one episode is one board, played by every seat.
-NAME_SP = re.compile(r"((?:ref|gen|ta|nat|hx)_\w+)-(.+)-" + COND +
+NAME_SP = re.compile(r"(" + FAMILY + r")-(.+)-" + COND +
                      r"-(hole|nohole)-s(\d+)-R(\d+)-e(\d+)$")
 
 _FRONT = re.compile(r"\A---\n.*?\n---\n", re.S)
