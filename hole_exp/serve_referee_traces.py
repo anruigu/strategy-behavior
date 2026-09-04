@@ -861,9 +861,14 @@ def _spartan_traces(tdir: pathlib.Path, wave: str) -> Dict[str, Dict]:
              "reflect_scope": d.get("reflect_scope") or "shared",
              "playbooks": d.get("playbooks"),
              "seats_naming_hole": d.get("seats_naming_hole")}
+        # `npc` -- what the ENGINE-DRIVEN seats did. Those seats are answered
+        # inside the engine and so have no turns of their own here; without
+        # this the rival is invisible on exactly the cells where the rival's
+        # behaviour is the hole. Passed through like `turns`.
         e.update({k: d.get(k) for k in
                   ("turns", "models", "scores", "violations", "opportunities",
-                   "gain", "n_players", "exploiters", "kinds")})
+                   "gain", "n_players", "exploiters", "kinds", "npc",
+                   "violation_turns")})
         out[key] = e
     return _annotate(out)
 
@@ -968,6 +973,12 @@ details summary{cursor:pointer;color:var(--dim);outline:none}
 .setup{border:1px solid #8883;border-radius:8px;padding:12px 14px;margin:10px 0 14px;font-size:13px}
 .setup .srow{margin-bottom:8px}
 .setup .hkrow{display:flex;gap:8px;flex-wrap:wrap}
+.npc{margin:8px 0;padding:8px 12px;border:1px solid #8883;border-radius:8px}
+.npc .npch{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-bottom:4px}
+.npc .npcrow{font-size:12.5px;line-height:1.9}
+.npcmode{font-size:11px;border-radius:4px;padding:1px 6px;margin:0 4px}
+.npcmode.kept{background:#0ca30c26}
+.npcmode.turned{background:#d03b3b26}
 .setup .hk{font-size:12px;padding:2px 8px;border-radius:5px;border:1px solid #8883}
 .setup .hk.built{background:#0ca30c26}
 .setup .hk.filled{background:#0ca30c26;background-image:repeating-linear-gradient(135deg,#0002 0 3px,transparent 3px 8px)}
@@ -1109,6 +1120,26 @@ async function toggleSetup(game){
        <pre>${esc(p.prompt)}</pre></div>`).join('')}
   </div>`;
 }
+
+// WHAT THE ENGINE-DRIVEN SEATS DID. These seats are answered inside the
+// engine, so they have no turns on this page -- which is backwards on the
+// cells where the rival's behaviour IS the hole. `mode` is the load-bearing
+// column on a nerfed cell: `honest` all the way down means the threat was
+// announced before play and never carried out.
+function npcBlock(e){
+  const n=e.npc||{}; const names=Object.keys(n);
+  if(!names.length) return '';
+  const rows=names.map(k=>{
+    const seq=n[k]||[];
+    const modes=[...new Set(seq.map(x=>x.mode).filter(Boolean))];
+    const tag=modes.length?'<span class="npcmode '+(modes.indexOf('exploit')>=0
+      ?'turned':'kept')+'">'+modes.join(' \u2192 ')+'</span>':'';
+    const acts=seq.map(x=>'<code>'+esc(String(x.action)).slice(0,44)+'</code>').join(' ');
+    return '<div class="npcrow"><b>'+esc(k)+'</b> '+tag+' '+acts+'</div>';
+  }).join('');
+  return '<div class="npc"><div class="npch">engine-driven seats &mdash; no '
+    +'turns of their own on this page</div>'+rows+'</div>';
+}
 async function open_(id){
   CUR=id; refresh();
   const e=await (await fetch('/episode?id='+encodeURIComponent(id))).json();
@@ -1122,6 +1153,7 @@ async function open_(id){
     ${e.scores&&Object.keys(e.scores).length?' · scores '+JSON.stringify(e.scores):''}
     <button class="setupbtn" onclick="toggleSetup('${e.game}')">game setup &amp; hole spec</button></div>
    <div id="setup"></div>
+   ${npcBlock(e)}
    <div class="legend">
     Left border: <span style="color:var(--focal)">focal seat (p0)</span> ·
     <span style="color:var(--opp)">opponent seat</span> ·

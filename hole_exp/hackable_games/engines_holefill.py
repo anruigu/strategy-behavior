@@ -258,6 +258,32 @@ class Nerfed(HoleFill):
 
         bots = {p: _scripted(g, "honest", 900 + p) for p in npc}
         first: set = set()
+        box: Dict[str, Optional[RG.Episode]] = {"ep": None}
+
+        # THE RIVAL'S OWN MOVES ARE NOT IN THE TRACE OTHERWISE, and on a
+        # nerfed cell the rival's behaviour IS the hole. `trace_of` records
+        # every turn the RUNNER's `ask` saw, and these seats are answered
+        # inside this wrapper, so nothing downstream could show whether the
+        # threat was carried out -- a reader could only infer it from the
+        # score. Same device and same reasoning as `TAGame._npc`, which says
+        # it outright: a confederate's policy is invisible unless it is
+        # written down next to the focal seat's.
+        #
+        # `mode` is the load-bearing field. For a grim cell it is exactly the
+        # arm difference -- `honest` throughout in `hole`, flipping to
+        # `exploit` once the focal seat is caught in `nohole` -- so the record
+        # answers "did the rival do what it said" directly rather than by
+        # comparing two arms' scores.
+        #
+        # Purely additive, like `_score_snaps`: nothing here reads it, so both
+        # arms stay byte identical under honest play.
+        orig_new = g._new
+
+        def new(sd, am):
+            box["ep"] = orig_new(sd, am)
+            return box["ep"]
+
+        g._new = new
 
         def router(pid, phase, prompt):
             if pid in npc:
@@ -265,7 +291,15 @@ class Nerfed(HoleFill):
                     bots[pid].mode = ("exploit" if (state["fired"]
                                                     and arm == "nohole")
                                       else "honest")
-                return bots[pid](pid, phase, prompt)
+                reply = bots[pid](pid, phase, prompt)
+                ep_ = box["ep"]
+                if ep_ is not None:
+                    ep_.extras.setdefault("_npc", {}).setdefault(
+                        npc[pid], []).append(
+                            {"round": int(ep_.decisions.get(focal[0], 0)),
+                             "phase": phase, "action": reply,
+                             "mode": bots[pid].mode})
+                return reply
             text = prompt
             if pending.get(pid):
                 text = self._prepend(text, "\n".join(pending[pid]))

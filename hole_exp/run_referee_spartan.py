@@ -307,6 +307,17 @@ def trace_of(game, ep, turns, playbook, job: Dict, rnd: int, ep_i: int,
         # because the horizon and not the playbook is what drives it. Pooling
         # over positions reports neither number.
         "violation_turns": (ep.extras or {}).get("_violation_turns") or [],
+        # WHAT THE ENGINE-DRIVEN SEATS DID, which for a whole family of cells
+        # is the hole itself. `trace_of` records the turns the RUNNER's `ask`
+        # saw, and an NPC seat is answered inside the engine, so on `ta_ipd`,
+        # the `hf_*_nerfed` family and every other confederate cell the
+        # trace showed one seat and left the rival invisible -- so "the threat
+        # was not carried out" could only be inferred from a score. The
+        # engines have written this to `ep.extras["_npc"]` all along
+        # (`TAGame._npc`, and `engines_holefill.Nerfed` since 2026-09-04) and
+        # both write sites dropped it, exactly as `violation_turns` was
+        # dropped above and for the same reason.
+        "npc": (ep.extras or {}).get("_npc") or {},
         "turns": out,
     }
 
