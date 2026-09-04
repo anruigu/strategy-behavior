@@ -8,7 +8,7 @@
   textarena  the 10 TextArena ports in engines_textarena.py, which widen the
              hole menu past broken_checker: nerfed opponents, collusion offers
              and unread message channels, carried by engine-owned NPC seats
-  hole-fill  the 19 cells in engines_holefill.py, each one a shipped cell from
+  hole-fill  the 15 cells in engines_holefill.py, each one a shipped cell from
              the three families above with a hole kind it did not have brought
              in on top -- every one of them a nerfed opponent
 

@@ -42,11 +42,13 @@ file rather than a detail:
   impossible  structurally excluded, with the reason in the cell.
 
 `filled` IS NOT `built` AND THE COUNTS KEEP THEM APART. Every filled cell in
-the matrix sits in the nerfed column, and fourteen of those nineteen enforce
-through a fine the office levies rather than through a rival's own play -- one
-apparatus restaged on fourteen substrates. Reading that column as though every
+the matrix sits in the nerfed column, and ten of those fifteen enforce through
+a fine the office levies rather than through a rival's own play -- one
+apparatus restaged on ten substrates. Reading that column as though every
 green square were a native defect would be reading a uniform surface as
-nineteen independent findings.
+fifteen independent findings. Retiring four cells sharpened that ratio rather
+than softening it: every one of the four enforced through the fine, so the
+office's apparatus still carries two thirds of what is left.
 """
 from __future__ import annotations
 

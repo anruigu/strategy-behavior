@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""HOW IS THE VERIFIER BROKEN, in each of the 23 base games?
+"""HOW IS THE VERIFIER BROKEN, in each base game that has a broken checker?
 
     python verifier_report.py            # rewrite results/0903_verifier/*
     python verifier_report.py --check    # fail if the written files are stale
@@ -21,11 +21,12 @@ because each can be wrong on its own:
              defect if the rules led a reader to expect the check -- otherwise
              it is a game where you may do a thing, which is not a hole. This
              is `_rules()` rendered, verbatim.
-  SURFACE    the self-report the model emits. A broken checker needs something
-             to lie WITH; where the substrate has no such surface one had to be
-             brought in, and that is the `filled` state rather than `built`.
+  SURFACE    the self-report the model emits -- a figure or a label the player
+             supplies and the engine credits. A broken checker needs something
+             to lie WITH, so a substrate carrying no such surface has no
+             checker to be broken and gets no card here at all.
   BREAK      the line where the referee trusts the declaration. In every one
-             of the 23 this is an `arm == "hole"` conditional -- the hole arm
+             of the 16 this is an `arm == "hole"` conditional -- the hole arm
              takes the declared value and the `nohole` arm recomputes it -- so
              the break site is not inferred, it is the switch the author wrote.
   CHECK      the `_mark(...)` predicate: the comparison that DOES happen, and
@@ -48,11 +49,17 @@ FOUR WAYS THE SETUP CAN ACTUALLY BE BROKEN -- as opposed to broken on purpose
   no counterfactual   `ep.gain` is None, so "what did the exploit buy" has no
                  answer in this cell at all.
 
-The `filled` cells are called out separately and are NOT a defect: they are
-seven substrates with no native self-report, each given the same brought-in
-scoresheet. That is a real fact about the corpus -- seven green squares that
-are one surface wearing seven hats -- and it is the thing most worth checking
-by eye, so it gets its own banner rather than a footnote.
+SEVEN OF THE 23 BASE GAMES GET NO CARD, and that is a fact about the corpus
+rather than a hole in this report. `hole_matrix` records their broken-checker
+column as `possible`: the affordance is there -- a submission the engine
+credits could be left unverified -- and nothing is built on it. All four
+columns above would come out empty for those seven, and the one thing that
+would NOT come out empty is the trap. Every one of them carries HARD detectors
+for a DIFFERENT hole, so running the measurement anyway would print real
+numbers about a defect this page is not documenting, under a heading promising
+to show how the checker breaks. They are listed with the matrix's own reason
+instead, which is the honest version of the same information and is what a
+reader arriving from an open circle in the matrix came to find out.
 """
 from __future__ import annotations
 
@@ -94,16 +101,31 @@ def enclosing_def(lines: List[str], i: int) -> str:
 def class_source(game) -> List[tuple]:
     """Every class in the MRO that belongs to this cell, nearest first.
 
-    NOT JUST `type(game)`. The seven brought-in checkers are nine-line
-    subclasses that set four constants and inherit the whole mechanism from a
-    shared `Slip` base, so reading only the leaf class rendered seven cards
-    with an empty BREAK, an empty CHECK and no rules text -- a page that said
-    "here is how it is broken" and then showed nothing. Walking up to
-    `RefereeGame` reaches the base that actually holds the switch.
+    NOT JUST `type(game)`, and the reason is NOT visible from the cards this
+    page currently renders. On all 16 of them the leaf class holds every `arm
+    ==` switch and every `_mark` itself, so the walk contributes names to
+    `defined_in` and not one line of excerpt, and it reads like dead weight
+    worth simplifying away.
 
-    It also makes the uniformity VISIBLE instead of asserted: all seven show
-    the same excerpt, attributed to the same class, because it is the same
-    line of code.
+    IT IS NOT DEAD WEIGHT, and the corpus already holds the family that shows
+    why. 17 of the 19 `hf_*_nerfed` cells are class bodies of 11 to 22 lines
+    that set constants and nothing else -- `hf_estate_nerfed` is eleven lines
+    of NAME, BASE, TITLE, BLURB, NPC_SEATS, MODE, FINE and WHAT -- carrying no
+    `arm ==` conditional and no `_mark` anywhere in the leaf. Reading only the
+    leaf there renders an empty BREAK and an empty CHECK: a card that says
+    "here is how it is broken" and then shows nothing. Everything that makes
+    those cells a hole lives one step up, in the 167-line `Nerfed` base -- the
+    `_mark` interception that arms the deterrent, and the two `arm ==
+    "nohole"` switches that decide whether it ever fires -- and the walk is
+    what reaches it. So the walk is a no-op for today's roster and load-bearing
+    for the next thing pointed at this extractor, which is the cheaper of the
+    two errors to be wrong about.
+
+    It also makes shared mechanism VISIBLE instead of asserted. Where a family
+    does inherit its break, every member renders the SAME excerpt attributed to
+    the same class, because it is the same line of code -- so a reader can see
+    for themselves that 17 cards are one mechanism wearing 17 hats, rather than
+    being told so in a sentence they would have to trust.
     """
     out = []
     for k in type(game).__mro__:

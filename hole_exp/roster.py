@@ -82,11 +82,11 @@ def check(cfg: dict) -> list[str]:
     # that had drifted from it would name cells no wave could run.
     SP.register_holefill()
     hf = tuple(cfg["families"].get("holefill", ()))
-    if hf != tuple(SP.HOLEFILL19):
+    if hf != tuple(SP.HOLEFILL15):
         bad.append(f"families.holefill differs from "
-                   f"referee_spartan.HOLEFILL19: only in file "
-                   f"{[c for c in hf if c not in SP.HOLEFILL19]}, only in code "
-                   f"{[c for c in SP.HOLEFILL19 if c not in hf]}")
+                   f"referee_spartan.HOLEFILL15: only in file "
+                   f"{[c for c in hf if c not in SP.HOLEFILL15]}, only in code "
+                   f"{[c for c in SP.HOLEFILL15 if c not in hf]}")
     missing = [c for c in hf if c not in RG.BY_NAME]
     if missing:
         bad.append(f"families.holefill names cells that do not register: "
@@ -95,9 +95,9 @@ def check(cfg: dict) -> list[str]:
         base = load(HERE / "configs" / "base_roster.toml")
         import engines_holefill as HF
         hfc = base["hole_fill"]
-        if hfc["count"] != len(SP.HOLEFILL19):
+        if hfc["count"] != len(SP.HOLEFILL15):
             bad.append(f"base_roster hole_fill.count {hfc['count']} but the "
-                       f"code has {len(SP.HOLEFILL19)}")
+                       f"code has {len(SP.HOLEFILL15)}")
         # The family is one kind of hole now, so the count that used to be
         # interesting as a SPLIT is only interesting as a TOTAL: the question
         # the config still has to answer is whether every cell it counts is a

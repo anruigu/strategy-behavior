@@ -86,15 +86,22 @@ MODEL_CANON = "qwen3.8-27b"
 def scripted(game, mode: str, seed: int = 0):
     """The scripted seat that speaks this cell's bracket vocabulary.
 
-    FIVE FAMILIES, not three. The module docstring above names the first
-    three, and it was written before `nat_*` and `hx_*` existed; this function
-    still only routed those three until 2026-09-03, so both later families
-    fell through to the atlas bot. For `hx_*` that raises outright --
+    SIX FAMILIES, not three. The module docstring above names the first three,
+    and it was written before `nat_*`, `hx_*` and `hf_*` existed; this
+    function still only routed those three until 2026-09-03, so the later
+    families fell through to the atlas bot. For `hx_*` that raises outright --
     `AttributeError: 'Scripted' object has no attribute '_hide'` -- which is
     how it was found: `--opponents audit` calls `cheating_seats`, which calls
     `is_cooperative`, which plays the cell.
 
-    `referee_spartan._factory` already routes all five and documents each
+    THE SIXTH IS A SIXTH BRANCH AND NOT A SIXTH VOCABULARY, which is what
+    makes this count easy to get wrong. `bots_holefill.Scripted` parses
+    nothing of its own: a hole-fill cell is a shipped substrate with a rival
+    wrapped round it, and the focal seat is asked to play the substrate, so
+    that bot resolves `game.BASE` and hands every phase back to whichever of
+    the other five the SUBSTRATE speaks. Six branches, five vocabularies.
+
+    `referee_spartan._factory` already routes all six and documents each
     branch. This mirrors it rather than importing it because `_factory`
     returns a THUNK and takes no seed, and the audit needs a distinct seed per
     scripted seat so two honest opponents do not play identically.
@@ -117,7 +124,7 @@ def scripted(game, mode: str, seed: int = 0):
         # substrate that parses. See `referee_spartan._factory`.
         import bots_holecross
         return bots_holecross.Scripted(mode, seed, game)
-    if name in SP.HOLEFILL19:
+    if name in SP.HOLEFILL15:
         # Like `hx_*` the game is a constructor argument: this bot delegates
         # every phase back through THIS function on the substrate, so without
         # the game it cannot find the vocabulary it is supposed to speak.
