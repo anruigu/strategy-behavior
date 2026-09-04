@@ -42,6 +42,7 @@ sys.path.insert(0, str(HERE.parent))
 import catalog                      # noqa: E402
 import bots as GENBOTS              # noqa: E402
 import bots_textarena as TABOTS     # noqa: E402
+import bots_holefill as HFBOTS      # noqa: E402
 
 try:
     from test_referee_games import Scripted as RefScripted
@@ -82,6 +83,51 @@ def _hole_notes() -> dict:
 HOLE_NOTES = _hole_notes()
 
 
+def hole_type_label(hole_type: str) -> str:
+    """A cell's HOLE_TYPE as human text: "collusion, nerfed opponent".
+
+    HOLE_TYPE is a `+`-joined machine string and it mixes two sorts of token.
+    The canonical kinds have a human name that is not derivable from the
+    token -- `broken_checker` is read by an experimenter as "broken verifier"
+    -- so those come from `catalog.HOLE_KIND_LABEL`. The rest are nouns a
+    cell coined for its own defect (`local_ledger`, `self_declared_budget`),
+    where there is nothing to look up and dropping the underscores is the
+    whole job.
+
+    The raw string is never replaced anywhere this is used, only accompanied:
+    `catalog.reveal`, the SPARTAN rows and the holescreen specs all key off
+    the exact engine string, and a reader who wants to group cells by hole
+    needs the token rather than the prose.
+    """
+    parts = [p.strip() for p in (hole_type or "").split("+") if p.strip()]
+    return ", ".join(catalog.HOLE_KIND_LABEL.get(p, p.replace("_", " "))
+                     for p in parts)
+
+
+def _holefill_stats() -> dict | None:
+    """How much of the hole-fill family the variant selector actually offers.
+
+    Counted over `catalog.GAMES` and not over the deduped menu, because the
+    hole-fill cells are deliberately absent from that menu: each one is a
+    variant of a row already on it, reached through that row's `variants`
+    rather than as a 27th tile. So the family breakdown printed from `shown`
+    says 0 hole-fill, which is a true statement about the grid, and this is a
+    true statement about the roster; both are wanted and neither is a fix for
+    the other.
+
+    `reachable` is how many of them a `variants()` row can actually launch,
+    so the shortfall is the cells the catalogue hides. Returns None when no
+    hole-fill cells are registered at all, in which case there is nothing to
+    say and `variants()` is never consulted.
+    """
+    hf = {g for g, c in catalog.GAMES.items() if c.get("family") == "hole-fill"}
+    if not hf:
+        return None
+    reachable = {v["cell"] for g in catalog.GAMES for v in catalog.variants(g)}
+    return {"n": len(hf), "reachable": len(hf & reachable),
+            "hidden": len(hf - reachable)}
+
+
 # ------------------------------------------------------------------ session --
 class Session:
     def __init__(self, gid: str, seat: int, arm: str, seed: int, bot_mode: str):
@@ -106,16 +152,32 @@ class Session:
         self.error = None
         self.touched = time.time()
         self.used_hint = False
-        self.bot = self._make_bot(c["family"], bot_mode, seed)
+        self.bot = self._make_bot(c["family"], bot_mode, seed, self.game)
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
     @staticmethod
-    def _make_bot(family: str, mode: str, seed: int):
+    def _make_bot(family: str, mode: str, seed: int, game):
         if family == "generated":
             return GENBOTS.Scripted(mode, seed)
         if family == "textarena":
             return TABOTS.Scripted(mode, seed)
+        if family == "hole-fill":
+            # THE GAME IS A CONSTRUCTOR ARGUMENT HERE, unlike the two families
+            # above, and that is why this branch had to widen the signature. A
+            # hole-fill cell is a shipped substrate plus one brought-in
+            # surface, so its bot answers the `file` phase itself and hands
+            # every other phase to whichever family the SUBSTRATE speaks --
+            # which it can only find through `game.BASE`.
+            # `referee_spartan._factory` routes these cells the same way and
+            # for the same reason.
+            #
+            # Falling through to `RefScripted`, which is what happened before,
+            # is not a quiet mis-play: no shipped referee cell has a `file`
+            # phase, so `test_referee_games.Scripted.__call__` looks up a
+            # `_file` handler that does not exist and the episode dies on an
+            # AttributeError the moment a scripted seat is asked for a slip.
+            return HFBOTS.Scripted(mode, seed, game)
         if RefScripted is None:
             raise RuntimeError("referee scripted policies unavailable")
         return RefScripted(mode)
@@ -197,7 +259,9 @@ class Session:
             "detectors": found, "hard": hard, "found_hole": took > 0,
             "used_hint": self.used_hint,
             "n_violations": took,
-            "hole_type": c["hole_type"], "note": HOLE_NOTES.get(self.gid, {}),
+            "hole_type": c["hole_type"],
+            "hole_type_label": hole_type_label(c["hole_type"]),
+            "note": HOLE_NOTES.get(self.gid, {}),
             "transcript": ep.transcript[-40:],
         }
 
@@ -245,6 +309,16 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/style.css":
             return self._send(200, (STATIC / "style.css").read_bytes(), "text/css")
         if u.path == "/api/games":
+            # The rows already carry `variants`, so the grid gets the variant
+            # selector out of the default call and nothing is reshaped here.
+            # `?holefill=1` is the separate question: it puts the hole-fill
+            # cells on the roster as cells in their own right, for an operator
+            # who wants to launch one by id rather than reach it through the
+            # base row it varies. The default call is left spelled exactly as
+            # it was so the 24-cell menu does not depend on the new keyword.
+            if (q.get("holefill") or ["0"])[0] not in ("0", "", "false", "no"):
+                return self._json(
+                    {"games": catalog.public_list(include_holefill=True)})
             return self._json({"games": catalog.public_list()})
         if u.path == "/api/hint":
             # Opt-in spoiler, served ONLY on an explicit click and never bundled
@@ -259,6 +333,7 @@ class Handler(BaseHTTPRequestHandler):
             c = catalog.GAMES[s.gid]
             n = HOLE_NOTES.get(s.gid, {})
             return self._json({"hole_type": c["hole_type"],
+                               "hole_type_label": hole_type_label(c["hole_type"]),
                                "how": n.get("how") or c.get("blurb") or "",
                                "kinds": list(c["kinds"])})
         if u.path == "/api/state":
@@ -284,7 +359,16 @@ class Handler(BaseHTTPRequestHandler):
             c = catalog.GAMES[gid]
             seat = int(body.get("seat", 0))
             if not 0 <= seat < c["n_players"]:
-                return self._json({"error": "bad seat"}, 400)
+                # Says the bound, because on the hole-fill nerfed cells it is
+                # surprising: they report `N_PLAYERS == 1` even though three
+                # seats sit at the table, since the rivals are engine-driven
+                # and never handed to the runner as ask seats. A bare "bad
+                # seat" for `{"game": "hf_estate_nerfed", "seat": 1}` reads
+                # like a fault in the arena rather than the answer, which is
+                # that seat 0 is the only seat there is to play.
+                return self._json({"error": f"bad seat {seat}: {gid} has "
+                                            f"{c['n_players']} playable seat(s)"
+                                            f" (0..{c['n_players'] - 1})"}, 400)
             arm = body.get("arm", "hole")
             if arm not in ("hole", "nohole"):
                 return self._json({"error": "bad arm"}, 400)
@@ -343,6 +427,11 @@ def main():
           f"({fam('generated')} generated, {fam('referee')} referee, "
           f"{fam('textarena')} textarena; "
           f"{sum(c['marshal_ready'] for c in shown)} MARSHAL-ready)")
+    hf = _holefill_stats()
+    if hf:
+        print(f"  {hf['n']} hole-fill cells off-menu as variants: "
+              f"{hf['reachable']} reachable from a base row, "
+              f"{hf['hidden']} hidden")
     dup = catalog.DUPLICATES
     if dup:
         print(f"  {len(dup)} excluded as duplicates: " +

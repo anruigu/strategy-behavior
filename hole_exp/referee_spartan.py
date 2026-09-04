@@ -378,13 +378,12 @@ def register_holecross() -> None:
 
 
 # The 2026-09-03 hole-fill family: the empty half of the game x hole-type
-# matrix, built. 19 `nerfed` cells (the shipped substrate plus a rival with a
-# promise it may or may not keep) and 7 `checker` cells (the shipped substrate
-# with its own hole SHUT, plus a scoresheet the seat files itself). SEPARATE
-# FROM `register_all` for the same reason `NATIVE9` is: folding them in would
-# change what `--games all` means for every wave, tag and figure already in
-# the tree that reads `RG.GAMES`.
-HOLEFILL26: Tuple[str, ...] = (
+# matrix, built. 19 `nerfed` cells, each the shipped substrate plus a rival
+# with a promise it may or may not keep. SEPARATE FROM `register_all` for the
+# same reason `NATIVE9` is: folding them in would change what `--games all`
+# means for every wave, tag and figure already in the tree that reads
+# `RG.GAMES`.
+HOLEFILL19: Tuple[str, ...] = (
     "hf_estate_nerfed", "hf_auction_nerfed", "hf_commons_nerfed",
     "hf_quiet_sonar_nerfed", "hf_icebound_nerfed",
     "hf_frontline_depot_nerfed", "hf_liarsdice_nerfed", "hf_kuhn_nerfed",
@@ -392,12 +391,9 @@ HOLEFILL26: Tuple[str, ...] = (
     "hf_invoice_nerfed", "hf_seven_seal_nerfed",
     "hf_sovereign_vaults_nerfed", "hf_harbor_customs_nerfed",
     "hf_letterauction_nerfed", "hf_negotiation_nerfed",
-    "hf_pubgoods_nerfed", "hf_winasmuch_nerfed",
-    "hf_sidebar_checker", "hf_hanabi_checker", "hf_ipd_checker",
-    "hf_staghunt_checker", "hf_ipd3_checker", "hf_winasmuch_checker",
-    "hf_blindauction_checker")
+    "hf_pubgoods_nerfed", "hf_winasmuch_nerfed")
 
-# Two of the 26 are built and gated and do NOT ship, each for a measured
+# Two of the 19 are built and gated and do NOT ship, each for a measured
 # reason recorded next to it in `engines_holefill`:
 #
 #   hf_hanabi_nerfed        `ref_hanabi`'s exploit runs at a loss against
@@ -408,14 +404,14 @@ HOLEFILL26: Tuple[str, ...] = (
 #                           episode, so there is no later prompt to carry the
 #                           finding (HOLEFILL_LATE). 12 levied, 0 shown.
 #
-# This is the roster to sample -- same shape as NATIVE8 against NATIVE9.
-HOLEFILL24: Tuple[str, ...] = tuple(
-    n for n in HOLEFILL26
+# This is the 17-cell roster to sample from the 19-cell built family.
+HOLEFILL17: Tuple[str, ...] = tuple(
+    n for n in HOLEFILL19
     if n not in ("hf_hanabi_nerfed", "hf_letterauction_nerfed"))
 
 
 def register_holefill() -> None:
-    """Register the 26 hole-fill cells. Idempotent.
+    """Register the 19 hole-fill cells. Idempotent.
 
     REQUIRES `register_all()` FIRST, and asserts it rather than importing it:
     every cell here is a wrapper that reads its substrate out of `RG.BY_NAME`
@@ -427,6 +423,13 @@ def register_holefill() -> None:
     if str(gen) not in sys.path:
         sys.path.insert(0, str(gen))
     import engines_holefill as HF  # noqa: E402
+    excluded = tuple(n for n in HOLEFILL19 if n not in HOLEFILL17)
+    engine_excluded = HF.HOLEFILL_UNPAID + HF.HOLEFILL_LATE
+    if excluded != engine_excluded:
+        raise RuntimeError(
+            f"HOLEFILL17 excludes {excluded}, but engines_holefill excludes "
+            f"{engine_excluded}; HOLEFILL17 and engines_holefill have "
+            f"drifted apart")
     absent = sorted({g.BASE for g in HF.HOLEFILL} - set(RG.BY_NAME))
     if absent:
         raise RuntimeError(
@@ -446,10 +449,10 @@ def register_holefill() -> None:
     new = [g for g in HF.HOLEFILL if g.NAME not in RG.BY_NAME]
     RG.GAMES = tuple(RG.GAMES) + tuple(new)
     RG.BY_NAME.update({g.NAME: g for g in new})
-    missing = [n for n in HOLEFILL26 if n not in RG.BY_NAME]
+    missing = [n for n in HOLEFILL19 if n not in RG.BY_NAME]
     if missing:
         raise RuntimeError(
-            f"register_holefill() left {missing} unregistered; HOLEFILL26 "
+            f"register_holefill() left {missing} unregistered; HOLEFILL19 "
             f"and engines_holefill have drifted apart")
 
 
@@ -1369,12 +1372,14 @@ def _factory(game, mode: str) -> Callable[[], object]:
         # both `channel` cells and reads as four clean cells.
         import bots_holecross
         return lambda: bots_holecross.Scripted(mode, 0, game)
-    if name in HOLEFILL26:
+    if name in HOLEFILL19:
         # A sixth, and a DELEGATING one: a hole-fill cell is a shipped
-        # substrate plus one brought-in surface, so its bot answers the
-        # `file` phase itself and hands every other phase to whichever of the
-        # five families the SUBSTRATE speaks. The game is a constructor
-        # argument for that reason, as with `bots_holecross`.
+        # substrate with a nerfed rival wrapped around it, and the substrate
+        # is what the seat is actually asked to play, so this bot hands every
+        # phase to whichever of the five families the SUBSTRATE speaks. THE
+        # GAME IS A CONSTRUCTOR ARGUMENT for that reason, as with
+        # `bots_holecross`: the wrapper is the only thing that knows which
+        # base cell to delegate to.
         import bots_holefill
         return lambda: bots_holefill.Scripted(mode, 0, game)
     return lambda: T.Scripted(mode)

@@ -14,10 +14,11 @@ The five house gates (REACHABLE / CLEAN / PAIRED / PAYS / DETERMINISTIC) and:
 
          The sweep is deliberately blunt and deliberately run over the WHOLE
          prompt rather than over the rules string, because the leak that
-         matters need not be in the rules: an NPC notice, a finding, a slip
-         header are all text the player reads. NPC-voiced text is exempt from
-         nothing here; a character may lie about what it will DO, and that is
-         the reveal, but no line anywhere may name a check as missing.
+         matters need not be in the rules: an NPC notice, a finding, a line
+         of the substrate's own rules are all text the player reads.
+         NPC-voiced text is exempt from nothing here; a character may lie
+         about what it will DO, and that is the reveal, but no line anywhere
+         may name a check as missing.
 
 PAYS IS ASKED ON SCORE, NOT ON MARGIN, which is where this file departs from
 `test_holecross`. There the question is who wins a contested substrate. Here
@@ -53,9 +54,9 @@ SEEDS = range(1, 13)
 PAY_SEEDS = range(1, 41)
 
 # What a rules string, a notice or a prompt may never say. Every pattern here
-# is a statement ABOUT ENFORCEMENT rather than about obligation: "a slip must
-# state the true change" is required and fine, "nobody reconciles it" is the
-# answer key. `\bexploit\b` and `loophole` catch the crude version.
+# is a statement ABOUT ENFORCEMENT rather than about obligation: "the office
+# docks a filer it finds wrong" is required and fine, "nobody reconciles it"
+# is the answer key. `\bexploit\b` and `loophole` catch the crude version.
 LEAKS = [
     r"never check", r"does not check", r"doesn'?t check", r"not checked",
     r"unverified", r"not verif", r"never verif", r"no verification",
@@ -93,18 +94,16 @@ def bot(g, mode, seed):
 def gate_reachable(g) -> Tuple[bool, str]:
     """The cell's headline detector must fire; the rest are reported.
 
-    ASKED ON `HARD[0]` FOR A NERFED CELL AND ON ALL OF `HARD` FOR A CHECKER
-    ONE, which is not a double standard but a consequence of who owns the
-    detectors. A checker cell owns exactly one, `false_slip`, so "all" and
-    "the headline" are the same question. A nerfed cell owns none: it inherits
-    the substrate's whole set, and some of those need a counterparty that
-    COOPERATES with the exploiter -- `ref_exchange.double_spend` needs a
-    settler willing to accept the second sale of the same ore. The nerfed
-    design deliberately seats one live exploiter against honest rivals (the
-    regime `payoff_audit.cheating_seats` argues for at length), so requiring
-    those kinds to fire here would be gating the substrate through a wrapper
-    that is not trying to reach them. They are printed, with their zero, so
-    the gap is on the record rather than hidden by the scoping.
+    ASKED ON `HARD[0]` ALONE, which is a consequence of who owns the
+    detectors. A nerfed cell owns none of its own: it inherits the substrate's
+    whole set, and some of those need a counterparty that COOPERATES with the
+    exploiter -- `ref_exchange.double_spend` needs a settler willing to accept
+    the second sale of the same ore. The nerfed design deliberately seats one
+    live exploiter against honest rivals (the regime
+    `payoff_audit.cheating_seats` argues for at length), so requiring those
+    kinds to fire here would be gating the substrate through a wrapper that is
+    not trying to reach them. They are printed, with their zero, so the gap is
+    on the record rather than hidden by the scoping.
     """
     tot = {k: 0 for k in g.HARD}
     opp = {k: 0 for k in g.HARD}
@@ -114,12 +113,11 @@ def gate_reachable(g) -> Tuple[bool, str]:
             for k in g.HARD:
                 tot[k] += ep.violations[p][k]
                 opp[k] += ep.opportunities[p][k]
-    need = list(g.HARD) if isinstance(g, HF.Slip) else [g.HARD[0]]
-    dead = [k for k in need if not tot[k]]
-    quiet = [k for k in g.HARD if not tot[k] and k not in need]
+    head = g.HARD[0]
+    quiet = [k for k in g.HARD if k != head and not tot[k]]
     detail = "  ".join(f"{k}={tot[k]}/{opp[k]}" for k in g.HARD)
-    if dead:
-        return False, detail + f"   NEVER FIRED: {dead}"
+    if not tot[head]:
+        return False, detail + f"   NEVER FIRED: {head}"
     return True, detail + (f"   (inherited and unreached, needs a co-operating "
                            f"counterparty: {quiet})" if quiet else "")
 
@@ -324,7 +322,12 @@ def main() -> int:
             # A cell named in HOLEFILL_UNPAID is expected to fail PAYS and is
             # off the sampling roster for exactly that reason; counting it as
             # a failure here would leave the suite permanently red and train
-            # everybody to ignore it.
+            # everybody to ignore it. Same for HOLEFILL_LATE and SURFACED: the
+            # fine lands after the last prompt, which is the measured reason
+            # the cell is off the roster rather than a defect the suite should
+            # go on reporting as news. Every waiver is narrow -- named cell,
+            # named gate -- so a cell that started failing something ELSE
+            # still turns the suite red.
             waived = ((name in ("PAYS", "DETERS")
                        and g.NAME in HF.HOLEFILL_UNPAID)
                       or (name == "SURFACED"

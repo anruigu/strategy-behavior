@@ -82,11 +82,11 @@ def check(cfg: dict) -> list[str]:
     # that had drifted from it would name cells no wave could run.
     SP.register_holefill()
     hf = tuple(cfg["families"].get("holefill", ()))
-    if hf != tuple(SP.HOLEFILL26):
+    if hf != tuple(SP.HOLEFILL19):
         bad.append(f"families.holefill differs from "
-                   f"referee_spartan.HOLEFILL26: only in file "
-                   f"{[c for c in hf if c not in SP.HOLEFILL26]}, only in code "
-                   f"{[c for c in SP.HOLEFILL26 if c not in hf]}")
+                   f"referee_spartan.HOLEFILL19: only in file "
+                   f"{[c for c in hf if c not in SP.HOLEFILL19]}, only in code "
+                   f"{[c for c in SP.HOLEFILL19 if c not in hf]}")
     missing = [c for c in hf if c not in RG.BY_NAME]
     if missing:
         bad.append(f"families.holefill names cells that do not register: "
@@ -95,18 +95,39 @@ def check(cfg: dict) -> list[str]:
         base = load(HERE / "configs" / "base_roster.toml")
         import engines_holefill as HF
         hfc = base["hole_fill"]
-        if hfc["count"] != len(SP.HOLEFILL26):
+        if hfc["count"] != len(SP.HOLEFILL19):
             bad.append(f"base_roster hole_fill.count {hfc['count']} but the "
-                       f"code has {len(SP.HOLEFILL26)}")
+                       f"code has {len(SP.HOLEFILL19)}")
+        # The family is one kind of hole now, so the count that used to be
+        # interesting as a SPLIT is only interesting as a TOTAL: the question
+        # the config still has to answer is whether every cell it counts is a
+        # cell the engines actually built as nerfed. Checking `nerfed` against
+        # the tuple's own length is what makes the config's single number load-
+        # bearing -- without it a cell carrying some other KIND could be added
+        # to HOLEFILL and both this figure and the count above would still
+        # agree with a config that had never heard of it.
         n_nerf = sum(1 for g in HF.HOLEFILL if g.KIND == "nerfed_opponent")
-        n_chk = sum(1 for g in HF.HOLEFILL if g.KIND == "broken_checker")
-        if (hfc["nerfed"], hfc["checker"]) != (n_nerf, n_chk):
-            bad.append(f"base_roster hole_fill nerfed/checker "
-                       f"{hfc['nerfed']}/{hfc['checker']} but the code has "
-                       f"{n_nerf}/{n_chk}")
-        if tuple(hfc["unpaid"]) != tuple(HF.HOLEFILL_UNPAID):
-            bad.append(f"base_roster hole_fill.unpaid {hfc['unpaid']} but the "
-                       f"code has {list(HF.HOLEFILL_UNPAID)}")
+        if hfc["nerfed"] != n_nerf:
+            bad.append(f"base_roster hole_fill.nerfed {hfc['nerfed']} but the "
+                       f"code has {n_nerf}")
+        if n_nerf != len(HF.HOLEFILL):
+            other = sorted({g.KIND for g in HF.HOLEFILL
+                            if g.KIND != "nerfed_opponent"})
+            bad.append(f"engines_holefill.HOLEFILL holds {other} as well as "
+                       f"nerfed_opponent, so base_roster's single nerfed "
+                       f"figure no longer accounts for the whole family")
+        # These are the built-but-not-sampled exclusions -- each config list
+        # must mirror its code tuple exactly.
+        for key, tup in (
+                ("unpaid", HF.HOLEFILL_UNPAID),
+                ("late_fine", HF.HOLEFILL_LATE)):
+            configured = hfc.get(key)
+            if configured is None:
+                bad.append(f"base_roster hole_fill.{key} is missing but the "
+                           f"code has {list(tup)}")
+            elif tuple(configured) != tuple(tup):
+                bad.append(f"base_roster hole_fill.{key} {configured} but the "
+                           f"code has {list(tup)}")
         kinds = list(base["hole_types"]["kinds"])
         import hole_matrix as HM
         if tuple(kinds) != HM.KINDS:

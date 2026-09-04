@@ -1,8 +1,10 @@
 'use strict';
 // Hackable Games -- client. Three views: catalogue, play, reveal.
-// The client is deliberately dumb about holes: it never receives hole_type or
-// detector names until /api/state reports done, so there is nothing to peek at
-// in devtools mid-game.
+// This is the experimenter arena, so a card names which KIND of defect each
+// variant carries: the operator is picking a condition to run, not discovering
+// it. What still never arrives before /api/state reports done is the cell's own
+// hole_type, its detector names and the blurb -- the account of WHERE the hole
+// is -- so there is nothing to peek at in devtools mid-game.
 
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts) => {
@@ -26,15 +28,48 @@ function renderStats() {
     `${GAMES.length} cells · ${played} played · ${found} holes found`;
 }
 
+// A row may predate the variants field, and a row with no variant wired up
+// omits it entirely, so every reader goes through here rather than trusting
+// `c.variants` to be an array.
+function variantsOf(c) {
+  return Array.isArray(c.variants) ? c.variants : [];
+}
+
+// One sentence per button, because the built/filled split is the difference
+// between a measurement about the shipped cell and a measurement about a
+// different cell that happens to share its substrate.
+function variantTitle(v) {
+  return v.source === 'filled'
+    ? `a separate cell (${v.cell}) that adds this defect to the same substrate` +
+      ', so anything you measure here is a number about that cell and not about' +
+      ' the shipped one'
+    : `built into the shipped cell (${v.cell}), so what you measure here is a` +
+      ' number about the game as it ships';
+}
+
+// The strip mixes three different cuts on one key on purpose: family names, the
+// 'marshal' engine property, and the two hole kinds a cell can be played with.
+// Only one cut is ever active -- a reader picks the single question they are
+// asking, never a conjunction -- so a single string is the whole state.
+const FILTERS = [['all', 'all games'], ['generated', 'model-written'],
+                 ['referee', 'hand-built'], ['textarena', 'textarena ports'],
+                 ['marshal', 'MARSHAL-ready'],
+                 ['broken_checker', 'has a broken verifier'],
+                 ['nerfed_opponent', 'has a nerfed opponent']];
+const HOLE_KINDS = ['broken_checker', 'nerfed_opponent'];
+
+function matches(c) {
+  if (filter === 'all') return true;
+  if (filter === 'marshal') return !!c.marshal_ready;
+  if (HOLE_KINDS.includes(filter)) {
+    return variantsOf(c).some(v => v.kind === filter);
+  }
+  return c.family === filter;
+}
+
 function renderFilters() {
-  // 'marshal' is not a family, it is a property of the engine -- the cells
-  // that expose per-decision credit and so can be trained on. Kept in the same
-  // strip because it is the cut a reader most often wants next after family.
-  const fams = [['all', 'all games'], ['generated', 'model-written'],
-                ['referee', 'hand-built'], ['textarena', 'textarena ports'],
-                ['marshal', 'MARSHAL-ready']];
   $('filters').innerHTML = '';
-  fams.forEach(([k, label]) => {
+  FILTERS.forEach(([k, label]) => {
     const b = document.createElement('button');
     b.textContent = label;
     b.className = filter === k ? 'on' : '';
@@ -46,26 +81,44 @@ function renderFilters() {
 function renderGrid() {
   const g = $('grid');
   g.innerHTML = '';
-  GAMES.filter(c => filter === 'all' ||
-                    (filter === 'marshal' ? c.marshal_ready
-                                          : c.family === filter)).forEach(c => {
+  GAMES.filter(matches).forEach(c => {
     const d = document.createElement('div');
     d.className = 'card';
-    // No hole information on a card. `marshal_ready` is a property of how the
-    // engine records score, not of what the referee fails to check, so it
-    // gives nothing away -- unlike the blurb, which never reaches here.
+    // `marshal_ready` is a property of how the engine records score, not of
+    // what the referee fails to check. The variant buttons below DO name the
+    // kind of defect, which is this arena's whole point -- but naming the kind
+    // is not saying where it is, and the blurb that would say never gets here.
     const fam = {generated: 'gen', referee: 'ref', textarena: 'ta'}[c.family] || 'ref';
     const marshal = c.marshal_ready
       ? '<span class="tag marshal" title="records per-decision score; ' +
         'MARSHAL can do turn-level credit assignment">MARSHAL</span>' : '';
+    const vs = variantsOf(c);
+    // Zero variants is a real state, not a failure: some cells have neither a
+    // native nor a filled version of either defect. Say so rather than leaving
+    // a blank strip that reads like markup that did not render.
+    const row = vs.length
+      ? vs.map((v, i) =>
+          `<button class="variant ${v.source === 'filled' ? 'filled' : 'built'}" ` +
+          `data-variant="${i}" title="${esc(variantTitle(v))}">${esc(v.label)}</button>`
+        ).join('')
+      : '<span class="novariant">no defect variant on this cell</span>';
     d.innerHTML =
       `<h3>${esc(c.title)}</h3>
        <div class="blurb">${esc(c.teaser || '')}</div>
        <div class="foot">
          <span class="tag ${fam}">${esc(c.author)}</span>${marshal}
          <span>${c.n_players}p · ${esc(String(c.rounds))} rounds</span>
-       </div>`;
-    d.onclick = () => start(c.id, 'hole');
+       </div>
+       <div class="variants">${row}</div>`;
+    d.onclick = () => start(vs.length ? vs[0].cell : c.id, 'hole');
+    d.querySelectorAll('button.variant').forEach(b => {
+      b.onclick = (e) => {
+        // Without this the card's own handler fires too and launches the
+        // default variant on top of the one that was actually clicked.
+        e.stopPropagation();
+        start(vs[Number(b.dataset.variant)].cell, 'hole');
+      };
+    });
     g.appendChild(d);
   });
 }
@@ -76,15 +129,41 @@ function esc(s) {
 }
 
 // ----------------------------------------------------------------------- play
+// A filled variant's cell is NOT a row in the catalogue: `hf_estate_nerfed` only
+// ever appears inside `ref_estate`'s variants, so scanning GAMES by id alone
+// finds nothing for exactly the ids the variant buttons launch. Fall back to a
+// scan of the variants, which also recovers the label for a built variant whose
+// cell IS its own row.
+function lookupCell(gid) {
+  const row = GAMES.find(c => c.id === gid);
+  if (row) {
+    return { meta: row, variant: variantsOf(row).find(v => v.cell === gid) || null };
+  }
+  for (const c of GAMES) {
+    const v = variantsOf(c).find(x => x.cell === gid);
+    if (v) return { meta: c, variant: v };
+  }
+  return null;
+}
+
 async function start(gid, arm) {
-  const meta = GAMES.find(c => c.id === gid);
+  const hit = lookupCell(gid);
+  if (!hit) { alert(`no catalogue entry for ${gid}`); return; }
+  const meta = hit.meta, variant = hit.variant;
   const st = await api('/api/new', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ game: gid, seat: 0, arm: arm, bots: 'honest' })
   });
   if (st.error) { alert(st.error); return; }
+  // `game` is the VARIANT cell, not the base row, so the replay buttons on the
+  // end screen come back to the condition the operator actually ran.
   S = { id: st.id, game: gid, seat: st.seat, arm: arm, title: meta.title };
   $('play-title').textContent = meta.title;
+  const vt = $('play-variant');
+  vt.textContent = variant ? variant.label : '';
+  vt.title = variant ? variantTitle(variant) : '';
+  vt.className = variant
+    ? `vtag ${variant.source === 'filled' ? 'filled' : 'built'}` : 'vtag hidden';
   $('play-meta').textContent =
     `${meta.author} · seat ${st.seat} of ${meta.n_players}` +
     (arm === 'nohole' ? ' · AUDITED ARM' : '');
@@ -169,8 +248,19 @@ $('spoiler').addEventListener('toggle', async () => {
   sp.dataset.loaded = '1';
   const h = await api(`/api/hint?id=${encodeURIComponent(S.id)}`);
   $('spoilerbody').innerHTML = h.error ? esc(h.error)
-    : `<b>${esc(h.hole_type || '')}</b><div style="margin-top:.4rem">${esc(h.how || '')}</div>`;
+    : holeType(h) + `<div style="margin-top:.4rem">${esc(h.how || '')}</div>`;
 });
+
+// The humanised label is what reads as a sentence, but the raw engine string is
+// what a researcher greps the results for, so show both rather than choosing.
+// Older payloads carry only the raw one.
+function holeType(o) {
+  const label = o.hole_type_label || o.hole_type || '';
+  const raw = o.hole_type || '';
+  return `<b>${esc(label)}</b>` + (raw && raw !== label
+    ? ` <span class="raw" title="the engine's own hole_type string">${esc(raw)}</span>`
+    : '');
+}
 
 // --------------------------------------------------------------------- reveal
 function finish(st) {
@@ -202,7 +292,7 @@ function finish(st) {
   $('dtab').innerHTML = rows;
 
   const n = r.note || {};
-  let h = `<b>${esc(r.hole_type || '')}</b><div style="margin-top:.5rem">${esc(n.how || '')}</div>`;
+  let h = holeType(r) + `<div style="margin-top:.5rem">${esc(n.how || '')}</div>`;
   if (n.exploit) h += `<div class="kv">exploit: ${esc(n.exploit)}</div>`;
   if (n.honest) h += `<div class="kv">honest: ${esc(n.honest)}</div>`;
   $('holebox').innerHTML = h;

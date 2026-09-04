@@ -32,15 +32,21 @@ file rather than a detail:
   composed    named in a compound `HOLE_TYPE` and load-bearing, but the
               violation is counted by another kind's detector. Present, not
               separately measurable.
-  possible    the affordance is there and nothing is built on it.
+  possible    the affordance is there and nothing is built on it. A POSITIVE
+              claim about the substrate, not a blank square: it says the hole
+              could be cut here. And because `filled` is a claim about a
+              DIFFERENT cell, retiring an `hf_*` cell moves its square from
+              `filled` to `possible` without anything about the substrate
+              having changed -- the affordance was never what the `hf_*` cell
+              was evidence of.
   impossible  structurally excluded, with the reason in the cell.
 
-`filled` IS NOT `built` AND THE COUNTS KEEP THEM APART. Eleven of the nineteen
-nerfed cells enforce through a fine rather than through a rival's own play,
-and all seven checker cells carry a scoresheet that was BROUGHT to a substrate
-with no self-report surface of its own. Reading those columns as though every
+`filled` IS NOT `built` AND THE COUNTS KEEP THEM APART. Every filled cell in
+the matrix sits in the nerfed column, and fourteen of those nineteen enforce
+through a fine the office levies rather than through a rival's own play -- one
+apparatus restaged on fourteen substrates. Reading that column as though every
 green square were a native defect would be reading a uniform surface as
-twenty-six independent findings.
+nineteen independent findings.
 """
 from __future__ import annotations
 
@@ -259,6 +265,25 @@ def classify(c: str, kind: str, ev: Dict, fill: Dict) -> Dict:
     if kind in IMPOSSIBLE.get(c, {}):
         return {"state": "impossible", "why": IMPOSSIBLE[c][kind],
                 "detector": None}
+    # FALLING THROUGH IS AN ANSWER, NOT A GAP. Every branch above is a table
+    # or a registry lookup, so a cell reaches this line only when nothing
+    # claims it: no HARD detector shipped on the substrate, no `hf_*` cell
+    # built on it, no compound hole leaning on it, no structural bar. That
+    # conjunction is exactly what `possible` asserts, which is why it can be
+    # the default rather than a fifth table that would have to list most of
+    # the matrix and go stale every time a cell is registered.
+    #
+    # The standing temptation is to reach for `IMPOSSIBLE` when a square lands
+    # here and the column reads emptier than it used to. That gets the two
+    # states backwards. `IMPOSSIBLE` is a claim about the SUBSTRATE -- no value
+    # the engine credits, no recipient with bits to spare, no seat the engine
+    # drives -- and any cell someone manages to build on that substrate
+    # falsifies it. `possible` is the same claim with the sign flipped, and it
+    # is the only honest square for an affordance nobody has taken up. A column
+    # that shrinks because a cell stopped being counted has not lost an
+    # affordance; it has stopped over-reporting one, and the square should say
+    # so. Hence the reason comes from `_possible_why`, read off the row's own
+    # structure, so the cell argues for itself rather than pointing elsewhere.
     return {"state": "possible", "why": _possible_why(kind, ev),
             "detector": None}
 
