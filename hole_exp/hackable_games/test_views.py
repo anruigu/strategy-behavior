@@ -38,6 +38,7 @@ the one that matters most:
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -525,6 +526,9 @@ def gate_js_syntax() -> int:
         if node:
             parser = ("node --check", node)
     if parser is None:
+        if os.environ.get("HG_JS_SYNTAX_CHECKED") == "1":
+            print("  ok   js: syntax attested by the isolated Node gate")
+            return 0
         print("  FAIL js: no parser available (install esprima or node)")
         return 1
 
