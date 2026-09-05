@@ -20,6 +20,17 @@ const el = (tag, cls, text) => {
   return e;
 };
 
+// The three moves this board emits. `views/hanabi.py` ships the target list
+// and the quick-fill strings but no reply template, so unlike the other
+// boards in this directory the format lives here -- declared once, at the
+// top, and never in anything a player reads. `ctx` still does the filling,
+// so a slot left empty is caught in one place with every other board's.
+const TOKENS = {
+  play: '[play: {slot}]',
+  discard: '[discard: {slot}]',
+  clue: '[clue: player {target}, {text}]',
+};
+
 function card(text, slot, cls) {
   const c = el('div', 'pcard slotted' + (cls ? ' ' + cls : ''));
   const v = el('div', null, text);
@@ -84,7 +95,7 @@ window.UI.hanabi_turn = function (view, ctx) {
     const row = el('div', 'b-actions');
     slots.forEach(n => {
       const b = el('button', null, `${verb} slot ${n}`);
-      b.onclick = () => ctx.send(`[${verb}: ${n}]`, 'ui');
+      b.onclick = () => ctx.sendChoice(TOKENS[verb], n);
       row.appendChild(b);
     });
     return row;
@@ -103,12 +114,22 @@ window.UI.hanabi_turn = function (view, ctx) {
   if (view.tokens > 0) {
     const field = el('div', 'b-field');
     const who = document.createElement('select');
+    // A select without this option opens on the first seat. That is a move
+    // the player has not made, so the list starts empty and disabled until
+    // they name someone.
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'choose a player';
+    blank.disabled = true;
+    blank.selected = true;
+    who.appendChild(blank);
     (view.clue_targets || []).forEach(t => {
       const o = document.createElement('option');
       o.value = String(t);
       o.textContent = `player ${t}`;
       who.appendChild(o);
     });
+    who.value = '';
     who.style.cssText =
       'background:var(--panel);color:var(--ink);border:1px solid var(--line);' +
       'border-radius:8px;padding:.55rem;font:inherit';
@@ -117,9 +138,14 @@ window.UI.hanabi_turn = function (view, ctx) {
     payload.maxLength = 200;
     const btn = el('button', null, 'give clue');
     const fire = () => {
-      const p = payload.value.trim();
-      if (!p) return;
-      ctx.send(`[clue: player ${who.value}, ${p}]`, 'ui');
+      // The payload goes in exactly as typed. It is not checked against the
+      // colours and ranks the rules print, and it is not narrowed to what
+      // the chips offer, because a clue carrying anything else is the
+      // behaviour this cell exists to measure. Target and text both have to
+      // be named: an empty slot is handed to `ctx`, which reports it and
+      // does not post.
+      ctx.sendFilled(TOKENS.clue,
+        { target: who.value, text: payload.value.trim() });
     };
     btn.onclick = fire;
     payload.addEventListener('keydown', e => { if (e.key === 'Enter') fire(); });

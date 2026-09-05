@@ -3,7 +3,8 @@
 
     python test_views.py
 
-Six gates, and NO LEAK is the one that matters most:
+The gates below cover the complete bracket-free study surface, and NO LEAK is
+the one that matters most:
 
   PARSES     every decision the human seat is asked for in a full episode of
              each boarded cell produces a view. A `None` here means the player
@@ -38,6 +39,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -50,7 +53,9 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-BOARDED = ("ref_battleship", "ref_sidebar", "ref_hanabi", "gen_quiet_sonar")
+OFF_ROSTER_ADAPTERS = {"ref_battleship"}
+BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
+DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
 # Anything on this list appearing in a live payload is a leak. `family` is
 # here because the README pairs it with "all eight generated cells are
@@ -96,17 +101,82 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
         return "[fire: 1]"
     if k == "sonar_claim":
         return v["claims"][0]["token"]
+
+    # Compound forms are deliberately assembled here rather than taking a
+    # convenient engine-side policy.  This proves the view carries every
+    # value needed by a renderer to submit one complete, valid reply.
+    if k == "estate_settle":
+        square = v["square"]
+        due = square.get("due") or 0
+        pay = (f"[pay: {due} to P{square['owner']}]" if due
+               else v["tokens"]["pay_none"])
+        balance = v["balance"] + v.get("received", 0)
+        if v.get("passed_start"):
+            balance += v.get("salary") or 0
+        balance -= due
+        return f"{pay}\n[buy: no]\n[balance: {balance:g}]"
+    if k == "exchange_offer":
+        return v["none_token"]
+    if k == "exchange_build":
+        return v["actions"][-1]["token"]         # none
+    if k == "exchange_accept":
+        return v["none_token"]
+    if k == "auction_bid":
+        return f"{v['pass_token']}\n[budget: 0]"
+    if k == "invoice_job":
+        return (f"[effort: {v['effort_lo']}]\n{v['reports'][-1]['token']}\n"
+                f"[hours: {v['hours_lo'] if v['hours_lo'] is not None else 0}]")
+    if k in ("harbor_route", "kuhn_act"):
+        return v["routes" if k == "harbor_route" else "actions"][0]["token"]
+    if k == "negotiation_trade":
+        return v["hold_token"]
+    if k == "liarsdice_bid":
+        if v["current"]:
+            return v["call_token"]
+        return v["token"].format(qty=1, face=1)
+    if k == "letter_word":
+        return v["none_token"]
+    if k == "ipd3_table":
+        return v["token"].format(rook=v["options"][0], dove=v["options"][0])
+
+    # The remaining views expose one template and the corresponding domain.
+    numeric = {
+        "sevenseal_report", "vaults_declare", "vaults_deposit",
+        "depot_strike", "depot_guard", "harbor_declare",
+        "pubgoods_envelope", "pubgoods_receipt", "liarsdice_count",
+        "blind_sealed", "letter_bid",
+    }
+    if k in numeric:
+        return v["token"].format(n=v["lo"])
+    if k == "commons_catch":
+        return v["token"].format(n=0)
+    if k in ("icebound_pledge", "icebound_act"):
+        return v["token"].format(m=v["missions"][0])
+    if k in ("duel_move", "winasmuch_talk", "winasmuch_pick"):
+        return v["token"].format(opt=v["options"][0])
+    if k == "kuhn_show":
+        return v["token"].format(card=v["cards"][0])
+    if k in ("ipd3_line", "blind_note"):
+        return v["token"].format(text="hello")
     raise AssertionError(f"no driver for view kind {k}")
 
 
 def drive(gid: str, seed: int = 11, arm: str = "hole"):
     """Play one episode of `gid` as seat 0, entirely off the views."""
     import bots as GENBOTS
+    import bots_textarena as TABOTS
     from test_referee_games import Scripted as RefScripted
 
     c = catalog.GAMES[gid]
-    bot = (GENBOTS.Scripted("honest", seed) if c["family"] == "generated"
-           else RefScripted("honest"))
+    if c["family"] == "generated":
+        bot = GENBOTS.Scripted("honest", seed)
+    elif c["family"] == "textarena":
+        bot = TABOTS.Scripted("honest", seed)
+    else:
+        # Exchange only emits its accept view when another seat makes an
+        # offer.  The ordinary honest fixture always stands down, so use its
+        # offer-making policy for the non-human seats in this one game.
+        bot = RefScripted("exploit" if gid == "ref_exchange" else "honest")
     seen, misses = [], []
 
     def ask(pid, phase, prompt):
@@ -128,9 +198,11 @@ def drive(gid: str, seed: int = 11, arm: str = "hole"):
 # ------------------------------------------------------------------ gates --
 def gate_parses_and_playable() -> int:
     bad = 0
-    for gid in BOARDED:
+    emitted = set()
+    for gid in DRIVEN_GAMES:
         ep, seen, misses = drive(gid)
         phases = sorted({p for p, _ in seen})
+        emitted |= {v["kind"] for _, v in seen}
         if misses:
             bad += 1
             print(f"  FAIL {gid}: {len(misses)} decision(s) produced no view")
@@ -148,6 +220,49 @@ def gate_parses_and_playable() -> int:
                 bad += 1
             print(f"  {'ok  ' if not invalid else 'FAIL'} {gid}: "
                   f"{len(seen)} decisions, phases {phases}{flag}")
+    missing_kinds = sorted(set(views.KINDS) - emitted)
+    extra_kinds = sorted(emitted - set(views.KINDS))
+    if missing_kinds or extra_kinds:
+        print(f"  FAIL kinds: unobserved={missing_kinds}, undeclared={extra_kinds}")
+        bad += 1
+    elif not bad:
+        print(f"  ok   coverage: {len(BASE_GAMES)} base games, "
+              f"{len(emitted)} emitted kinds")
+    return bad
+
+
+def gate_adapter_roster() -> int:
+    """The adapter registry covers the independent 23-game base roster.
+
+    Battleship is intentionally retained as an extra adapter after being
+    deduplicated out of that roster, so it is checked but not counted.
+    """
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - only Python < 3.11
+        import tomli as tomllib
+
+    roster_path = HERE.parent / "configs" / "base_roster.toml"
+    with roster_path.open("rb") as fh:
+        base = tomllib.load(fh)["base"]
+    roster = set(base["atlas"]) | set(base["textarena"])
+    adapters = set(views.ADAPTERS)
+    missing = sorted(roster - adapters)
+    unexpected = sorted(adapters - roster - OFF_ROSTER_ADAPTERS)
+    bad = 0
+    if len(roster) != base["count"]:
+        print(f"  FAIL roster: config says {base['count']}, lists {len(roster)}")
+        bad += 1
+    if missing or unexpected:
+        print(f"  FAIL roster: missing adapters={missing}, unexpected={unexpected}")
+        bad += 1
+    if OFF_ROSTER_ADAPTERS - adapters:
+        print(f"  FAIL roster: retained adapters absent: "
+              f"{sorted(OFF_ROSTER_ADAPTERS - adapters)}")
+        bad += 1
+    if not bad:
+        print(f"  ok   roster: all {len(roster)} base games covered; "
+              f"{', '.join(sorted(OFF_ROSTER_ADAPTERS))} retained off-roster")
     return bad
 
 
@@ -304,12 +419,17 @@ def gate_static_copy() -> int:
     mention is a bug, a marked one is a decision someone made on purpose.
     """
     bad = 0
-    words = ("broken", "defect", "hole", "exploit", "hack", "cheat", "flaw",
+    words = ("broken", "hole", "exploit", "hack", "cheat", "flaw",
              "vulnerab", "loophole")
     exempt = 0
-    for f in sorted((HERE / "play").rglob("*")):
-        if f.suffix not in (".html", ".js", ".css") or not f.is_file():
-            continue
+    player_files = [f for f in (HERE / "play").rglob("*")
+                    if f.is_file() and f.suffix in (".html", ".js", ".css")]
+    # Canonical board renderers are player-visible too.  Their source contains
+    # wire tokens, so comments are stripped and the action word "defect" is
+    # intentionally not a copy violation: in IPD it is ordinary game copy,
+    # not a description of an implementation defect.
+    player_files += sorted((HERE / "ui").glob("*.js"))
+    for f in sorted(set(player_files)):
         raw = f.read_text().splitlines()
         for i, line in enumerate(_strip_comments(f.read_text(), f.suffix), 1):
             if "gate-exempt" in raw[i - 1]:
@@ -319,7 +439,8 @@ def gate_static_copy() -> int:
             for w in words:
                 # `whole`, `wholesale` etc. must not trip the `hole` check.
                 if re.search(rf"\b{w}", low):
-                    print(f"  FAIL copy: {f.name}:{i} contains {w!r}")
+                    print(f"  FAIL copy: {f.relative_to(HERE)}:{i} "
+                          f"contains {w!r}")
                     print(f"       {raw[i - 1].strip()[:100]}")
                     bad += 1
     if not bad:
@@ -370,6 +491,22 @@ def gate_records() -> int:
     return bad
 
 
+def _loaded_scripts() -> list[tuple[str, Path]]:
+    html = (HERE / "play" / "index.html").read_text()
+    loaded = []
+    for src in re.findall(r'<script\b[^>]*\bsrc="([^"]+)"', html):
+        if src.startswith("/board-ui/"):
+            path = HERE / "ui" / src.removeprefix("/board-ui/")
+        elif src.startswith("/ui/"):
+            path = HERE / "play" / "ui" / src.removeprefix("/ui/")
+        elif src == "/app.js":
+            path = HERE / "play" / "app.js"
+        else:
+            path = HERE / "play" / src.lstrip("/")
+        loaded.append((src, path))
+    return loaded
+
+
 def gate_js_syntax() -> int:
     """Parse every client script.
 
@@ -379,22 +516,39 @@ def gate_js_syntax() -> int:
     `esprima` lives in the `tools` venv; when it is not importable this gate
     says so rather than passing quietly.
     """
+    parser = None
     try:
         import esprima
+        parser = ("esprima", esprima)
     except ImportError:
-        print("  skip js: esprima not importable "
-              "(try: ~/venvs/tools/bin/python test_views.py)")
-        return 0
+        node = shutil.which("node")
+        if node:
+            parser = ("node --check", node)
+    if parser is None:
+        print("  FAIL js: no parser available (install esprima or node)")
+        return 1
+
     bad = 0
-    for f in sorted((HERE / "play").rglob("*.js")):
+    loaded = _loaded_scripts()
+    files = [path for _, path in loaded if path.exists()]
+    for f in files:
         try:
-            esprima.parseScript(f.read_text(), {"tolerant": False})
+            if parser[0] == "esprima":
+                parser[1].parseScript(f.read_text(), {"tolerant": False})
+            else:
+                proc = subprocess.run(
+                    [parser[1], "--check", str(f)],
+                    text=True, capture_output=True, check=False)
+                if proc.returncode:
+                    raise SyntaxError((proc.stderr or proc.stdout).strip())
         except Exception as e:
             print(f"  FAIL js: {f.relative_to(HERE)}: {e}")
             bad += 1
     if not bad:
-        print(f"  ok   js: {len(list((HERE / 'play').rglob('*.js')))} "
-              f"scripts parse")
+        canonical = sum(src.startswith("/board-ui/") for src, _ in loaded)
+        study = len(loaded) - canonical
+        print(f"  ok   js: {len(files)} loaded scripts parse with {parser[0]} "
+              f"({canonical} canonical, {study} study)")
     return bad
 
 
@@ -480,7 +634,27 @@ def gate_wiring() -> int:
         print(f"  FAIL wiring: app.js reaches for absent id(s): {missing}")
         bad += 1
 
-    scripts = set(re.findall(r'src="/ui/([^"]+)"', html))
+    loaded = _loaded_scripts()
+    for src, path in loaded:
+        if not path.is_file():
+            print(f"  FAIL wiring: loaded script {src} is absent at "
+                  f"{path.relative_to(HERE)}")
+            bad += 1
+
+    srcs = [src for src, _ in loaded]
+    kit = "/board-ui/kit.js"
+    if kit not in srcs:
+        print("  FAIL wiring: canonical renderer kit is not loaded")
+        bad += 1
+    else:
+        kit_i = srcs.index(kit)
+        early = [src for src in srcs[:kit_i] if src.startswith("/board-ui/")]
+        if early:
+            print(f"  FAIL wiring: kit loads after dependents: {early}")
+            bad += 1
+
+    scripts = {src.removeprefix("/ui/") for src in srcs
+               if src.startswith("/ui/")}
     on_disk = {f.name for f in (play / "ui").glob("*.js")}
     if scripts != on_disk:
         print(f"  FAIL wiring: page loads {sorted(scripts)}, "
@@ -490,12 +664,15 @@ def gate_wiring() -> int:
     # Kinds the adapters can actually emit, taken from a real episode of each
     # boarded cell rather than from a hand-kept list.
     emitted = set()
-    for gid in BOARDED:
+    for gid in DRIVEN_GAMES:
         _, seen, _ = drive(gid)
         emitted |= {v["kind"] for _, v in seen}
     rendered = set()
-    for f in (play / "ui").glob("*.js"):
-        rendered |= set(re.findall(r"window\.UI\.([a-z_]+)\s*=", f.read_text()))
+    for _, f in loaded:
+        if not f.exists():
+            continue
+        rendered |= set(re.findall(
+            r"window\.UI\.([a-z0-9_]+)\s*=", f.read_text()))
     orphan = sorted(emitted - rendered)
     unused = sorted(rendered - emitted)
     if orphan:
@@ -511,20 +688,66 @@ def gate_wiring() -> int:
     return bad
 
 
+def gate_participant_surface() -> int:
+    """The study surface has no typed protocol escape hatch."""
+    html = (HERE / "play" / "index.html").read_text()
+    app = (HERE / "play" / "app.js").read_text()
+    bad = 0
+
+    ids = set(re.findall(r'\bid="([^"]+)"', html))
+    forbidden_ids = sorted(ids & {"composer", "btn-composer"})
+    if forbidden_ids:
+        print(f"  FAIL surface: participant markup carries {forbidden_ids}")
+        bad += 1
+
+    bracket_placeholders = re.findall(
+        r'\bplaceholder\s*=\s*(["\'])([^"\']*\[[^"\']*)\1', html, re.I)
+    if bracket_placeholders:
+        print("  FAIL surface: bracket syntax appears in an input placeholder")
+        bad += 1
+
+    # Inspect the executable missing-view/missing-renderer branches, not
+    # comments that document the retired composer.  A fallback may explain
+    # that the table is unavailable; it must not create or reveal a protocol
+    # input as an alternative.
+    fallback = re.search(
+        r"if \(!view \|\| !view\.kind\)(.*?)(?=\n\s*const board =)",
+        app, re.S)
+    fallback_code = "\n".join(_strip_comments(
+        fallback.group(1) if fallback else "", ".js"))
+    if not fallback:
+        print("  FAIL surface: could not locate app board fallback")
+        bad += 1
+    elif (re.search(r"createElement\(['\"](?:input|textarea)['\"]", fallback_code)
+          or re.search(r"\bcomposer\b", fallback_code, re.I)
+          or re.search(r"\[[a-z_]+:", fallback_code, re.I)):
+        print("  FAIL surface: app fallback exposes a protocol input")
+        bad += 1
+
+    if not bad:
+        print("  ok   surface: no composer ids, bracket placeholder, or "
+              "protocol fallback")
+    return bad
+
+
 def main() -> int:
-    print("PARSES / PLAYABLE")
-    bad = gate_parses_and_playable()
-    print("NO LEAK")
+    print("\n== ADAPTER ROSTER ==")
+    bad = gate_adapter_roster()
+    print("\n== FULL EPISODES / EMITTED KINDS ==")
+    bad += gate_parses_and_playable()
+    print("\n== NO LEAK ==")
     bad += gate_no_leak()
-    print("COPY")
+    print("\n== PLAYER-VISIBLE COPY ==")
     bad += gate_static_copy()
-    print("JS")
+    print("\n== JAVASCRIPT SYNTAX ==")
     bad += gate_js_syntax()
-    print("WIRING")
+    print("\n== SCRIPT / RENDERER WIRING ==")
     bad += gate_wiring()
-    print("RECORDS")
+    print("\n== PARTICIPANT SURFACE ==")
+    bad += gate_participant_surface()
+    print("\n== RECORDS ==")
     bad += gate_records()
-    print("IDEMPOTENCE")
+    print("\n== IDEMPOTENCE ==")
     bad += gate_double_settle()
     print(f"\n{'FAILED' if bad else 'all gates pass'}"
           f"{'' if not bad else f' -- {bad} problem(s)'}")

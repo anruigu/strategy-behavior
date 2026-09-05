@@ -36,6 +36,9 @@ function header(view, tail) {
   return h;
 }
 
+// The three stages send through `ctx`, never through a string built here:
+// `view.token` is a one-slot template for the two picking stages, and the
+// claims arrive already finished. See the note at the head of battleship.js.
 window.UI.sonar_hide = function (view, ctx) {
   const box = el('div');
   box.appendChild(header(view));
@@ -51,7 +54,7 @@ window.UI.sonar_hide = function (view, ctx) {
   }
 
   box.appendChild(el('div', 'b-note', 'Hide your submarine. Pick a cell.'));
-  box.appendChild(line(view, { pick: n => ctx.send(`[hide: ${n}]`, 'ui') }));
+  box.appendChild(line(view, { pick: n => ctx.sendChoice(view.token, n) }));
   (view.recent || []).forEach(l => box.appendChild(el('div', 'b-note', l)));
   return box;
 };
@@ -61,7 +64,7 @@ window.UI.sonar_fire = function (view, ctx) {
   box.appendChild(header(view, ` &middot; your target is <b>${view.target}</b>`));
   box.appendChild(el('div', 'b-note',
     `Fire one shot at ${view.target}. Pick a cell.`));
-  box.appendChild(line(view, { pick: n => ctx.send(`[fire: ${n}]`, 'ui') }));
+  box.appendChild(line(view, { pick: n => ctx.sendChoice(view.token, n) }));
   return box;
 };
 
@@ -81,7 +84,7 @@ window.UI.sonar_claim = function (view, ctx) {
   const actions = el('div', 'b-actions');
   (view.claims || []).forEach(c => {
     const b = el('button', null, c.label);
-    b.onclick = () => ctx.send(c.token, 'ui');
+    b.onclick = () => ctx.send(c.token);
     actions.appendChild(b);
   });
   box.appendChild(actions);

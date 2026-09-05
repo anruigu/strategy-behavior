@@ -55,9 +55,12 @@ else on the forbidden list is not. A refactor that starts sending the family
 label in a live payload fails the suite rather than quietly turning the study
 into a reading-comprehension test.
 
-A second gate reads the player-visible text of `play/` — comments stripped —
-and fails on `broken`, `defect`, `hole`, `exploit`, `hack`, `cheat`, `flaw`,
-`loophole`. One line is exempt and says so inline: the debrief renderer.
+A second gate reads participant-visible copy in `play/` (html/js/css) and the
+canonical `ui/*.js` renderers — comments stripped — and fails on `broken`,
+`hole`, `exploit`, `hack`, `cheat`, `flaw`, `vulnerab`, `loophole`. It does
+not reject `defect`: that is ordinary IPD action copy, not a description of
+an implementation hole. One line is exempt and says so inline: the debrief
+renderer.
 
 ## The debrief
 
@@ -88,24 +91,38 @@ learned from the score alone.
 
 ## The boards
 
-Four cells have bespoke UIs; the other fifteen are played through the prompt
-and a text composer, and that fallback stays reachable on every cell so no
-legal move is ever unreachable through the UI. A typed move is recorded as
-`source: text` and never pools with a move made on a board.
+All 23 base games have structured controls. Finite choices are buttons or
+toggles of equal weight; free values (a catch, a bid, a clue, a private line)
+are a plain number or text input. The referee's `[verb: value]` brackets are
+the host's wire format: adapters hand the client a template, `fill` writes the
+player's choice into it on the way out, and nothing bracketed is shown or
+typed. A page that taught the grammar would be asking the study question for
+the player.
 
-| cell | board |
+There is no composer and no typed-move path. An adapter that cannot parse
+returns `None`; a view kind with no renderer is the same case. The client
+draws `boardUnavailable` and the table cannot be played here. The old fallback
+— dump the prompt and a box captioned `[fire: C4]` — taught protocol and
+quietly ruined the data, so a missing board is an error rather than a
+degraded mode.
+
+Canonical boards live in `ui/` (kit, `board.css`, one file per family) and
+are served read-only at `/board-ui/`, the same files the arena uses. The
+study's own four boards stay under `play/ui/` and load at `/ui/`, because
+their kinds are disjoint from the shared set:
+
+| cell | board (`play/ui/`) |
 |---|---|
 | Battleship | tracking grid marked with the calls you were given; own fleet + the three calls |
 | Sidebar | card, table, pot, free-text private line, three betting actions |
-| Hanabi | stacks, the two hands you can see, your five unknown slots, clue composer |
+| Hanabi | stacks, the two hands you can see, your five unknown slots, clue field |
 | Quiet Sonar | nine-cell line for hide / fire, two claims |
 
 `views/` parses the engine's prompt into structured state; the engines are
 untouched, because they are the instrument and `run_referee_crossplay.py`
 compares human numbers against model numbers taken from byte-identical
-prompts. An adapter that cannot parse with confidence returns `None` and the
-player gets the composer — a view that guessed would draw a board that
-disagrees with the prompt the engine actually sent.
+prompts. A view that guessed would draw a board that disagrees with the
+prompt the engine actually sent, so failing closed is the honest outcome.
 
 **The design rule for every widget, and the one to re-read before restyling
 anything:** a board may re-present only what the prompt already says, and it
@@ -119,9 +136,9 @@ claim row, and it is why Hanabi's clue payload is an editable field rather than
 a colour picker: the engine watches what the giver *wrote*, so a picker that
 could only emit `R` or `3` would delete the behaviour instead of measuring it.
 
-`test_views.py` plays a full episode of each boarded cell using **only** what
-is in the views, and fails if the engine ever had to substitute a move — that
-is what proves a board is sufficient rather than decorative.
+`test_views.py` plays a full episode of each of the 23 base games using
+**only** what is in the views, and fails if the engine ever had to substitute
+a move — that is what proves a board is sufficient rather than decorative.
 
 ## The data
 
@@ -208,17 +225,26 @@ currently says only that moves and timings are recorded.
 `python test_views.py` — offline, no cost, no network.
 
 ```
-PARSES / PLAYABLE   every human decision in a full episode of each boarded
-                    cell produces a view, and the episode can be driven end to
-                    end from the views alone with zero unparsed moves
+PARSES / PLAYABLE   every human decision in a full episode of each of the 23
+                    base games produces a view, and the episode can be driven
+                    end to end from the views alone with zero unparsed moves
+COVERED             every name on the base roster has an adapter; a game
+                    added to the roster without a board fails here rather
+                    than shipping as an unavailable table
+NO COMPOSER         player-visible play/ has no typed-move path; a missing
+                    view or renderer is the unavailable error, not a text box
 NO LEAK             live-run payloads from a real run checked against 13
                     forbidden keys and 11 forbidden strings; catalogue
                     checked separately (variant kind/label strings allowed)
-COPY                player-visible text in play/ names no defect
+COPY                participant-visible play/ (html/js/css) plus canonical
+                    ui/*.js, comments stripped; fails on broken/hole/exploit/
+                    hack/cheat/flaw/vulnerab/loophole. Does not reject
+                    `defect` — that is legitimate IPD copy
 JS                  every client script parses (esprima; no build step here,
                     so a stray brace would otherwise ship silently)
 WIRING              every id the client reaches for exists in the page, and
-                    every view kind an adapter can emit has a renderer
+                    every view kind an adapter can emit has a renderer in
+                    ui/ (served at /board-ui) or play/ui/ (served at /ui)
 RECORDS             a finished play lands under both the game and the player,
                     with its moves and its outcome intact
 IDEMPOTENCE         settling a finished play twice counts it once
@@ -238,7 +264,6 @@ it says `skip` rather than passing quietly when it cannot.
   which is written as `abandoned: true` rather than dropped.
 - One live run per participant. A reload does not fork a second chain that
   would land in the data as two short runs by the same person on the same cell.
-- Twenty-one of the twenty-four cells on the menu have no board yet.
 - `views/battleship.py` is now **orphaned**: deduplication took
   `ref_battleship` off the menu in favour of `gen_quiet_sonar`, which
   carries the same hole with per-decision credit. The adapter still

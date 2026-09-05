@@ -40,6 +40,12 @@ each of the 24 base rows so an operator debugging the study build can pick a
 nerfed hole-fill cell from the UI the same way the experimenter arena does.
 Live-run payloads from `/api/state`, moves, and memory still must not carry
 hole_type, kinds, blurb, family, or gain. The debrief route is unchanged.
+
+STATIC ROUTES. `/`, `/app.js` and `/style.css` are this build's own shell and
+come out of `play/`. `/board-ui/<name>` is the shared `ui/` directory -- the
+kit, `board.css`, and one renderer per view kind, the same files the arena
+serves. Both roots are read-only and both refuse anything that resolves
+outside themselves; nothing under `play_data/` is reachable over HTTP.
 """
 from __future__ import annotations
 
@@ -69,6 +75,19 @@ from collector import PlayCollector, player_slug  # noqa: E402
 import referee_repeat as RR                     # noqa: E402
 
 PLAY_DIR = HERE / "play"
+# The canonical boards. `ui/` holds `kit.js`, `board.css` and one renderer per
+# view kind, and the arena serves the same directory. The study build reaches
+# it through `/board-ui/` rather than keeping a copy under `play/ui/`, for the
+# same reason this file reuses `server.Session` instead of forking it: two
+# copies of a board are two boards, and a board that differs between the human
+# arm and the experimenter's arena is a confound nobody would think to check.
+UI_DIR = HERE / "ui"
+
+# A `/board-ui/` name is one flat file. No directory part, no `..`, nothing
+# percent-encoded -- `%` is not in the class, so an encoded traversal fails the
+# match rather than being decoded into one.
+ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
 BUILD = "play-2"
 
 SHARED = os.environ.get("HG_SHARED") == "1"
@@ -373,11 +392,40 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj), "application/json")
 
-    def _static(self, rel: str, ctype: str):
-        p = (PLAY_DIR / rel).resolve()
-        if not str(p).startswith(str(PLAY_DIR.resolve())) or not p.exists():
+    def _under(self, base: Path, rel: str, ctype: str):
+        """Serve `rel` from inside `base`, or 404.
+
+        Containment is `is_relative_to` on the resolved path, not a string
+        prefix. A prefix test reads `.../play_data` as "inside `.../play`",
+        because it is inside it as a string and beside it on disk -- and
+        `play_data` is where every participant's moves are written.
+        """
+        root = base.resolve()
+        try:
+            p = (root / rel).resolve()
+        except (OSError, ValueError, RuntimeError):
+            return self._send(404, b"not found", "text/plain")
+        if not p.is_relative_to(root) or not p.is_file():
             return self._send(404, b"not found", "text/plain")
         return self._send(200, p.read_bytes(), ctype)
+
+    def _static(self, rel: str, ctype: str):
+        return self._under(PLAY_DIR, rel, ctype)
+
+    def _board_asset(self, name: str):
+        """`/board-ui/<name>` -- the shared `ui/` directory, read-only.
+
+        Only the two things the page loads: a renderer (or the kit) as
+        JavaScript, and `board.css`. Everything else in the directory, and
+        every name that is not a plain filename, is a 404.
+        """
+        if not ASSET_NAME.match(name):
+            return self._send(404, b"not found", "text/plain")
+        if name.endswith(".js"):
+            return self._under(UI_DIR, name, "application/javascript")
+        if name == "board.css":
+            return self._under(UI_DIR, name, "text/css")
+        return self._send(404, b"not found", "text/plain")
 
     # -- GET -------------------------------------------------------------
     def do_GET(self):
@@ -390,6 +438,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("app.js", "application/javascript")
         if u.path == "/style.css":
             return self._static("style.css", "text/css")
+        if u.path.startswith("/board-ui/"):
+            return self._board_asset(u.path[len("/board-ui/"):])
         if u.path.startswith("/ui/") and u.path.endswith(".js"):
             return self._static(u.path[1:], "application/javascript")
 

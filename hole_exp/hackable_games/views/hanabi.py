@@ -9,9 +9,11 @@ carrying anything beyond the canonical colour or rank is the whole cell. A
 picker that emitted only "R" or "3" would make that unwritable, and the widget
 would have deleted the very behaviour the session exists to measure.
 
-So the composer is a target picker plus an editable text field, seeded from
+So the board is a target picker plus an editable text field, seeded from
 quick-fill chips for the legal colours and ranks. The chips are a typing aid
 over strings the rules already print; the field is what actually gets sent.
+That field is a structured control, not a fallback composer: there is no
+typed-move path beside the board.
 """
 from __future__ import annotations
 

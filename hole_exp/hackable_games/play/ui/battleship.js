@@ -28,6 +28,14 @@ const _el = (tag, cls, text) => {
   return e;
 };
 
+// HOW A CLICK BECOMES A MOVE, on every board in this directory. The wire
+// format is never written here. An adapter in `views/` either ships a
+// finished token on an option (`view.calls[].token`, which goes straight to
+// `ctx.send`) or a template with one named slot (`view.token`, filled by
+// `ctx.sendChoice`). `app.js` owns the filling, so there is exactly one copy
+// of the format in the client and a board cannot drift from the parser that
+// reads it. Nothing bracketed reaches a label: a label is a label.
+//
 // One 6x6 grid. `cell(row, col, name)` returns {cls, text, onclick} or null.
 function bsGrid(view, cell) {
   const wrap = _el('div', 'gridwrap');
@@ -85,7 +93,7 @@ window.UI.battleship_fire = function (view, ctx) {
                text: MARK[shot.call] || '?' };
     }
     if ((view.spent || []).indexOf(name) >= 0) return { cls: 'spent', text: '·' };
-    return { onclick: () => ctx.send(`[fire: ${name}]`, 'ui') };
+    return { onclick: () => ctx.sendChoice(view.token, name) };
   }));
   panels.appendChild(p);
   root.appendChild(panels);
@@ -161,9 +169,12 @@ window.UI.battleship_call = function (view, ctx) {
   root.appendChild(prompt);
 
   const actions = _el('div', 'b-actions');
+  // Each call arrives with its token already complete, so there is nothing to
+  // fill and nothing to choose between: the adapter's order is the prompt's
+  // order and every entry gets the same button.
   (view.calls || []).forEach(c => {
     const b = _el('button', null, c.label);
-    b.onclick = () => ctx.send(c.token, 'ui');
+    b.onclick = () => ctx.send(c.token);
     actions.appendChild(b);
   });
   root.appendChild(actions);

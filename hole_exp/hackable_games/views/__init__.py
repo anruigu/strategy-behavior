@@ -29,7 +29,8 @@ A dial that would not travel past the sustainable catch, or a lexicon filtered
 to the words your rack spells, would be the board playing the game.
 
 FAILING IS FINE. An adapter returns None when it cannot parse with
-confidence, and the client falls back to the plain text composer. A view that
+confidence; a missing adapter or renderer is unavailable, not a typed-move
+path. Structured controls are the only participant move path. A view that
 guesses is worse than no view: it would draw a board that disagrees with the
 prompt the engine actually sent.
 """
@@ -47,7 +48,7 @@ from . import (auction, battleship, blindauction, commons, depot, duel,      # n
 # THE 23 BASE GAMES ALL HAVE A BOARD. `configs/base_roster.toml` is the list
 # and `test_views.py::gate_covered` asserts this dict covers every name on it,
 # so a game added to the roster without a board fails the suite rather than
-# quietly dropping its players onto the text composer.
+# shipping as an unavailable table.
 ADAPTERS: Dict[str, Callable[[str, str], Optional[dict]]] = {
     # -- hand-built referee cells
     "ref_estate": estate.view,
@@ -86,16 +87,15 @@ AIDED = tuple(sorted(ADAPTERS))
 
 
 def build(game_id: str, phase: str, prompt: str) -> Optional[dict]:
-    """Structured view for one decision, or None to fall back to text."""
+    """Structured view for one decision, or None (table unavailable)."""
     fn = ADAPTERS.get(game_id)
     if fn is None:
         return None
     try:
         v = fn(phase, prompt or "")
     except Exception:
-        # A parser crash must never take the session with it -- the player
-        # keeps playing through the composer and the record says `source:
-        # text` for that move.
+        # A parser crash must never take the session with it -- the client
+        # marks the table unavailable instead of offering a typed-move path.
         return None
     if v and "kind" not in v:
         return None

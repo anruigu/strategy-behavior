@@ -377,10 +377,19 @@ function choice(list, onPick, opts) {
 function dial(o) {
   // Number entry with a slider, a box and step keys. The range comes from the
   // view, which took it from the prompt's own words.
+  //
+  // NOTHING IS PRE-SELECTED, and a dial is where that was easiest to lose.
+  // `value: null` asks for a dial nobody has answered yet; it used to be
+  // handed the bottom of the range instead, and the bottom of a range is still
+  // a move -- a catch of zero, a bid of nothing, a declared figure at the
+  // floor -- which `get()` then reported as though the player had named it.
+  // An explicit null now opens the box empty and `get()` answers null until
+  // the player types, nudges or drags. Omitting `value` still opens at `lo`,
+  // because a caller that wants a starting figure passes one.
   const lo = o.lo === undefined ? 0 : o.lo;
   const hi = o.hi === undefined ? 100 : o.hi;
   const step = o.step || 1;
-  let value = o.value === undefined || o.value === null ? lo : o.value;
+  let value = o.value === undefined ? lo : o.value;
 
   const box = el('div', 'bd-dial');
   if (o.label) put(box, el('div', 'lab', o.label));
@@ -389,31 +398,71 @@ function dial(o) {
   const minus = el('button', 'step', '−');
   const input = el('input');
   input.type = 'number'; input.min = lo; input.max = hi; input.step = step;
-  input.value = value;
+  input.autocomplete = 'off';
+  input.placeholder = o.placeholder === undefined ? fmt(lo) + '\u2013' + fmt(hi)
+    : o.placeholder;
   const plus = el('button', 'step', '+');
   const slide = el('input');
   slide.type = 'range'; slide.min = lo; slide.max = hi; slide.step = step;
-  slide.value = value;
+
+  // Both halves are one field, so both carry the label. A range input cannot
+  // be blank, so an unanswered dial says so in words rather than reading as a
+  // slider parked on its floor.
+  const named = o.aria || o.label || 'value';
+  input.setAttribute('aria-label', named);
+  slide.setAttribute('aria-label', named);
+
+  function quantise(v) {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n / step) * step : null;
+  }
+
+  // The one place the box, the slider and the blank state are put in agreement.
+  function paint(from) {
+    const blank = value === null;
+    if (from !== 'input') input.value = blank ? '' : value;
+    // A blank dial still needs its thumb somewhere: it rests at the floor
+    // without that being an answer.
+    if (from !== 'slide') slide.value = blank ? lo : Math.max(lo, Math.min(hi, value));
+    box.classList.toggle('unset', blank);
+    if (blank) slide.setAttribute('aria-valuetext', 'not set');
+    else slide.removeAttribute('aria-valuetext');
+  }
 
   function set(v, from) {
-    if (v === '' || v === null || Number.isNaN(v)) { value = null; }
-    else { value = Math.round(v / step) * step; }
-    if (from !== 'input') input.value = value === null ? '' : value;
-    if (from !== 'slide' && value !== null) slide.value = Math.max(lo, Math.min(hi, value));
+    value = quantise(v);
+    paint(from);
     if (o.onChange) o.onChange(value);
   }
-  minus.onclick = () => set((value || 0) - step);
-  plus.onclick = () => set((value || 0) + step);
+  // Nudging an unanswered dial starts it at the floor: the first press picks a
+  // value, it does not add a step to one that was never there.
+  minus.onclick = () => set(value === null ? lo : value - step);
+  plus.onclick = () => set(value === null ? lo : value + step);
   // The box is NOT clamped to [lo, hi]: the range in the view is the range the
   // prompt stated, and a prompt that states a range is not the same thing as
   // an engine that enforces one. Typing past it has to stay possible.
-  input.oninput = () => set(input.value === '' ? null : Number(input.value), 'input');
-  slide.oninput = () => set(Number(slide.value), 'slide');
+  input.oninput = () => set(input.value === '' ? null : input.value, 'input');
+  // Dragging reports through `input`. A click that drops the thumb exactly
+  // where it already sits reports nothing at all, which would leave a blank
+  // dial blank after the player plainly chose the floor -- so the release and
+  // `change` are read too, and a repeat of the value already held is dropped
+  // rather than announced twice.
+  function fromSlide() {
+    const n = quantise(slide.value);
+    if (n !== value) set(n, 'slide');
+  }
+  slide.oninput = fromSlide;
+  slide.addEventListener('change', fromSlide);
+  slide.addEventListener('pointerup', fromSlide);
 
+  paint();
   put(row, minus, input, plus);
   put(box, row, slide);
   if (o.hint) put(box, el('div', 'hint', o.hint));
-  return { node: box, get: () => value, set: v => set(v), input };
+  return {
+    node: box, get: () => value, set: v => set(v), clear: () => set(null), input,
+  };
 }
 
 function textbox(o) {

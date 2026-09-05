@@ -8,17 +8,32 @@
   `KIT.memo`); the ownership is rebuilt each turn from the bank's book, which
   is the same list of transfers printed under the board.
 
-  Three tokens go in together and they are three separate controls, because
-  they are three separate statements: what you paid, whether you bought, and
-  what you now hold. The balance box is seeded with nothing. Seeding it with
-  "last balance minus what is due" would be the board keeping the books, and
-  keeping your own books is the game.
+  Three statements go in together and they are three separate controls,
+  because they are three separate claims: what you paid, whether you bought,
+  and what you now hold. The balance box is seeded with nothing. Seeding it
+  with "last balance minus what is due" would be the board keeping the books,
+  and keeping your own books is the game.
+
+  NOBODY HERE TYPES THE ENGINE'S GRAMMAR. The reply the referee reads is one
+  compound line naming all three statements, but its shape belongs to the
+  adapter, which ships it in `tokens`, and it is filled by the host through
+  `ctx.fill` / `ctx.sendFilled`. The player names an amount, a payee, yes or
+  no, and a balance, and presses one button; the wire format never reaches
+  the screen.
 */
 window.UI = window.UI || {};
 
 window.UI.estate_settle = function (v, ctx) {
   const K = window.KIT;
   const tiles = K.memo('estate.tiles', v.tiles) || [];
+  // The shapes to fall back on if a turn arrives without `tokens`, so that a
+  // settle is still possible. The adapter's own templates win when it sends
+  // them, and either way these strings stay off the board.
+  const wire = {
+    pay: '[pay: {n} to P{k}]', pay_none: '[pay: none]',
+    buy: '[buy: {yn}]', balance: '[balance: {n}]',
+  };
+  const tokens = Object.assign({}, wire, K.memo('estate.tokens', v.tokens) || {});
 
   // Who owns what, from the transfers the player is shown.
   const owner = {};
@@ -51,7 +66,7 @@ window.UI.estate_settle = function (v, ctx) {
     key('you are here', 'now'), key('your deed', 'mine'), key('a rival’s deed', 'theirs'));
 
   // -- this turn --------------------------------------------------------
-  const s = v.square;
+  const s = v.square || {};
   const turn = K.panel('this turn');
   if (v.landed) K.put(turn, K.note('You landed on ' + v.landed + '.'));
   if (v.passed_start) K.put(turn, K.note('You passed START -- salary ' + v.salary + '.'));
@@ -75,33 +90,57 @@ window.UI.estate_settle = function (v, ctx) {
   K.put(box, K.panels(circuit, turn, book));
 
   // -- the three statements ---------------------------------------------
-  let payTo = null;
-  const payDial = K.dial({ lo: 0, hi: 400, value: 0, label: 'paid this turn' });
+  let payTo = null, buyVal = null;
+  const payDial = K.dial({ lo: 0, hi: 400, value: null, label: 'amount you paid' });
   const who = K.choice(
-    v.seats.filter(p => p !== v.seat).map(p => ({ label: 'to P' + p, value: p })),
+    (v.seats || []).filter(p => p !== v.seat).map(p => ({ label: 'investor ' + p, value: p })),
     p => { payTo = p; });
-  const buy = K.choice([{ label: 'yes', value: 'yes' }, { label: 'no', value: 'no' }], b => { buyVal = b; });
-  let buyVal = null;
+  const buy = K.choice([{ label: 'yes', value: 'yes' }, { label: 'no', value: 'no' }],
+    b => { buyVal = b; });
   const bal = K.dial({ lo: -999, hi: 9999, value: null, label: 'your cash after this turn' });
+  // `KIT.dial` opens at the low end of its range when it is handed no value,
+  // and the low end of a range is still an answer. Both boxes are emptied so
+  // that the first number in them is one the player put there.
+  payDial.set('');
+  bal.set('');
 
   const a = K.act();
   K.put(a, K.el('div', 'bd-panel-h', 'settle the turn'));
   K.put(a, K.panels(
-    K.panel('pay', payDial.node, who.node),
-    K.panel('buy', buy.node),
-    K.panel('balance', bal.node)));
+    K.panel('what you paid', payDial.node, who.node,
+      K.note('leave the amount empty if you paid nobody')),
+    K.panel(s.state === 'for_sale' && s.tile ? 'buy ' + s.tile : 'did you buy', buy.node),
+    K.panel('your declared balance', bal.node)));
   const err = K.note('', 'warn');
   K.put(a, err);
   K.put(a, K.submit('settle', () => {
     const amt = payDial.get();
     if (buyVal === null) { err.textContent = 'say whether you are buying.'; return; }
     if (bal.get() === null) { err.textContent = 'declare a balance.'; return; }
-    if (amt && payTo === null) { err.textContent = 'name who you paid, or set the amount to 0.'; return; }
-    const pay = amt ? '[pay: ' + amt + ' to P' + payTo + ']' : '[pay: none]';
-    ctx.send(pay + ' [buy: ' + buyVal + '] [balance: ' + bal.get() + ']', 'ui');
+    if (amt && payTo === null) { err.textContent = 'name who you paid, or leave the amount empty.'; return; }
+    // All three statements every time, whichever way each one came out.
+    reply([
+      amt ? { tpl: tokens.pay, values: { n: amt, k: payTo } }
+          : { tpl: tokens.pay_none, values: {} },
+      { tpl: tokens.buy, values: { yn: buyVal } },
+      { tpl: tokens.balance, values: { n: bal.get() } },
+    ]);
   }));
   K.put(box, a);
   return box;
+
+  // The host fills the adapter's templates when it can. The substitution
+  // here is the same one, for a host that does not carry the hooks.
+  function fill(tpl, values) {
+    if (ctx.fill) return ctx.fill(tpl, values);
+    return String(tpl).replace(/\{(\w+)\}/g, (m, k) =>
+      values && values[k] !== undefined && values[k] !== null ? String(values[k]) : m);
+  }
+
+  function reply(parts) {
+    if (ctx.sendFilled) return ctx.sendFilled(parts, 'ui');
+    ctx.send(parts.map(p => fill(p.tpl, p.values)).join(' '), 'ui');
+  }
 
   function key(label, cls) {
     const k = K.el('span', 'key');

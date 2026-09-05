@@ -65,9 +65,15 @@ window.UI.sidebar_msg = function (view, ctx) {
   input.maxLength = 300;
   const btn = el('button', null, 'send');
   const fire = () => {
-    // A bare [msg: ] is legal and the engine parses it; an empty send is a
-    // real choice (say nothing) and is not blocked here.
-    ctx.send(`[msg: ${input.value.trim()}]`, 'ui');
+    // Whatever is in the box goes into the adapter's template unexamined:
+    // no canned lines, no vocabulary, no filtering, no length rule beyond
+    // the field's own. The box is the measurement and the template only says
+    // where the text lands, so the board never looks at it.
+    //
+    // An empty box still sends. Saying nothing is a real choice here, and
+    // `sendText` is the path that will put an empty string in the slot
+    // instead of treating it as a half-finished move.
+    ctx.sendText(view.token, 'text', input.value.trim());
   };
   btn.onclick = fire;
   input.addEventListener('keydown', e => { if (e.key === 'Enter') fire(); });
@@ -108,9 +114,11 @@ window.UI.sidebar_bet = function (view, ctx) {
   });
 
   const actions = el('div', 'b-actions');
+  // fold, call and raise arrive with finished tokens, in the prompt's order,
+  // and get one row of identical buttons.
   (view.actions || []).forEach(a => {
     const b = el('button', null, a.label);
-    b.onclick = () => ctx.send(a.token, 'ui');
+    b.onclick = () => ctx.send(a.token);
     actions.appendChild(b);
   });
   box.appendChild(actions);
