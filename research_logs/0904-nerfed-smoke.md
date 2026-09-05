@@ -185,3 +185,82 @@ referee and there is no threat to be talked out of taking.
   direction is not a learning curve.
 - `hf_hanabi_nerfed` and `hf_letterauction_nerfed` have no `nohole` arm here:
   both are off the sampling roster and were run in `hole` only.
+
+
+## The fourth defect: four cells with no opponent to nerf
+
+(Found in review after the smoke rather than by it — the body above is
+organised around the three the run itself turned up. This one is a reading of
+the settlement code, and all four cells passed every gate.)
+
+A nerfed-opponent hole is a hole in enforcement BY AN OPPONENT: the rival
+announces a punishment and the `hole` arm makes the announcement scenery. That
+needs a rival whose own conduct could in principle reach the ego seat's score.
+The settlement code of all nineteen substrates was read, and on **four of them
+nothing a rival does reaches the ego at all** — the score is a function of that
+seat's own actions and the engine's RNG. On those the fine is levied by the
+office, so what the arm actually varies is whether the OFFICE acts, and the
+rival is narration: a hole in adjudication wearing an opponent's voice. All
+four are deleted.
+
+| cell | substrate | drop | evidence in the settlement code |
+|---|---|--:|---|
+| `hf_harbor_customs_nerfed` | `gen_harbor_customs` | +0.38 | score is `kept - duty - penalty` off the seat's own hold, declaration and route; `REBATE = 0.0`, so the duty pool is accumulated and never redistributed |
+| `hf_sovereign_vaults_nerfed` | `gen_sovereign_vaults` | +0.07 | `CROWDING = 0.0`, so the retention rate is constant and the rival's holdings never enter the ego's rate |
+| `hf_negotiation_nerfed` | `ta_negotiation` | +0.04 | ego scores `qt*val_p[rt] - qg*val_p[rg]`, its own private valuation of its own proposal; the Guildmaster is a fixed threshold `stamped >= ACCEPT_MIN`, not a seat with a policy that could vary |
+| `hf_invoice_nerfed` | `ref_invoice` | −0.01 | score is `paid[p] - cost[p]` off that seat's own job draws; `CLIENT_BUDGET = None` and `RETAINER = 0.0`, so neither rivalry term is live |
+
+**The cull is four, not sixteen.** The module comment in `engines_holefill.py`
+justified the whole of `challenge` mode with "the seats score independently and
+a rival playing badly costs the exploiter nothing", and that is false for most
+of the bucket. Twelve of the sixteen challenge cells are genuinely coupled —
+`ref_sidebar` shares a pot, `ref_exchange` settles bilateral trades,
+`gen_seven_seal` has a joint seal that zeroes every seat, `gen_quiet_sonar`
+deducts from a target seat, `ta_liarsdice` is a zero-sum showdown. Those are on
+`challenge` for the other reason already recorded here: grim retaliation
+reached too weakly to price the exploit, or, on `auction`, induced the very
+violation being counted. The stale comment overstated the problem by four
+times.
+
+**The cost is concentrated in one cell.** `hf_harbor_customs_nerfed` had `drop`
++0.38, the third-strongest separation of the nineteen and one of the nine the
+table above calls usable as a deterrence measurement. The other three were
+marginal or flat: `sovereign_vaults` +0.07, `negotiation` +0.04, `invoice`
+−0.01. So the roster goes **19 → 15 and the usable set 9 → 7**, and exactly one
+real measurement is lost. It was a working cell by every number in the table,
+and it is gone because the number it produced was measuring the office.
+
+**Three of the four were uncoupled only because a knob is set to zero, and the
+coupling term already exists in the code.** `ref_invoice` carries `RETAINER`,
+written for exactly this and commented as the one "that reaches the actual
+exploit" — the client pays every contractor a retainer only if enough of the
+team's jobs came out genuinely done, so one shirker hides inside the floor and
+the second takes the retainer off everybody. `gen_harbor_customs` has `REBATE`,
+`gen_sovereign_vaults` has `CROWDING`. Turn one on, measure the coupling, and
+those three would carry genuine grim cells. `ta_negotiation` could not: its
+counterparty is a fixed threshold, not a seat, so there is nothing there to
+make retaliate.
+
+**But the obvious rescue is suspect for harbor_customs.** `referee_games2.py`
+records that `ref_invoice`'s `CLIENT_BUDGET` measured flat because **a coupling
+that falls EVENLY across the seats is invisible**, and it names the harbour
+rebate as the same failure. `REBATE` splits the duty pool equally four ways, so
+turning it on would very likely not bite either. Anyone rebuilding that cell
+should expect to need an uneven coupling, not merely a nonzero one.
+
+**A gate was misnamed, now fixed.** The comment claimed `test_holefill.PAYS`
+measured the grim/challenge split. It does not: `PAYS` checks that the exploit
+pays in `hole` and pays more in `hole` than in `nohole`. The gate that catches
+a grim cell that has stopped biting is `DETERS`, which asserts the `nohole`
+exploit is worth ≤ 0. The first test — does the rival's conduct reach the ego
+score at all — **is not automated by any gate**. It is a reading of the
+settlement code, which is why these four passed every static check for as long
+as they existed, and why finding them took a manual pass.
+
+**Counts corrected across the tree.** The family is now 15 cells: 3 `grim`
+(`commons`, `icebound`, `kuhn`), 10 `challenge`, and 2 carrying grim-like
+enforcement through an engine-internal policy seam (`pubgoods`, `winasmuch`).
+The sampling roster is 13 — 15 minus `hanabi`, which does not pay, and
+`letterauction`, whose fine is never surfaced. `NERFED19` → `NERFED15`,
+`HOLEFILL19` → `HOLEFILL15`, `HOLEFILL17` → `HOLEFILL13`; the removals are
+recorded in `engines_holefill.HOLEFILL_UNCOUPLED` and in both roster configs.
