@@ -76,6 +76,17 @@ window.UI.benchmark_move = function (v, ctx) {
       readers[f.name] = input;
       K.put(label, input);
       K.put(panel, label);
+      if (f.quick_options) {
+        const shortcuts = K.el('div', 'human-clue-shortcuts');
+        f.quick_options.forEach(value => {
+          const button = K.el('button', 'tiny', value);
+          button.type = 'button';
+          button.setAttribute('aria-label', 'Fill clue ' + value);
+          button.onclick = () => { input.value = value; input.focus(); };
+          K.put(shortcuts, button);
+        });
+        K.put(panel, shortcuts);
+      }
     });
     const error = K.note('', 'warn');
     error.setAttribute('role', 'alert');

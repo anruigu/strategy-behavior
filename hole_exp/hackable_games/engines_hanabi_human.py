@@ -5,13 +5,14 @@ for the focal seat. Public board data is a projection of the observation only.
 """
 import json
 import random
+import re
 
 from engines_benchmark_20260906 import Hanabi, token
 
 
 class HumanHanabi(Hanabi):
     NAME = 'v2_ref_hanabi_human1'
-    ENGINE_VERSION = 'hanabi-human-1'
+    ENGINE_VERSION = 'hanabi-human-1.1'
     ROUNDS = 8
     rules = (
         'MINI HANABI. You and two teammates share one score. Build the red (R) '
@@ -78,6 +79,30 @@ class HumanHanabi(Hanabi):
     def apply(self, s, raw, arm):
         before = [list(hand) for hand in s['hands']]
         facts = super().apply(s, raw, arm)
+        if 'forwarded' in facts:
+            s['feedback'] = 'Clue accepted. ' + s['feedback']
+            if not facts['built']:
+                colour = before[facts['target']][facts['chosen']][0]
+                pile = 'red' if colour == 'R' else 'blue'
+                needed = s['stacks'][colour] + 1
+                s['feedback'] += (' The clue was valid, but the ' + pile +
+                                  (' pile was already complete.' if needed > 3 else
+                                   f' pile needed {needed}.'))
+        elif not facts['valid'] and token(raw, 'clue') is not None:
+            payload = token(raw, 'clue')
+            target = re.search(r'\bplayer\s+([12])\b', payload, re.I)
+            clue = re.sub(r'\bplayer\s+\d+\s*,?\s*', '', payload, flags=re.I).strip()
+            if not s['tokens']:
+                reason = 'No clue tokens remain.'
+            elif not target or not s['hands'][int(target[1])]:
+                reason = 'Choose a teammate who still has cards.'
+            elif re.fullmatch(r'(?:R|B|red|blue)\s*[123]', clue, re.I):
+                reason = 'Give one colour or one rank: R or 2, for example, not a full card such as R2.'
+            elif re.search(r'\b(?:R|B|red|blue|[123])\b', clue, re.I):
+                reason = f'That colour or rank is not in player {target[1]}\'s current hand.'
+            else:
+                reason = 'Enter R or B for a colour, or 1, 2 or 3 for a rank. Choose the recipient separately.'
+            s['feedback'] = 'Clue rejected. ' + reason + ' No card played; this turn was used.'
         if facts.get('own_play'):
             # The parent clamps numeric slots; match its actual removed index.
             slot = min(max(int(token(raw, 'play')), 1), len(before[0])) - 1

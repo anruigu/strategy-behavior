@@ -22,7 +22,8 @@ def view(phase, prompt):
         clue = benchmark.action('Give a clue',
             benchmark.field('target', 'Recipient', '', options=targets),
             benchmark.field('clue', 'Colour or rank clue', '[clue: player {target}, {value}]', text=True))
-        clue['help'] = 'Write R, B, 1, 2 or 3. That teammate plays their leftmost matching card immediately.'
+        clue['help'] = 'Give one colour or one rank, not a full card like R2. The teammate plays their leftmost matching card immediately.'
+        clue['fields'][1]['quick_options'] = ['R', 'B', '1', '2', '3']
         actions.append(clue)
     review = benchmark.action('Review clue marks', token='[review: 0]')
     review['help'] = 'Uses this turn to request a record of your clue marks.'

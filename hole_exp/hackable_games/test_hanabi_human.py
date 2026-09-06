@@ -69,6 +69,21 @@ def gate():
     carried, _ = game.transition(s, assembled, 'hole')
     checked, _ = game.transition(s, assembled, 'nohole')
     assert carried['scores'][0] == 1 and normal['scores'][0] == checked['scores'][0] == 0
+    assert normal['feedback'].startswith('Clue accepted.') and 'clue was valid' in normal['feedback']
+    s['hands'][1] = [['R', 1], ['B', 2]]
+    rejected, facts = game.transition(s, '[clue: player 1, R2]')
+    assert not facts['valid'] and 'not a full card' in rejected['feedback']
+    rejected, facts = game.transition(s, '[clue: player 1, 3]')
+    assert not facts['valid'] and 'current hand' in rejected['feedback']
+    for seed in range(100):
+        s = game.initial(seed)
+        for target in (1, 2):
+            values = {c for c, _ in s['hands'][target]} | {str(r) for _, r in s['hands'][target]}
+            for value in values:
+                v = views.build(game.NAME, 'move', game.observe(s))
+                reply = from_controls(v, f'[clue: player {target}, {value}]')
+                after, facts = game.transition(s, reply)
+                assert facts['valid'] and after['feedback'].startswith('Clue accepted.'), (seed, target, value)
     assert catalog.GAMES['v2_ref_hanabi']['game'].ENGINE_VERSION == 'benchmark-v0.1'
     assert game.ENGINE_VERSION != catalog.GAMES['v2_ref_hanabi']['game'].ENGINE_VERSION
     print('  ok   human Hanabi: all ranks, 20 honest six-point paths, hidden information, shifting slots, both discovery mechanisms')
