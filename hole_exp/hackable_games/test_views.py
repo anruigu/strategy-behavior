@@ -54,7 +54,7 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship"}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", *catalog.BENCHMARK_IDS.values()}
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -80,6 +80,18 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
     """Choose a legal move using ONLY the view. Deliberately dumb: it takes
     the first option every time. The point is reachability, not skill."""
     k = v["kind"]
+    if k == "benchmark_move":
+        # Independent normal decisions, using the values in the public view.
+        a = v["actions"][0]
+        if a["label"] == "Play a card":
+            return "[review: 0]"
+        tokens = [a["token"]] if a["token"] else []
+        for f in a["fields"]:
+            if f["optional"]:
+                continue
+            value = f["options"][0] if f["options"] else f["minimum"]
+            tokens.append(f["token"].format(value=value))
+        return " ".join(tokens)
     if k == "battleship_fire":
         spent = set(v["spent"])
         for r in range(v["grid"]):
@@ -267,7 +279,7 @@ def gate_adapter_roster() -> int:
     return bad
 
 
-def gate_no_leak() -> int:
+def gate_no_leak(gid="gen_quiet_sonar") -> int:
     """Drive a real run through the real handler methods and inspect every
     payload the client would have received."""
     import play_server as P
@@ -276,8 +288,8 @@ def gate_no_leak() -> int:
     P.COLLECTOR = PlayCollector(tmp)
     live_payloads = []
 
-    run = P.Run("gate", "gen_quiet_sonar", "hole", 2, "honest", 0.0,
-                P.COLLECTOR, ui_aids=["board:gen_quiet_sonar"])
+    run = P.Run("gate", gid, "hole", 2, "honest", 0.0,
+                P.COLLECTOR, ui_aids=["board:" + gid])
     P.RUNS[run.id] = run
     run.start_next()
 
@@ -328,8 +340,8 @@ def gate_no_leak() -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    if len(catalogue) != 24:
-        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected 24")
+    if len(catalogue) != 31:
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected 31 (24 V1 + 7 V2)")
         bad += 1
     hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
     if hf_ids:
@@ -739,8 +751,13 @@ def main() -> int:
     bad = gate_adapter_roster()
     print("\n== FULL EPISODES / EMITTED KINDS ==")
     bad += gate_parses_and_playable()
+    print("\n== V2 BENCHMARK FIDELITY ==")
+    from test_benchmark_views import gate as gate_v2
+    bad += gate_v2()
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
+    for gid in catalog.BENCHMARK_IDS.values():
+        bad += gate_no_leak(gid)
     print("\n== PLAYER-VISIBLE COPY ==")
     bad += gate_static_copy()
     print("\n== JAVASCRIPT SYNTAX ==")

@@ -213,6 +213,27 @@ for g in HF.HOLEFILL:
     _FILLED_BY[(g.BASE, g.KIND)] = g.NAME
 
 
+# Frozen source from benchmark/results/full-20260906/source/benchmark/games.py.
+# Keep the public deployment self-contained in the existing sparse checkout.
+# Distinct ids preserve V1 records and prevent a V2 run from using a V1 board.
+import engines_benchmark_20260906 as BENCH  # noqa: E402
+
+BENCHMARK_SOURCE_SHA256 = "e3e798ad419455bd18d4e0f5abcbeeedbaed6b32492ae8df37d04b280b6d74bb"
+BENCHMARK_IDS = {}
+for original_id, profile in BENCH.GAMES.items():
+    gid = "v2_" + original_id
+    game = type(type(profile).__name__ + "V2", (type(profile),), {"NAME": gid})()
+    BENCHMARK_IDS[original_id] = gid
+    GAMES[gid] = {
+        **GAMES[original_id], "id": gid, "game": game,
+        "family": "benchmark", "author": "benchmark-v0.1",
+        "base": original_id, "board_id": gid, "edition": "v2",
+        "rounds": str(game.ROUNDS), "n_players": game.N_PLAYERS,
+        "hole_type": game.HOLE_TYPE, "kinds": list(game.KINDS),
+        "hard": list(game.HARD), "blurb": "",
+    }
+
+
 # ==========================================================================
 # DEDUPLICATION
 # ==========================================================================
@@ -407,7 +428,7 @@ def variants(gid: str) -> List[dict]:
     A hole-fill id has no variants of its own: it already IS one.
     """
     c = GAMES.get(gid)
-    if c is None or c["family"] == "hole-fill":
+    if c is None or c["family"] in ("hole-fill", "benchmark"):
         return []
     native = NATIVE_KIND.get(gid, frozenset())
     out = []
@@ -435,7 +456,7 @@ def deduped() -> List[str]:
     """
     order = {"generated": 0, "textarena": 1, "referee": 2}
     ids = [g for g in GAMES
-           if g not in DUPLICATES and GAMES[g]["family"] != "hole-fill"]
+           if g not in DUPLICATES and GAMES[g]["family"] not in ("hole-fill", "benchmark")]
     ids.sort(key=lambda g: (not marshal_ready(g),
                             order.get(GAMES[g]["family"], 3),
                             GAMES[g]["title"]))

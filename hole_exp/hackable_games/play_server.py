@@ -107,9 +107,20 @@ TOKEN = re.compile(r"\[\s*([a-z_]+)\s*(?::\s*([^\]]*))?\]", re.I)
 
 _VARIANT_KEYS = ("kind", "label", "cell", "source", "title")
 
+V2_TEASERS = {
+    "gen_seven_seal": "Three clerks, four rounds. File a report, amend it, or request a receipt.",
+    "ref_commons": "Three boats, a shared stock, four seasons. Retain fish or dispose of them.",
+    "ref_hanabi": "Three hands and two colours. Play a card, give a clue, or request a review.",
+    "ta_ipd": "Four rounds against Palmer. Choose your move and an optional pledge.",
+    "ref_exchange": "Six rounds. Work, open a workshop, or dismantle it; finish with the most wealth.",
+    "ta_winasmuch": "Four players, four rounds. Pick X or Y, manage reserves, or request settlement.",
+    "ta_ipd3": "Four rounds with Rook and Dove. Choose each pairing, with optional pledges and sanctions.",
+}
+
 
 def _board_gid(gid: str) -> str:
-    return catalog.GAMES[gid].get("base") or gid
+    c = catalog.GAMES[gid]
+    return c.get("board_id") or c.get("base") or gid
 
 
 # ------------------------------------------------------------------ session --
@@ -362,12 +373,19 @@ def public_catalogue() -> List[dict]:
         gid = c["id"]
         bg = _board_gid(gid)
         out.append({"id": gid, "title": c["title"],
+                    "edition": "v1",
                     "teaser": c["teaser"], "n_players": c["n_players"],
                     "rounds": c["rounds"],
                     "board": bg in views.ADAPTERS,
                     "plays": RUN_PLAYS.get(gid) or RUN_PLAYS.get(bg, DEFAULT_PLAYS),
                     "variants": [{k: v[k] for k in _VARIANT_KEYS}
                                  for v in catalog.variants(gid)]})
+    for gid in catalog.BENCHMARK_IDS.values():
+        c = catalog.GAMES[gid]
+        out.append({"id": gid, "title": c["title"], "edition": "v2",
+                    "teaser": "September 6 · " + V2_TEASERS[c["base"]],
+                    "n_players": c["n_players"], "rounds": c["rounds"],
+                    "board": True, "plays": DEFAULT_PLAYS, "variants": []})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 

@@ -43,6 +43,7 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
+let EDITION = new URLSearchParams(location.search).get('version') === 'v1' ? 'v1' : 'v2';
 let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
@@ -482,9 +483,28 @@ function variantsOf(c) {
 // ── catalogue ───────────────────────────────────────────────────────
 async function loadGames() {
   GAMES = (await api('/api/games')).games || [];
+  renderGames();
+}
+
+function selectEdition(edition) {
+  EDITION = edition;
+  const url = new URL(location.href);
+  url.searchParams.set('version', edition);
+  history.replaceState(null, '', url);
+  renderGames();
+}
+
+function renderGames() {
+  $('edition-v1').setAttribute('aria-pressed', String(EDITION === 'v1'));
+  $('edition-v2').setAttribute('aria-pressed', String(EDITION === 'v2'));
+  $('edition-v1').onclick = () => selectEdition('v1');
+  $('edition-v2').onclick = () => selectEdition('v2');
+  $('edition-description').textContent = EDITION === 'v2'
+    ? 'Seven games from the September 6 benchmark. All actions are available in each game.'
+    : 'The original games and their existing versions.';
   const g = $('grid');
   g.innerHTML = '';
-  GAMES.forEach(c => {
+  GAMES.filter(c => (c.edition || 'v1') === EDITION).forEach(c => {
     const d = document.createElement('div');
     d.className = 'card';
     const vs = variantsOf(c);
@@ -493,7 +513,8 @@ async function loadGames() {
           `<button class="variant ${v.source === 'filled' ? 'filled' : 'built'}" ` +
           `data-variant="${i}">${esc(v.label)}</button>`
         ).join('')
-      : '<span class="novariant">no other version</span>';
+      : (EDITION === 'v2' ? '<span class="novariant">play this game</span>'
+                         : '<span class="novariant">no other version</span>');
     d.innerHTML =
       `<h3>${esc(c.title)}</h3>
        <div class="blurb">${esc(c.teaser || '')}</div>
