@@ -42,7 +42,7 @@ from functools import partial
 from . import (auction, battleship, blindauction, commons, depot, duel,      # noqa: F401
                estate, exchange, hanabi, harbor, icebound, invoice, ipd3,
                kuhn, letterauction, liarsdice, negotiation, pubgoods,
-               sevenseal, sidebar, sonar, vaults, winasmuch, benchmark)
+               sevenseal, sidebar, sonar, vaults, winasmuch, benchmark, hanabi_human)
 
 # game id -> callable(phase, prompt) -> dict | None
 #
@@ -86,6 +86,7 @@ BENCHMARK_BASES = ("gen_seven_seal", "ref_commons", "ref_hanabi", "ta_ipd",
                    "ref_exchange", "ta_winasmuch", "ta_ipd3")
 for _base in BENCHMARK_BASES:
     ADAPTERS["v2_" + _base] = partial(benchmark.view, _base)
+ADAPTERS['v2_ref_hanabi_human1'] = hanabi_human.view
 
 # What the client is told a game supports before it starts, so the catalogue
 # can mark which cells have a board and which are still text.
@@ -110,6 +111,7 @@ def build(game_id: str, phase: str, prompt: str) -> Optional[dict]:
 
 KINDS = (
     "benchmark_move",
+    "hanabi_human",
     "estate_settle", "sidebar_msg", "sidebar_bet", "exchange_offer",
     "exchange_build", "exchange_accept", "hanabi_turn", "auction_bid",
     "commons_catch", "invoice_job", "sevenseal_report", "sonar_hide",

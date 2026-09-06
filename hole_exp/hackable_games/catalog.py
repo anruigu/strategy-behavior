@@ -233,6 +233,15 @@ for original_id, profile in BENCH.GAMES.items():
         "hard": list(game.HARD), "blurb": "",
     }
 
+from engines_hanabi_human import HumanHanabi  # noqa: E402
+
+HUMAN_HANABI_ID = HumanHanabi.NAME
+GAMES[HUMAN_HANABI_ID] = {
+    **GAMES[BENCHMARK_IDS['ref_hanabi']],
+    'id': HUMAN_HANABI_ID, 'board_id': HUMAN_HANABI_ID,
+    'game': HumanHanabi(), 'title': 'Mini Hanabi', 'rounds': str(HumanHanabi.ROUNDS),
+}
+
 
 # ==========================================================================
 # DEDUPLICATION

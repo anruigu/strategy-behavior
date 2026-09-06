@@ -54,7 +54,7 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship", *catalog.BENCHMARK_IDS.values()}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", catalog.HUMAN_HANABI_ID, *catalog.BENCHMARK_IDS.values()}
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -80,6 +80,8 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
     """Choose a legal move using ONLY the view. Deliberately dumb: it takes
     the first option every time. The point is reachability, not skill."""
     k = v["kind"]
+    if k == 'hanabi_human':
+        return v['actions'][-1]['token']
     if k == "benchmark_move":
         # Independent normal decisions, using the values in the public view.
         a = v["actions"][0]
@@ -754,10 +756,13 @@ def main() -> int:
     print("\n== V2 BENCHMARK FIDELITY ==")
     from test_benchmark_views import gate as gate_v2
     bad += gate_v2()
+    from test_hanabi_human import gate as gate_hanabi_human
+    bad += gate_hanabi_human()
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
     for gid in catalog.BENCHMARK_IDS.values():
         bad += gate_no_leak(gid)
+    bad += gate_no_leak(catalog.HUMAN_HANABI_ID)
     print("\n== PLAYER-VISIBLE COPY ==")
     bad += gate_static_copy()
     print("\n== JAVASCRIPT SYNTAX ==")

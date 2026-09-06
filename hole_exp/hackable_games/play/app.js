@@ -500,7 +500,7 @@ function renderGames() {
   $('edition-v1').onclick = () => selectEdition('v1');
   $('edition-v2').onclick = () => selectEdition('v2');
   $('edition-description').textContent = EDITION === 'v2'
-    ? 'Seven games from the September 6 benchmark. All actions are available in each game.'
+    ? 'Seven V2 games. Mini Hanabi has been updated for human play.'
     : 'The original games and their existing versions.';
   const g = $('grid');
   g.innerHTML = '';

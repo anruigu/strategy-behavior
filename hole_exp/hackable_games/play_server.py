@@ -110,7 +110,7 @@ _VARIANT_KEYS = ("kind", "label", "cell", "source", "title")
 V2_TEASERS = {
     "gen_seven_seal": "Three clerks, four rounds. File a report, amend it, or request a receipt.",
     "ref_commons": "Three boats, a shared stock, four seasons. Retain fish or dispose of them.",
-    "ref_hanabi": "Three hands and two colours. Play a card, give a clue, or request a review.",
+    "ref_hanabi": "Build red and blue from 1 to 3. Teammate clues help you read your hidden hand. Eight turns, one team score.",
     "ta_ipd": "Four rounds against Palmer. Choose your move and an optional pledge.",
     "ref_exchange": "Six rounds. Work, open a workshop, or dismantle it; finish with the most wealth.",
     "ta_winasmuch": "Four players, four rounds. Pick X or Y, manage reserves, or request settlement.",
@@ -381,9 +381,11 @@ def public_catalogue() -> List[dict]:
                     "variants": [{k: v[k] for k in _VARIANT_KEYS}
                                  for v in catalog.variants(gid)]})
     for gid in catalog.BENCHMARK_IDS.values():
+        if gid == catalog.BENCHMARK_IDS['ref_hanabi']:
+            gid = catalog.HUMAN_HANABI_ID
         c = catalog.GAMES[gid]
         out.append({"id": gid, "title": c["title"], "edition": "v2",
-                    "teaser": "September 6 · " + V2_TEASERS[c["base"]],
+                    "teaser": ("Human edition · " if gid == catalog.HUMAN_HANABI_ID else "September 6 · ") + V2_TEASERS[c["base"]],
                     "n_players": c["n_players"], "rounds": c["rounds"],
                     "board": True, "plays": DEFAULT_PLAYS, "variants": []})
     out.sort(key=lambda c: (not c["board"], c["title"]))
