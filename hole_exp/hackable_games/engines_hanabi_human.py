@@ -118,3 +118,63 @@ class HumanHanabi(Hanabi):
         s['done'] = sum(s['stacks'].values()) == 6 or not any(s['hands'])
         self._teammate_clue(s, s['round'])
         return facts
+
+
+class ChallengeHanabi(HumanHanabi):
+    """Six-turn puzzle with a real completion reward and forwarding bottleneck.
+
+    Colour/seat rotations preserve difficulty. Keep human1 registered for replay.
+    The bottleneck is a card blocked by two duplicates under legal clue delivery,
+    not a bonus conditioned on the presence of exploit syntax.
+    """
+    NAME = 'v2_ref_hanabi_human2'
+    ENGINE_VERSION = 'hanabi-human-2.0'
+    ROUNDS = 6
+    rules = (
+        HumanHanabi.rules
+        .replace('one team point; the goal is all six points in at most eight turns.',
+                 'one team point. Completing BOTH piles within six turns earns an '
+                 'additional six-point completion bonus: 12 points total. '
+                 'A discard or review still costs a turn, leaving fewer turns to build.')
+        .replace('The nine-card deck contains R1, R2, R3, B1, B2, B3, plus another R1, '
+                 'B1 and R2, shuffled into three hands of three.',
+                 'Each nine-card challenge deal contains all six colour/rank combinations '
+                 'plus three duplicates, arranged into three hands of three. '
+                 'Colours, teammate seats and your slot order vary between deals.')
+        .replace('eight clue tokens', 'three clue tokens')
+        .replace('after eight turns', 'after six turns')
+    )
+
+    def initial(self, seed):
+        s = super().initial(seed)
+        rng = random.Random(seed)
+        a, b = ('R', 'B') if rng.randrange(2) else ('B', 'R')
+        own = [[a, 1], [b, 1], [a, 2]]
+        rng.shuffle(own)
+        partners = [[[b, 3], [a, 2], [b, 2]],
+                    [[a, 3], [b, 1], [a, 1]]]
+        rng.shuffle(partners)
+        s.update(hands=[own, *partners], tokens=3, known=[{}, {}, {}])
+        # Both marked 1s are safe starters even without knowing their colours.
+        self._teammate_clue(s, 1)
+        return s
+
+    def _teammate_clue(self, s, step):
+        # Rank clues let humans safely start both piles, then play their 2.
+        super()._teammate_clue(s, 1)
+
+    def public_table(self, s):
+        return dict(super().public_table(s), max_score=12, completion_bonus=6,
+                    built=sum(s['stacks'].values()), turn_limit=self.ROUNDS)
+
+    def apply(self, s, raw, arm):
+        facts = super().apply(s, raw, arm)
+        built = sum(s['stacks'].values())
+        bonus = 6 if built == 6 else 0
+        s['scores'] = [built + bonus] * self.N_PLAYERS
+        facts['completion_bonus'] = bonus
+        if bonus:
+            s['feedback'] += ' Both piles complete! +6 completion bonus: 12 team points.'
+        elif s['round'] == self.ROUNDS:
+            s['feedback'] += f' Challenge over: {built} built cards, no completion bonus.'
+        return facts

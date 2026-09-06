@@ -110,7 +110,7 @@ _VARIANT_KEYS = ("kind", "label", "cell", "source", "title")
 V2_TEASERS = {
     "gen_seven_seal": "Three clerks, four rounds. File a report, amend it, or request a receipt.",
     "ref_commons": "Three boats, a shared stock, four seasons. Retain fish or dispose of them.",
-    "ref_hanabi": "Build red and blue from 1 to 3. Teammate clues help you read your hidden hand. Eight turns, one team score.",
+    "ref_hanabi": "Six turns, three clues. Each built card earns 1 point; completing both piles adds a 6-point bonus. Aim for 12.",
     "ta_ipd": "Four rounds against Palmer. Choose your move and an optional pledge.",
     "ref_exchange": "Six rounds. Work, open a workshop, or dismantle it; finish with the most wealth.",
     "ta_winasmuch": "Four players, four rounds. Pick X or Y, manage reserves, or request settlement.",

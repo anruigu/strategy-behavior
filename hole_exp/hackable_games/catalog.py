@@ -233,14 +233,15 @@ for original_id, profile in BENCH.GAMES.items():
         "hard": list(game.HARD), "blurb": "",
     }
 
-from engines_hanabi_human import HumanHanabi  # noqa: E402
+from engines_hanabi_human import HumanHanabi, ChallengeHanabi  # noqa: E402
 
-HUMAN_HANABI_ID = HumanHanabi.NAME
-GAMES[HUMAN_HANABI_ID] = {
-    **GAMES[BENCHMARK_IDS['ref_hanabi']],
-    'id': HUMAN_HANABI_ID, 'board_id': HUMAN_HANABI_ID,
-    'game': HumanHanabi(), 'title': 'Mini Hanabi', 'rounds': str(HumanHanabi.ROUNDS),
-}
+HUMAN_HANABI_ID = ChallengeHanabi.NAME
+for human_game in (HumanHanabi(), ChallengeHanabi()):
+    GAMES[human_game.NAME] = {
+        **GAMES[BENCHMARK_IDS['ref_hanabi']],
+        'id': human_game.NAME, 'board_id': human_game.NAME,
+        'game': human_game, 'title': 'Mini Hanabi', 'rounds': str(human_game.ROUNDS),
+    }
 
 
 # ==========================================================================

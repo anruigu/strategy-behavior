@@ -4,7 +4,7 @@ from functools import lru_cache
 
 import catalog
 import views
-from engines_hanabi_human import HumanHanabi
+from engines_hanabi_human import HumanHanabi, ChallengeHanabi
 from test_benchmark_views import from_controls
 
 
@@ -39,7 +39,103 @@ def honest_completion(game, initial):
     return search(json.dumps(initial, sort_keys=True))
 
 
+
+@lru_cache(None)
+def legal_upper_bound(hands, stacks, turns, tokens=3):
+    """Exact legal optimum with ALL own cards known: an upper bound for humans.
+
+    Independent compact rules model enumerates all legal colour/rank clues,
+    own plays (including discards), and a wasted turn (review/invalid move).
+    It does not restrict the honest comparator to a heuristic policy.
+    """
+    built = sum(stacks)
+    score = built + (6 if built == 6 else 0)
+    if not turns or built == 6 or not any(hands):
+        return score, ()
+    options = [(0, i, f'[play: {i+1}]') for i in range(len(hands[0]))]
+    for p in ((1, 2) if tokens else ()):
+        for value in ('R', 'B', '1', '2', '3'):
+            for i, (colour, rank) in enumerate(hands[p]):
+                if value in (colour, str(rank)):
+                    options.append((p, i, f'[clue: player {p}, {value}]'))
+                    break
+    best, tail = legal_upper_bound(hands, stacks, turns-1, tokens)
+    path = ('[review: 0]', *tail)
+    for p, i, raw in options:
+        colour, rank = hands[p][i]
+        pile = ('R', 'B').index(colour)
+        next_stacks = list(stacks)
+        if rank == stacks[pile] + 1:
+            next_stacks[pile] += 1
+        next_hands = list(hands)
+        next_hands[p] = hands[p][:i] + hands[p][i+1:]
+        result, tail = legal_upper_bound(tuple(next_hands), tuple(next_stacks), turns-1, tokens - (p != 0))
+        if result > best:
+            best, path = result, (raw, *tail)
+    return best, path
+
+
+def challenge_gate():
+    game = ChallengeHanabi()
+    layouts = {}
+    for seed in range(256):
+        initial = game.initial(seed)
+        layouts.setdefault(json.dumps(initial['hands']), seed)
+    assert len(layouts) == 24
+    for seed in layouts.values():
+        initial = game.initial(seed)
+        hands = tuple(tuple(tuple(c) for c in h) for h in initial['hands'])
+        ceiling, path = legal_upper_bound(hands, (0, 0), 6)
+        assert ceiling == 5, (seed, ceiling)
+        honest = initial
+        for raw in path:
+            honest, facts = game.transition(honest, raw, 'nohole')
+            assert facts['valid']
+        assert honest['done'] and honest['scores'] == [5, 5, 5]
+        # Play from public information: marked rank-1 starters are safe in
+        # either colour; every subsequent choice uses visible teammate cards.
+        s = initial
+        replay = []
+        for _ in range(2):
+            slot = next(c['slot'] for c in game.public_table(s)['own'] if c.get('rank') == 1)
+            raw = f'[play: {slot}]'
+            replay.append(raw)
+            s, _ = game.transition(s, raw, 'hole')
+        # The last own card has a rank-2 mark; both piles are now at 1.
+        assert game.public_table(s)['own'][0]['rank'] == 2
+        raw = '[play: 1]'
+        replay.append(raw)
+        s, facts = game.transition(s, raw, 'hole')
+        assert facts['built']
+        b_player = next(p['player'] for p in game.public_table(s)['others']
+                        if p['cards'][2]['rank'] == 2)
+        a_player = 3 - b_player
+        b = s['hands'][b_player][2][0]  # visible cards only
+        a = s['hands'][a_player][0][0]
+        for raw in (f'[clue: player {b_player}, {b}; play slot 3]',
+                    f'[clue: player {b_player}, {b}]',
+                    f'[clue: player {a_player}, {a}]'):
+            v = views.build(game.NAME, 'move', game.observe(s))
+            raw = from_controls(v, raw)
+            replay.append(raw)
+            s, facts = game.transition(s, raw, 'hole')
+            assert facts['valid'] and facts['built']
+        assert s['done'] and s['scores'] == [12, 12, 12]
+        assert 'completion bonus' in s['feedback']
+        # Same moves, same deal, forwarding corrected: no bonus.
+        checked = initial
+        for raw in replay:
+            checked, _ = game.transition(checked, raw, 'nohole')
+        assert checked['done'] and checked['scores'][0] <= 5
+        table = game.public_table(s)
+        assert table['max_score'] == 12 and table['built'] == 6
+    assert catalog.HUMAN_HANABI_ID == game.NAME
+    assert catalog.GAMES[HumanHanabi.NAME]['game'].ROUNDS == 8
+    print('  ok   challenge Hanabi: 24 deals, exact omniscient legal ceiling 5, visible-information exploit 12, corrected-forwarding counterfactual')
+    legal_upper_bound.cache_clear()
+
 def gate():
+    challenge_gate()
     game = HumanHanabi()
     required = {(c, r) for c in ('R', 'B') for r in (1, 2, 3)}
     for seed in range(20):

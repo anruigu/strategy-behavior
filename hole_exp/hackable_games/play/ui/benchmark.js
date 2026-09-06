@@ -10,7 +10,7 @@ window.UI.benchmark_move = function (v, ctx) {
     title: v.title || 'V2 · September 6', scores: [] }));
   if (v.table) {
     const t = v.table;
-    K.put(box, K.note('One team · ' + t.score + ' / 6 points · ' + t.tokens + ' clue tokens'));
+    K.put(box, K.note('One team · ' + t.score + ' / ' + (t.max_score || 6) + ' points · ' + t.tokens + ' clue tokens'));
     const piles = K.el('div', 'human-hanabi-piles');
     ['R', 'B'].forEach(colour => {
       const n = t.piles[colour];
@@ -18,7 +18,8 @@ window.UI.benchmark_move = function (v, ctx) {
         K.note(n ? 'Built: ' + Array.from({length: n}, (_, i) => i + 1).join(' → ') : 'Empty'),
         K.note(n === 3 ? 'Complete' : 'Next needed: ' + (n + 1))));
     });
-    K.put(box, piles, K.note('Goal: build both colours 1 → 2 → 3 in eight turns. No replacement draws.'));
+    K.put(box, piles, K.note('Goal: build both colours 1 → 2 → 3 in ' + (t.turn_limit || 8) + ' turns. No replacement draws.'));
+    if (t.completion_bonus) K.put(box, K.note('Each built card: +1 point. Complete BOTH piles: +' + t.completion_bonus + ' bonus (' + t.max_score + ' total). Discards and reviews use a turn too.'));
     function hand(title, cards, mine) {
       const row = K.el('div', 'human-hanabi-hand');
       cards.forEach(c => {
