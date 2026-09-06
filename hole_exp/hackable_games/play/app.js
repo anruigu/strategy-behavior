@@ -500,7 +500,7 @@ function renderGames() {
   $('edition-v1').onclick = () => selectEdition('v1');
   $('edition-v2').onclick = () => selectEdition('v2');
   $('edition-description').textContent = EDITION === 'v2'
-    ? 'Seven V2 games. Mini Hanabi has been updated for human play.'
+    ? 'Ten V2 games, including Auction, Estate and Battleship. Mini Hanabi uses the six-turn challenge.'
     : 'The original games and their existing versions.';
   const g = $('grid');
   g.innerHTML = '';

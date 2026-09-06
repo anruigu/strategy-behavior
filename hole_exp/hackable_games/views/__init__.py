@@ -88,6 +88,8 @@ for _base in BENCHMARK_BASES:
     ADAPTERS["v2_" + _base] = partial(benchmark.view, _base)
 ADAPTERS['v2_ref_hanabi_human1'] = hanabi_human.view
 ADAPTERS['v2_ref_hanabi_human2'] = hanabi_human.view
+for base in ('ref_auction', 'ref_estate', 'ref_battleship'):
+    ADAPTERS['v2_' + base] = ADAPTERS[base]
 
 # What the client is told a game supports before it starts, so the catalogue
 # can mark which cells have a board and which are still text.

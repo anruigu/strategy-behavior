@@ -243,6 +243,24 @@ for human_game in (HumanHanabi(), ChallengeHanabi()):
         'game': human_game, 'title': 'Mini Hanabi', 'rounds': str(human_game.ROUNDS),
     }
 
+# Scale-up roster additions reuse the existing referee engines. These are not
+# new controlled profiles or claims that the 60-instance benchmark is complete.
+V2_ADDITIONS = {}
+for original_id in ('ref_auction', 'ref_estate', 'ref_battleship'):
+    gid = 'v2_' + original_id
+    original = GAMES[original_id]
+    game = type(type(original['game']).__name__ + 'V2',
+                (type(original['game']),),
+                {'NAME': gid, 'ENGINE_VERSION': 'playable-expansion-1.0'})()
+    V2_ADDITIONS[original_id] = gid
+    GAMES[gid] = {
+        **original, 'id': gid, 'game': game, 'family': 'benchmark',
+        'base': original_id, 'board_id': gid, 'edition': 'v2',
+        'rounds': str(getattr(game, 'ROUNDS', original['rounds'])),
+    }
+V2_IDS = {**BENCHMARK_IDS, **V2_ADDITIONS}
+
+
 
 # ==========================================================================
 # DEDUPLICATION

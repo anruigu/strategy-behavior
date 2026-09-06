@@ -54,7 +54,7 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.BENCHMARK_IDS.values()}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values()}
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -342,8 +342,8 @@ def gate_no_leak(gid="gen_quiet_sonar") -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    if len(catalogue) != 31:
-        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected 31 (24 V1 + 7 V2)")
+    if len(catalogue) != 34:
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected 34 (24 V1 + 10 V2)")
         bad += 1
     hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
     if hf_ids:
@@ -760,7 +760,7 @@ def main() -> int:
     bad += gate_hanabi_human()
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
-    for gid in catalog.BENCHMARK_IDS.values():
+    for gid in catalog.V2_IDS.values():
         bad += gate_no_leak(gid)
     bad += gate_no_leak(catalog.HUMAN_HANABI_ID)
     print("\n== PLAYER-VISIBLE COPY ==")

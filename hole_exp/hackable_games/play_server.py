@@ -99,7 +99,7 @@ DEBRIEF = os.environ.get("HG_DEBRIEF") == "1"
 # How many plays a run of each cell is, unless the operator says otherwise.
 # Roughly levelled on decisions-per-play rather than plays: battleship asks a
 # seat 32 times per play, hanabi 9.
-RUN_PLAYS = {"ref_battleship": 3, "ref_sidebar": 4,
+RUN_PLAYS = {"ref_battleship": 3, "v2_ref_battleship": 3, "ref_sidebar": 4,
              "ref_hanabi": 5, "gen_quiet_sonar": 5}
 DEFAULT_PLAYS = 4
 
@@ -108,6 +108,7 @@ TOKEN = re.compile(r"\[\s*([a-z_]+)\s*(?::\s*([^\]]*))?\]", re.I)
 _VARIANT_KEYS = ("kind", "label", "cell", "source", "title")
 
 V2_TEASERS = {
+    **{base: catalog.TEASERS[base] for base in catalog.V2_ADDITIONS},
     "gen_seven_seal": "Three clerks, four rounds. File a report, amend it, or request a receipt.",
     "ref_commons": "Three boats, a shared stock, four seasons. Retain fish or dispose of them.",
     "ref_hanabi": "Six turns, three clues. Each built card earns 1 point; completing both piles adds a 6-point bonus. Aim for 12.",
@@ -380,14 +381,18 @@ def public_catalogue() -> List[dict]:
                     "plays": RUN_PLAYS.get(gid) or RUN_PLAYS.get(bg, DEFAULT_PLAYS),
                     "variants": [{k: v[k] for k in _VARIANT_KEYS}
                                  for v in catalog.variants(gid)]})
-    for gid in catalog.BENCHMARK_IDS.values():
+    for gid in catalog.V2_IDS.values():
         if gid == catalog.BENCHMARK_IDS['ref_hanabi']:
             gid = catalog.HUMAN_HANABI_ID
         c = catalog.GAMES[gid]
         out.append({"id": gid, "title": c["title"], "edition": "v2",
-                    "teaser": ("Human edition · " if gid == catalog.HUMAN_HANABI_ID else "September 6 · ") + V2_TEASERS[c["base"]],
+                    "teaser": ("Human edition · " if gid == catalog.HUMAN_HANABI_ID else
+                               "Expanded roster · " if gid in catalog.V2_ADDITIONS.values() else
+                               "September 6 · ") + V2_TEASERS[c["base"]],
                     "n_players": c["n_players"], "rounds": c["rounds"],
-                    "board": True, "plays": DEFAULT_PLAYS, "variants": []})
+                    "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": RUN_PLAYS.get(c["base"], DEFAULT_PLAYS) if gid in catalog.V2_ADDITIONS.values() else DEFAULT_PLAYS,
+                    "variants": []})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
