@@ -593,7 +593,8 @@ function paint(st) {
   // must not become, a place to type a move -- nor a place to learn that
   // moves can be typed, which is why it goes through `displayRules` and the
   // raw prompt is never written to the page.
-  $('prompt').textContent = displayRules(st.pending.prompt);
+  $('prompt').textContent = displayRules(st.pending.view && st.pending.view.guide
+    ? st.pending.prompt.split('\nTable:')[0] : st.pending.prompt);
 
   const view = st.pending.view;
   if (!view || !view.kind) {

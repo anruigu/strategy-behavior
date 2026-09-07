@@ -8,6 +8,19 @@ window.UI.benchmark_move = function (v, ctx) {
   const box = K.board();
   K.put(box, K.head({ step: 'Round ' + v.round + ' / ' + v.rounds,
     title: v.title || 'V2 · September 6', scores: [] }));
+  if (v.guide) {
+    const g = v.guide;
+    const help = K.panel('How to play ' + g.title, K.note(g.goal), K.note(g.turn));
+    K.put(help, K.note('Getting started: ' + g.start));
+    const terms = K.el('details', 'scaleup-help-terms');
+    K.put(terms, K.el('summary', '', 'What do the terms mean?'));
+    Object.entries(g.terms).forEach(([term, meaning]) => {
+      K.put(terms, K.el('strong', '', term), K.note(meaning));
+    });
+    const link = K.el('a', 'scaleup-guide-link', 'Open the full game guide ↗');
+    link.href = g.url; link.target = '_blank'; link.rel = 'noopener';
+    K.put(help, terms, link); K.put(box, help);
+  }
   if (v.table) {
     const t = v.table;
     K.put(box, K.note('One team · ' + t.score + ' / ' + (t.max_score || 6) + ' points · ' + t.tokens + ' clue tokens'));
@@ -40,7 +53,7 @@ window.UI.benchmark_move = function (v, ctx) {
     if (t.discarded.length) K.put(box, K.note('Discarded: ' + t.discarded.map(c => c.join('')).join(', ')));
   } else if (v.public_state) {
     const state = v.public_state;
-    K.put(box, K.note('Scores · ' + v.scores));
+    K.put(box, K.note('Scores · ' + (v.guide ? JSON.parse(v.scores).map((score, i) => v.guide.seats[i] + ': ' + score).join(' · ') : v.scores)));
     if (state.own_hull) {
       const sea = K.el('div', 'scaleup-sea');
       ['A','B','C','D'].forEach(row => [1,2,3,4].forEach(col => {
@@ -87,6 +100,7 @@ window.UI.benchmark_move = function (v, ctx) {
   v.actions.forEach(action => {
     const panel = K.panel(action.label);
     if (action.help) K.put(panel, K.note(action.help));
+    if (action.example) K.put(panel, K.note(action.example, 'scaleup-input-example'));
     const readers = {};
     action.fields.forEach(f => {
       const label = K.el('label', 'benchmark-field');
@@ -98,7 +112,7 @@ window.UI.benchmark_move = function (v, ctx) {
         empty.value = '';
         K.put(input, empty);
         f.options.forEach(value => {
-          const option = K.el('option', '', value);
+          const option = K.el('option', '', (f.option_labels && f.option_labels[value]) || value);
           option.value = value;
           K.put(input, option);
         });
@@ -116,6 +130,7 @@ window.UI.benchmark_move = function (v, ctx) {
       input.dataset.field = f.name;
       readers[f.name] = input;
       K.put(label, input);
+      if (f.help) K.put(label, K.note(f.help));
       K.put(panel, label);
       if (f.quick_options) {
         const shortcuts = K.el('div', 'human-clue-shortcuts');

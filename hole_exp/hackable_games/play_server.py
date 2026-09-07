@@ -454,6 +454,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if u.path in ("/", "/index.html"):
             return self._static("index.html", "text/html; charset=utf-8")
+        if u.path in ("/guide", "/guide.html"):
+            return self._static("guide.html", "text/html; charset=utf-8")
         if u.path == "/app.js":
             return self._static("app.js", "application/javascript")
         if u.path == "/style.css":

@@ -93,7 +93,7 @@ for base in ('ref_auction', 'ref_estate', 'ref_battleship'):
 
 from . import scaleup
 for _base in (*BENCHMARK_BASES, 'ref_auction', 'ref_estate', 'ref_battleship'):
-    ADAPTERS['v2s_' + _base] = scaleup.view
+    ADAPTERS['v2s_' + _base] = partial(scaleup.view, _base)
 
 # What the client is told a game supports before it starts, so the catalogue
 # can mark which cells have a board and which are still text.
