@@ -259,7 +259,36 @@ for original_id in ('ref_auction', 'ref_estate', 'ref_battleship'):
         'base': original_id, 'board_id': gid, 'edition': 'v2',
         'rounds': str(getattr(game, 'ROUNDS', original['rounds'])),
     }
-V2_IDS = {**BENCHMARK_IDS, **V2_ADDITIONS}
+HISTORICAL_V2_IDS = {**BENCHMARK_IDS, **V2_ADDITIONS}
+
+# September 7 expanded suite. Historical ids remain registered for replays.
+import engines_scaleup_20260907 as SCALEUP
+SCALEUP_TEASERS = {
+    'gen_seven_seal': 'Eight rounds of certificates, reports and redemptions against two rival clerks.',
+    'ref_commons': 'Manage a living fishery, gear, bait and rival access over eight seasons.',
+    'ref_hanabi': 'Six turns, three clues, two firework piles. Complete both for twelve team points.',
+    'ta_ipd': 'Cooperate, defect, make commitments and manage a repeated relationship with Palmer.',
+    'ref_exchange': 'Build workshops, trade crates and boards, and settle market offers over eight turns.',
+    'ta_winasmuch': 'Four players choose X or Y, send signals and manage a shared reserve.',
+    'ta_ipd3': 'Pairwise dilemmas, speaking order and coalition decisions with Rook and Dove.',
+    'ref_auction': 'Three sealed lots, indicative prices, collector commissions and rival alliances.',
+    'ref_estate': 'Develop property on a ring of roads. Manage titles, loans, rents and redevelopment.',
+    'ref_battleship': 'Patrol a four-by-four sea with shells, hull movement, mines and a supply courier.',
+}
+V2_IDS = {}
+for original_id, profile in SCALEUP.GAMES.items():
+    gid = 'v2s_' + original_id
+    game = type(type(profile).__name__ + 'Scaleup', (type(profile),), {'NAME': gid})()
+    V2_IDS[original_id] = gid
+    GAMES[gid] = {
+        **GAMES[original_id], 'id': gid, 'game': game,
+        'title': profile.TITLE, 'teaser': SCALEUP_TEASERS[original_id],
+        'family': 'benchmark', 'author': SCALEUP.VERSION,
+        'base': original_id, 'board_id': gid, 'edition': 'v2',
+        'rounds': str(game.ROUNDS), 'n_players': game.N_PLAYERS,
+        'hole_type': game.HOLE_TYPE, 'kinds': list(game.KINDS),
+        'hard': list(game.HARD), 'blurb': '',
+    }
 
 
 

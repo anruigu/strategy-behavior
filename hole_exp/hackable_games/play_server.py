@@ -382,17 +382,12 @@ def public_catalogue() -> List[dict]:
                     "variants": [{k: v[k] for k in _VARIANT_KEYS}
                                  for v in catalog.variants(gid)]})
     for gid in catalog.V2_IDS.values():
-        if gid == catalog.BENCHMARK_IDS['ref_hanabi']:
-            gid = catalog.HUMAN_HANABI_ID
         c = catalog.GAMES[gid]
         out.append({"id": gid, "title": c["title"], "edition": "v2",
-                    "teaser": ("Human edition · " if gid == catalog.HUMAN_HANABI_ID else
-                               "Expanded roster · " if gid in catalog.V2_ADDITIONS.values() else
-                               "September 6 · ") + V2_TEASERS[c["base"]],
-                    "n_players": c["n_players"], "rounds": c["rounds"],
-                    "board": _board_gid(gid) in views.ADAPTERS,
-                    "plays": RUN_PLAYS.get(c["base"], DEFAULT_PLAYS) if gid in catalog.V2_ADDITIONS.values() else DEFAULT_PLAYS,
-                    "variants": []})
+                    "engine_version": c["game"].ENGINE_VERSION,
+                    "teaser": c["teaser"], "n_players": c["n_players"],
+                    "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": DEFAULT_PLAYS, "variants": []})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 

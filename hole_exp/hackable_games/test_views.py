@@ -54,7 +54,7 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values()}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values()}
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -82,6 +82,9 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
     k = v["kind"]
     if k == 'hanabi_human':
         return v['actions'][-1]['token']
+    if k == "benchmark_move" and 'public_state' in v:
+        from test_scaleup_views import normal_from_public
+        return normal_from_public(v)
     if k == "benchmark_move":
         # Independent normal decisions, using the values in the public view.
         a = v["actions"][0]
@@ -760,6 +763,8 @@ def main() -> int:
     bad += gate_hanabi_human()
     from test_estate_views import gate as gate_estate
     bad += gate_estate()
+    from test_scaleup_views import gate as gate_scaleup
+    bad += gate_scaleup()
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
     for gid in catalog.V2_IDS.values():

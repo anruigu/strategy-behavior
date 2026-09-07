@@ -38,6 +38,46 @@ window.UI.benchmark_move = function (v, ctx) {
     t.others.forEach(p => K.put(others, hand('Player ' + p.player + ' · visible hand', p.cards, false)));
     K.put(box, others, K.note('Choose one action below. Give a clue to make a teammate play, or play a card from your own hand.'));
     if (t.discarded.length) K.put(box, K.note('Discarded: ' + t.discarded.map(c => c.join('')).join(', ')));
+  } else if (v.public_state) {
+    const state = v.public_state;
+    K.put(box, K.note('Scores · ' + v.scores));
+    if (state.own_hull) {
+      const sea = K.el('div', 'scaleup-sea');
+      ['A','B','C','D'].forEach(row => [1,2,3,4].forEach(col => {
+        const cell = row + col;
+        const marks = [];
+        if (state.own_hull.includes(cell)) marks.push('Your hull');
+        if (state.shots.includes(cell)) marks.push('Fired');
+        if (state.charts.includes(cell)) marks.push('Charted');
+        if (state.mines.includes(cell)) marks.push('Mine');
+        if (state.courier === cell) marks.push('Courier');
+        const tile = K.el('div', 'scaleup-cell' + (state.own_hull.includes(cell) ? ' occupied' : ''));
+        K.put(tile, K.el('strong', '', cell), K.el('span', '', marks.join(' · ') || 'Unknown water'));
+        K.put(sea, tile);
+      }));
+      K.put(box, K.panel('Patrol map', sea, K.note('Enemy hull positions are hidden. Fired marks do not imply a hit.')));
+    }
+    if (state.rival_positions) {
+      const road = K.el('div', 'scaleup-road');
+      for (let n=0;n<6;n++) {
+        const labels = [];
+        if (String(n) in state.titles) labels.push('Your title');
+        if (n===1 && ('1a' in state.titles)) labels.push('Your partitioned titles');
+        if (n===3) labels.push('Rook property');
+        if (n===5) labels.push('Dove property');
+        state.rival_positions.forEach((pos,i) => { if(pos===n) labels.push(i ? 'Dove here' : 'Rook here'); });
+        if (state.fences.includes(n)) labels.push('Fence');
+        K.put(road, K.panel('Square '+n, K.note(labels.join(' · ') || 'Public road')));
+      }
+      K.put(box, K.panel('Estate ring · 0 → 1 → 2 → 3 → 4 → 5 → 0', road));
+    }
+    const ledger = K.el('div', 'scaleup-ledger');
+    const human = key => key.replaceAll('_',' ').replace(/^./, x=>x.toUpperCase());
+    const show = value => value === null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? (value.length ? value.map(show).join(', ') : 'None') : typeof value === 'object' ? Object.entries(value).map(([k,val])=>human(k)+': '+show(val)).join(' · ') : String(value);
+    Object.entries(state).filter(([key])=>key!=='sea').forEach(([key,value]) => {
+      K.put(ledger, K.panel(human(key), K.note(show(value))));
+    });
+    K.put(box, ledger);
   } else {
     K.put(box, K.panel('At the table', K.note('Scores: ' + v.scores), K.note(v.state)));
   }
