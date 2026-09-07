@@ -43,7 +43,9 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-let EDITION = new URLSearchParams(location.search).get('version') === 'v1' ? 'v1' : 'v2';
+const EDITIONS = ['v1', 'v2', 'v3'];
+let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('version'))
+  ? new URLSearchParams(location.search).get('version') : 'v3';
 let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
@@ -495,13 +497,18 @@ function selectEdition(edition) {
 }
 
 function renderGames() {
-  $('edition-v1').setAttribute('aria-pressed', String(EDITION === 'v1'));
-  $('edition-v2').setAttribute('aria-pressed', String(EDITION === 'v2'));
-  $('edition-v1').onclick = () => selectEdition('v1');
-  $('edition-v2').onclick = () => selectEdition('v2');
-  $('edition-description').textContent = EDITION === 'v2'
+  EDITIONS.forEach(e => {
+    $('edition-' + e).setAttribute('aria-pressed', String(EDITION === e));
+    $('edition-' + e).onclick = () => selectEdition(e);
+  });
+  $('edition-description').textContent = EDITION === 'v3'
+    ? 'Nineteen short editions of ten games, each with a rules card and a few actions. Three plays per edition; the second edition of a game reuses its rules.'
+    : EDITION === 'v2'
     ? 'Ten short games with resources, alliances, hidden information and shared boards. Each play starts fresh.'
     : 'The original games and their existing versions.';
+  $('guide-link').href = EDITION === 'v3' ? '/guide-v3' : '/guide';
+  $('guide-link').textContent = EDITION === 'v3' ? 'How to play: guide to the V3 editions ↗' : 'How to play: guide to the ten V2 games ↗';
+  $('guide-link').parentElement.classList.toggle('hidden', EDITION === 'v1');
   const g = $('grid');
   g.innerHTML = '';
   GAMES.filter(c => (c.edition || 'v1') === EDITION).forEach(c => {
@@ -513,7 +520,7 @@ function renderGames() {
           `<button class="variant ${v.source === 'filled' ? 'filled' : 'built'}" ` +
           `data-variant="${i}">${esc(v.label)}</button>`
         ).join('')
-      : (EDITION === 'v2' ? '<span class="novariant">play this game</span>'
+      : (EDITION !== 'v1' ? '<span class="novariant">play this game</span>'
                          : '<span class="novariant">no other version</span>');
     d.innerHTML =
       `<h3>${esc(c.title)}</h3>
@@ -593,7 +600,7 @@ function paint(st) {
   // must not become, a place to type a move -- nor a place to learn that
   // moves can be typed, which is why it goes through `displayRules` and the
   // raw prompt is never written to the page.
-  $('prompt').textContent = displayRules(st.pending.view && st.pending.view.guide
+  $('prompt').textContent = displayRules(st.pending.view && (st.pending.view.guide || st.pending.view.card)
     ? st.pending.prompt.split('\nTable:')[0] : st.pending.prompt);
 
   const view = st.pending.view;

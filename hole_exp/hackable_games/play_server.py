@@ -102,6 +102,8 @@ DEBRIEF = os.environ.get("HG_DEBRIEF") == "1"
 RUN_PLAYS = {"ref_battleship": 3, "v2_ref_battleship": 3, "ref_sidebar": 4,
              "ref_hanabi": 5, "gen_quiet_sonar": 5}
 DEFAULT_PLAYS = 4
+# V3 editions are short and come in pairs per base game; three plays each.
+V3_PLAYS = 3
 
 TOKEN = re.compile(r"\[\s*([a-z_]+)\s*(?::\s*([^\]]*))?\]", re.I)
 
@@ -388,6 +390,13 @@ def public_catalogue() -> List[dict]:
                     "teaser": c["teaser"], "n_players": c["n_players"],
                     "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
                     "plays": DEFAULT_PLAYS, "variants": []})
+    for gid in catalog.V3_IDS.values():
+        c = catalog.GAMES[gid]
+        out.append({"id": gid, "title": c["title"], "edition": "v3",
+                    "engine_version": c["game"].ENGINE_VERSION,
+                    "teaser": c["teaser"], "n_players": c["n_players"],
+                    "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": V3_PLAYS, "variants": []})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
@@ -456,6 +465,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("index.html", "text/html; charset=utf-8")
         if u.path in ("/guide", "/guide.html"):
             return self._static("guide.html", "text/html; charset=utf-8")
+        if u.path in ("/guide-v3", "/guide-v3.html"):
+            return self._static("guide-v3.html", "text/html; charset=utf-8")
         if u.path == "/app.js":
             return self._static("app.js", "application/javascript")
         if u.path == "/style.css":
@@ -573,6 +584,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad arm"}, 400)
         bg = _board_gid(gid)
         plays = int(body.get("plays") or RUN_PLAYS.get(gid)
+                      or (V3_PLAYS if gid in catalog.V3_IDS else 0)
                       or RUN_PLAYS.get(bg, DEFAULT_PLAYS))
         plays = max(1, min(plays, 12))
         p_caught = float(body.get("p_caught") or

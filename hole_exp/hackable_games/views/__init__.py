@@ -95,6 +95,12 @@ from . import scaleup
 for _base in (*BENCHMARK_BASES, 'ref_auction', 'ref_estate', 'ref_battleship'):
     ADAPTERS['v2s_' + _base] = partial(scaleup.view, _base)
 
+# V3 editions: one adapter, keyed by edition id (see catalog.V3_IDS).
+from . import v3
+import engines_v3_20260908 as _V3
+for _gid in _V3.GAMES:
+    ADAPTERS[_gid] = partial(v3.view, _gid)
+
 # What the client is told a game supports before it starts, so the catalogue
 # can mark which cells have a board and which are still text.
 AIDED = tuple(sorted(ADAPTERS))
@@ -117,7 +123,7 @@ def build(game_id: str, phase: str, prompt: str) -> Optional[dict]:
 
 
 KINDS = (
-    "benchmark_move",
+    "benchmark_move", "v3_move",
     "hanabi_human",
     "estate_settle", "sidebar_msg", "sidebar_bet", "exchange_offer",
     "exchange_build", "exchange_accept", "hanabi_turn", "auction_bid",

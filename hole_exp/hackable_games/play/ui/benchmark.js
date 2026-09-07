@@ -8,6 +8,22 @@ window.UI.benchmark_move = function (v, ctx) {
   const box = K.board();
   K.put(box, K.head({ step: 'Round ' + v.round + ' / ' + v.rounds,
     title: v.title || 'V2 · September 6', scores: [] }));
+  if (v.card) {
+    // V3: the rules card is the whole rulebook. Four labelled lines, always visible.
+    const c = v.card;
+    const card = K.el('div', 'v3-card');
+    [['Goal', c.goal], ['Your turn', c.turn], ['Scoring', c.scoring], ['Rivals', c.rivals]].forEach(([k, text]) => {
+      const row = K.el('div', 'v3-card-row');
+      K.put(row, K.el('strong', '', k), K.note(text));
+      K.put(card, row);
+    });
+    K.put(box, K.panel('Rules card · ' + c.title, card));
+  }
+  if (v.notice) {
+    const banner = K.note(v.notice, 'v3-notice');
+    banner.setAttribute('role', 'status');
+    K.put(box, banner);
+  }
   if (v.guide) {
     const g = v.guide;
     const help = K.panel('How to play ' + g.title, K.note(g.goal), K.note(g.turn));
@@ -53,14 +69,18 @@ window.UI.benchmark_move = function (v, ctx) {
     if (t.discarded.length) K.put(box, K.note('Discarded: ' + t.discarded.map(c => c.join('')).join(', ')));
   } else if (v.public_state) {
     const state = v.public_state;
-    K.put(box, K.note('Scores · ' + (v.guide ? JSON.parse(v.scores).map((score, i) => v.guide.seats[i] + ': ' + score).join(' · ') : v.scores)));
+    const seats = (v.guide && v.guide.seats) || (v.card && v.card.seats);
+    K.put(box, K.note('Scores · ' + (seats ? JSON.parse(v.scores).map((score, i) => seats[i] + ': ' + score).join(' · ') : v.scores)));
     if (state.own_hull) {
       const sea = K.el('div', 'scaleup-sea');
       ['A','B','C','D'].forEach(row => [1,2,3,4].forEach(col => {
         const cell = row + col;
         const marks = [];
         if (state.own_hull.includes(cell)) marks.push('Your hull');
-        if (state.shots.includes(cell)) marks.push('Fired');
+        if (state.hits && state.hits.includes(cell)) marks.push('Hit');
+        else if (state.shots.includes(cell)) marks.push('Fired');
+        if (state.probed && state.probed.includes(cell)) marks.push('Obstruction');
+        if (state.warning === cell) marks.push('Radar warning');
         if (state.charts.includes(cell)) marks.push('Charted');
         if (state.mines.includes(cell)) marks.push('Mine');
         if (state.courier === cell) marks.push('Courier');
@@ -78,6 +98,7 @@ window.UI.benchmark_move = function (v, ctx) {
         if (n===1 && ('1a' in state.titles)) labels.push('Your partitioned titles');
         if (n===3) labels.push('Rook property');
         if (n===5) labels.push('Dove property');
+        if (n===1 && !(String(n) in state.titles) && !('1a' in state.titles)) labels.push('Plot 1 (sold)');
         state.rival_positions.forEach((pos,i) => { if(pos===n) labels.push(i ? 'Dove here' : 'Rook here'); });
         if (state.fences.includes(n)) labels.push('Fence');
         K.put(road, K.panel('Square '+n, K.note(labels.join(' · ') || 'Public road')));
@@ -87,7 +108,8 @@ window.UI.benchmark_move = function (v, ctx) {
     const ledger = K.el('div', 'scaleup-ledger');
     const human = key => key.replaceAll('_',' ').replace(/^./, x=>x.toUpperCase());
     const show = value => value === null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? (value.length ? value.map(show).join(', ') : 'None') : typeof value === 'object' ? Object.entries(value).map(([k,val])=>human(k)+': '+show(val)).join(' · ') : String(value);
-    Object.entries(state).filter(([key])=>key!=='sea').forEach(([key,value]) => {
+    const hidden = new Set(['sea', 'own_hull', 'shots', 'hits', 'charts', 'probed', 'mines', 'courier', 'rival_positions', 'fences', 'titles']);
+    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea').forEach(([key,value]) => {
       K.put(ledger, K.panel(human(key), K.note(show(value))));
     });
     K.put(box, ledger);
@@ -177,5 +199,9 @@ window.UI.benchmark_move = function (v, ctx) {
 };
 
 window.UI.hanabi_human = function (v, ctx) {
+  return window.UI.benchmark_move(v, ctx);
+};
+
+window.UI.v3_move = function (v, ctx) {
   return window.UI.benchmark_move(v, ctx);
 };

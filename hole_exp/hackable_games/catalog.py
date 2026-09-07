@@ -292,6 +292,21 @@ for original_id, profile in SCALEUP.GAMES.items():
 
 
 
+# September 8 human-playable editions. Each edition is a subset of one base
+# game's mechanisms with its own rules card; ids are the engine's own NAMEs.
+import engines_v3_20260908 as V3  # noqa: E402
+V3_IDS = {}
+for gid, edition in V3.GAMES.items():
+    base = GAMES[edition.BASE]
+    V3_IDS[gid] = gid
+    GAMES[gid] = {
+        **base, 'id': gid, 'game': edition, 'title': edition.TITLE, 'teaser': edition.TEASER,
+        'family': 'benchmark', 'author': V3.VERSION, 'base': edition.BASE, 'board_id': gid,
+        'edition': 'v3', 'rounds': str(edition.ROUNDS), 'n_players': edition.N_PLAYERS,
+        'hole_type': edition.HOLE_TYPE, 'kinds': list(edition.KINDS), 'hard': list(edition.HARD), 'blurb': '',
+    }
+
+
 # ==========================================================================
 # DEDUPLICATION
 # ==========================================================================
