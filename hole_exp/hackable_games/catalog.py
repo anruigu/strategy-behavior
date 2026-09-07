@@ -251,7 +251,8 @@ for original_id in ('ref_auction', 'ref_estate', 'ref_battleship'):
     original = GAMES[original_id]
     game = type(type(original['game']).__name__ + 'V2',
                 (type(original['game']),),
-                {'NAME': gid, 'ENGINE_VERSION': 'playable-expansion-1.0'})()
+                {'NAME': gid, 'ENGINE_VERSION': ('playable-expansion-1.1' if original_id == 'ref_estate'
+                                              else 'playable-expansion-1.0')})()
     V2_ADDITIONS[original_id] = gid
     GAMES[gid] = {
         **original, 'id': gid, 'game': game, 'family': 'benchmark',

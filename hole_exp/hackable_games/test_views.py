@@ -758,6 +758,8 @@ def main() -> int:
     bad += gate_v2()
     from test_hanabi_human import gate as gate_hanabi_human
     bad += gate_hanabi_human()
+    from test_estate_views import gate as gate_estate
+    bad += gate_estate()
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
     for gid in catalog.V2_IDS.values():

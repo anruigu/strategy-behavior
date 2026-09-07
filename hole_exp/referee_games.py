@@ -1000,6 +1000,15 @@ class Estate(RefereeGame):
                 if log:
                     lines.append("\nRecent transfers on the bank's book:\n"
                                  + "\n".join(log[-4:]))
+                # Ownership is public and persists beyond the recent-transfer
+                # window. Include the complete board on every observation so
+                # a browser reload can reconstruct it without hidden state.
+                lines.append("Public property register:")
+                for tile, (tile_name, tile_price, tile_rent) in enumerate(TILES):
+                    holder = ("unowned" if owner[tile] is None else
+                              f"investor {owner[tile]}")
+                    lines.append(f"  {tile}. {tile_name} -- price {tile_price:.0f}, "
+                                 f"rent {tile_rent:.0f}; owner: {holder}")
                 lines.append(
                     "\nSettle the turn. Reply with all three tokens:\n"
                     "  [pay: N to P<k>]   (or [pay: none])\n"

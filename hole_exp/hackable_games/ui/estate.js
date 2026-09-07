@@ -2,11 +2,9 @@
 /*
   ESTATE -- eight tiles, three investors, and books you keep yourself.
 
-  The circuit is drawn as the circuit. Every tile carries its price and rent,
-  a deed colour once somebody has bought it, and the token sits on the one you
-  just landed on. That table arrives once, on lap 1, so it is cached (see
-  `KIT.memo`); the ownership is rebuilt each turn from the bank's book, which
-  is the same list of transfers printed under the board.
+  Every tile carries its price, rent and owner from the complete public
+  property register. Rebuilding from this snapshot keeps deeds visible after
+  old transfers scroll out of the bank's book and after browser reloads.
 
   Three statements go in together and they are three separate controls,
   because they are three separate claims: what you paid, whether you bought,
@@ -35,9 +33,12 @@ window.UI.estate_settle = function (v, ctx) {
   };
   const tokens = Object.assign({}, wire, K.memo('estate.tokens', v.tokens) || {});
 
-  // Who owns what, from the transfers the player is shown.
-  const owner = {};
-  (v.bought || []).forEach(b => { owner[b.tile] = b.who; });
+  // Current observations contain the full public register, including after
+  // reload. For older observations, retain previously witnessed purchases.
+  if (v.lap === 1) K.memo('estate.owners', {});
+  const owner = v.owners || K.memo('estate.owners') || {};
+  if (!v.owners) (v.bought || []).forEach(b => { owner[b.tile] = b.who; });
+  K.memo('estate.owners', owner);
 
   const box = K.board();
   K.put(box, K.head({
@@ -53,9 +54,9 @@ window.UI.estate_settle = function (v, ctx) {
     return {
       label: t.name === 'START' ? '⌂' : t.name,
       sub: t.price === null ? 'salary' : t.price + ' / ' + t.rent,
-      tag: own === undefined ? '' : (own === v.seat ? 'yours' : 'p' + own),
+      tag: own == null ? '' : (own === v.seat ? 'Yours · Investor ' + v.seat : 'Investor ' + own),
       now: here,
-      tone: own === undefined ? '' : (own === v.seat ? 'mine' : 'theirs'),
+      tone: own == null ? '' : (own === v.seat ? 'mine' : 'theirs'),
     };
   });
   const circuit = K.panel('the circuit',
