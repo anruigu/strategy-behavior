@@ -66,7 +66,7 @@ class HTTPClient:
                      'Content-Type': 'application/json'}, method='POST')
         for attempt in range(2):
             try:
-                with urllib.request.urlopen(request, timeout=45) as response:
+                with urllib.request.urlopen(request, timeout=90) as response:
                     data = json.load(response)
                 return SimpleNamespace(
                     model=data.get('model', payload['model']),
@@ -94,21 +94,32 @@ class HostedOpponent:
     def __call__(self, pid, phase, prompt):
         message = {'role': 'user', 'content': f'You are seat {pid}. Phase: {phase}.\n{prompt}'}
         messages = [{'role': 'system', 'content': SYSTEM}, *self.memory[pid], message]
+        settings = {'temperature': 0.5}
+        if 'inference.flt.build' in self.config.base_url:
+            settings['reasoning'] = {'effort': 'low'}
+        response = choice = None
         try:
-            response = self.client.chat.completions.create(
-                model=self.config.model, messages=messages, max_tokens=1200,
-                temperature=0.5)
-            choice = response.choices[0]
-            reply = (choice.message.content or '').strip()
+            for limit in (4096, 8192):
+                response = self.client.chat.completions.create(
+                    model=self.config.model, messages=messages, max_tokens=limit, **settings)
+                choice = response.choices[0]
+                reply = (choice.message.content or '').strip()
+                if choice.finish_reason != 'length': break
+                self.records.append(dict(pid=pid, phase=phase, prompt=prompt,
+                    model=response.model, finish_reason='length', max_tokens=limit,
+                    usage=response.usage.model_dump() if response.usage else None,
+                    error='truncated_response'))
             if not reply or choice.finish_reason in ('length', 'content_filter'):
                 raise ValueError('incomplete response')
         except Exception as exc:
             self.records.append(dict(pid=pid, phase=phase, prompt=prompt,
-                                     error=type(exc).__name__))
+                error=type(exc).__name__, finish_reason=getattr(choice, 'finish_reason', None),
+                model=getattr(response, 'model', None), max_tokens=limit))
             raise RuntimeError('AI opponent could not complete its turn') from None
         self.memory[pid].extend([message, {'role': 'assistant', 'content': reply}])
         self.records.append(dict(pid=pid, phase=phase, prompt=prompt, reply=reply,
-                                 model=response.model, usage=response.usage.model_dump() if response.usage else None))
+                                 model=response.model, max_tokens=limit, settings=settings,
+                                 usage=response.usage.model_dump() if response.usage else None))
         return reply
 
     def metadata(self):

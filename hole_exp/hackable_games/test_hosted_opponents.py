@@ -76,6 +76,23 @@ class HostedTests(unittest.TestCase):
         client.answer = lambda messages: ''
         with self.assertRaises(RuntimeError): bot(1, 'bet', 'next')
 
+    def test_truncated_reasoning_retries_same_model_with_larger_budget(self):
+        class TruncatedFirst(FakeClient):
+            def create(self, **request):
+                result = super().create(**request)
+                if len(self.requests) == 1:
+                    result.choices[0].finish_reason = 'length'
+                    result.choices[0].message.content = ''
+                return result
+        client = TruncatedFirst(lambda _: '[choice: 1]')
+        bot = HostedOpponent(HostedConfig('qwen3.8-27b', 'https://inference.flt.build/v1', 'TEST_KEY'), client)
+        self.assertEqual(bot(1, 'move', 'Choose'), '[choice: 1]')
+        self.assertEqual([r['max_tokens'] for r in client.requests], [4096, 8192])
+        self.assertTrue(all(r['model'] == 'qwen3.8-27b' for r in client.requests))
+        self.assertEqual(client.requests[0]['reasoning'], {'effort': 'low'})
+        self.assertEqual(len(bot.memory[1]), 2)
+        self.assertEqual(bot.records[0]['error'], 'truncated_response')
+
     def test_every_v4_game_routes_opponents_and_has_boards(self):
         for gid in catalog.V4_IDS:
             c = catalog.GAMES[gid]
