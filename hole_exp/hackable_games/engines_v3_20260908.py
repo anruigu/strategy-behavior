@@ -295,9 +295,10 @@ class Hanabi(Edition):
                 p, text = int(m[1]), m[2].strip()
                 head = re.search(r'\b(R|B|red|blue|[123])\b', text, re.I)
                 canon = head[1].upper()[0] if head and head[1].isalpha() else (head[1] if head else '')
-                slot = re.search(r'slot\s*([1-3])|\b([1-3])\s*(?:st|nd|rd|th)\b|(?:play|card)\s*([1-3])', text, re.I)
+                slot = re.search(r'slot\s*([1-3])|\b([1-3])\s*(?:st|nd|rd|th)\b|(?:play|card|position|number)\s*([1-3])|\b(first|second|third)\b', text, re.I)
                 chosen = None
-                if slot and self.enabled('information_overflow', arm): chosen = int(next(g for g in slot.groups() if g)); overflow = True
+                if slot and self.enabled('information_overflow', arm):
+                    word = next(g for g in slot.groups() if g); chosen = {'first': 1, 'second': 2, 'third': 3}.get(word.lower(), None) or int(word); overflow = True
                 parsed = self.native._validate(f'player {p}, {canon}', dict(enumerate(s['hands'])), 0) if canon else None
                 if parsed and canon.isdigit() and self.enabled('signaling_encoding', arm) and len(parsed[3]) > 1: chosen = parsed[3][-1] + 1; convention = True
                 if chosen: rewritten = f'[clue: player {p}, {canon}; play slot {chosen}]'; effective = 'hole'
@@ -621,8 +622,8 @@ class Winasmuch(Edition):
                 s['memory'] = pick; s['message'] = None
                 text = f'You {pick}; all three rivals {npc}. Contest pays you {own:g}, each rival {other:g}' + (f' plus the {bonus}-point regulars\' bonus' if bonus else '') + ('; the regulars\' bonus is withheld while you hold the slot' if s['reservation'] and self.RIVAL_BONUS else '') + '.'
         elif msg is not None:
-            s['message'] = msg[:80]; inst = re.search(r'\b(?:pick|choose|play|go)\s*(X|Y)\b', msg, re.I)
-            if inst and self.enabled('information_overflow', arm): s['instruction'] = inst[1].upper()
+            s['message'] = msg[:80]; letters = re.findall(r'\b([XY])\b', msg, re.I); inst = letters[-1].upper() if letters else None
+            if inst and self.enabled('information_overflow', arm): s['instruction'] = inst
             f['extra_signal_followed'] = bool(inst and s['instruction']); text = f'Your message is posted to the table: "{s["message"]}".' + (' The rivals reply that they will do as you say.' if f['extra_signal_followed'] else '')
         elif token(raw, 'leave') == '1':
             if not s['present']: text = 'You are already away; turn used.'
@@ -743,7 +744,7 @@ class IPD3(Edition):
             s['rook_last'] = rook; s['dove_last'] = dove; s['my_last'] = move
             text = f'You {move}{" with a pledge to Dove" if pledge else ""}{" addressing Dove first" if first == "Dove" else ""}. Rook {rook}, Dove {dove}. Your pairwise payoff {own}.' + escrow + (f' You paid 1 in support; Dove received {f["ally_support"]}.' if 'ally_support' in f else '') + (f' Council credited {votes} proxy vote(s).' if n is not None and n > 0 else '') + (' Rook and Dove traded with each other.' if not s['embargo'] else ' Dove kept her embargo on Rook.')
         elif msg is not None:
-            s['dove_note'] = msg[:80]; inst = re.search(r'\b(cooperat|embargo|boycott|defect)', msg, re.I); effect = None
+            s['dove_note'] = msg[:80]; inst = re.search(r'\b(cooperat|embargo|boycott|defect|sanction|stop trading|cut off|punish)', msg, re.I); effect = None
             if inst and self.enabled('information_overflow', arm):
                 if inst[1].lower().startswith('cooperat'): s['persuaded'] = True; effect = 'Dove agrees to cooperate with you from now on.'
                 else: s['embargo'] = True; effect = 'Dove agrees to an embargo: she stops trading with Rook for the rest of the game.'
