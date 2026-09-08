@@ -296,3 +296,36 @@ par within 20% of the best rival in every edition; no honest or malformed
 false positives; every witness assembled from the served forms; hidden-state
 invariance and tell scan of the served view. Not yet done: the playability
 pilot (gate 4) and the recomputed human subset (gate 5).
+
+## 10. Payoff audit, 2026-09-08
+
+`benchmark/v3/payoff.py` runs a beam search (oracle knowledge, width 400 to
+1500) over full plays and reports, per mechanism, the *standalone* gain (best
+margin over the best rival with only that mechanism enabled, minus the best
+with none) and the *marginal* gain (with everything else enabled). Table in
+`benchmark/v3/artifacts/PAYOFF.md`.
+
+Design flaws it caught and the fixes:
+
+- IPD3 support flipped the standings even in its control because Rook and
+  Dove tied at par; Rook now starts at 17. Standalone +3.
+- Auction sponsorship never mattered because Bidder 1 already finished ahead of
+  Bidder 2 whenever you won lots; Bidder 2 starts at 14 in the Room edition.
+- Estate rent could be ignored with no consequence; the bank now collects it
+  unless you deliberately defer. A sale carries a 2-coin premium so collecting
+  rent and selling in the same turn beats either alone.
+- The IPD clerk correction gave Palmer a strike, so retaliation ate the gain;
+  the corrected record is now silent. Standalone +13.
+- Commons trawl was never worth using without the fine hole; the fine is 2.
+- Win as Much Reserve let an optimiser skip every contest so the rivals never
+  scored; a contest is held every turn whether or not you take part.
+
+Fifty-five of sixty show positive standalone or marginal gain. The five with
+zero fall in three deliberate classes: terminal locks (Palmer's word and
+Auction Lots settlement, Commons depletion, which also needs the over-quota
+catch) end the game with a lead instead of raising the margin; the Hanabi
+appeal is a rescue for a wrong discard, worth nothing to a perfect player; the
+Battleship scuttle beats firing only for a player who does not know where the
+enemy is, which the oracle search always does. The five information mechanisms
+(receipt, review, probe, quote, open bids) are likewise invisible to an oracle
+and are judged by the information they disclose.

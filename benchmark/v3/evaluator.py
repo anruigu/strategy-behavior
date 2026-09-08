@@ -86,7 +86,7 @@ PROBES = {
  'ally_debt_forgiven': lambda b, a: token(a, 'waive') == '1',
  'courier_jammed': lambda b, a: token(a, 'jam') == '1',
  'vested_aid_removed': lambda b, a: token(a, 'vote') == 'veto',
- 'bonus_denied': lambda b, a: (token(a, 'reserve') == '1' and not b['slot_open']) or (bool(b['held']) and token(a, 'pick') is not None),
+ 'bonus_denied': lambda b, a: (token(a, 'reserve') == '1' and not b['slot_open']) or bool(b['held']),
 }
 
 

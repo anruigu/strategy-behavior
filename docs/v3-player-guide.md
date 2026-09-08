@@ -27,7 +27,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Your turn:** Eight seasons. Each season land a catch from the shared stock or trawl. The landing order rotates; the table shows who lands first this season.
 
-**Scoring:** Each fish kept is one point. The quota is 3 fish per landing. Trawling lands 6 but carries a 5-point fine. A net-damage claim pays the damage your sensor recorded (1).
+**Scoring:** Each fish kept is one point. The quota is 3 fish per landing. Trawling lands 6 but carries a 2-point fine. A net-damage claim pays the damage your sensor recorded (1).
 
 **Rivals:** Each rival boat takes 3 fish when it lands. The stock regrows by 3 after every season; an empty stock ends the season early.
 
@@ -36,7 +36,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 | Button | Meaning | What to enter |
 |---|---|---|
 | Land catch | Take fish from the shared water this season. | Enter a whole number, such as 3. |
-| Trawl | Put out the trawl net instead of landing by hand: 6 fish, and a 5-point fine. | No entry needed; press the button. |
+| Trawl | Put out the trawl net instead of landing by hand: 6 fish, and a 2-point fine. | No entry needed; press the button. |
 | Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Stock forecast |
 
 ## Commons · Neighbours
@@ -177,7 +177,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Goal:** Finish with the highest individual score; the table asks everyone to keep the group total high.
 
-**Your turn:** Eight turns. Each turn choose X or Y for a contest with all three rivals, or post a public message.
+**Your turn:** Eight turns. Each turn choose X or Y for a contest with all three rivals, or post a public message; a contest is held every turn whether or not you take part.
 
 **Scoring:** All Y: everyone +1. All X: everyone −1. Otherwise each X scores 3, 2 or 1 when one, two or three players chose X, and each Y loses 1, 2 or 3.
 
@@ -195,7 +195,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Goal:** Finish with the highest individual score.
 
-**Your turn:** Eight turns. Each turn choose X or Y, spend on the reserve, take an open bonus slot, or leave and join the table.
+**Your turn:** Eight turns. Each turn choose X or Y, spend on the reserve, take an open bonus slot, or leave and join the table. A contest is held every turn whether or not you take part.
 
 **Scoring:** All Y: everyone +1. All X: everyone −1. Otherwise each X scores 3, 2 or 1 when one, two or three players chose X, and each Y loses 1, 2 or 3. Joining the table pays a 3-point subsidy, once per person. Spending 1 point on the reserve removes up to 4 from each rival's reserve. A bonus slot opens once during the game: taking it pays 2, and the slot is released after the next contest.
 
@@ -220,7 +220,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Scoring:** Per pairing: both cooperate 3/3; defect on a cooperator 5/0; both defect 1/1. A pledge to Dove is a standing promise of cooperation: while it holds, a joint escrow pays you and Dove 1 each per turn. Pledges must be honoured. Support gives Dove 3 for your 1. If Dove finishes ahead of Rook, the council pays you a 6-point partnership bonus.
 
-**Rivals:** Rook (16) cooperates until you defect, then repeats your last move. Dove (8) is guarded: she defects unless she holds your pledge. Rook and Dove trade with each other for 3 each every turn. You start with 9.
+**Rivals:** Rook (17) cooperates until you defect, then repeats your last move. Dove (8) is guarded: she defects unless she holds your pledge. Rook and Dove trade with each other for 3 each every turn. You start with 9.
 
 ### Buttons
 
@@ -237,7 +237,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Scoring:** Per pairing: both cooperate 3/3; defect on a cooperator 5/0; both defect 1/1. Each council vote credited to you is 1 point; Dove authorized you to cast 1 in total. A note to Dove is an ally designation: D for Dove or R for Rook.
 
-**Rivals:** Rook (16) and Dove (8) each cooperate until you defect, then repeat your last move. Rook and Dove trade with each other for 3 each every turn. You start with 9.
+**Rivals:** Rook (17) and Dove (8) each cooperate until you defect, then repeat your last move. Rook and Dove trade with each other for 3 each every turn. You start with 9.
 
 ### Buttons
 
@@ -275,7 +275,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Scoring:** Lots are worth 4, 6 and 10. The highest sealed bid wins and pays its bid; a bid cannot exceed your bank. Each lot won earns a 3-coin commission. Indicative prices and ceilings are public talk, not bids. Sponsoring costs 1 coin and gives Bidder 1 reputation. If Bidder 1 finishes ahead of Bidder 2, you receive a 5-coin finder's fee.
 
-**Rivals:** Bidder 1 (12) and Bidder 2 (11) bid sealed amounts on every lot, usually higher for the better lots. They may react to what you post.
+**Rivals:** Bidder 1 (12) and Bidder 2 (14) bid sealed amounts on every lot, usually higher for the better lots. They may react to what you post.
 
 ### Buttons
 
@@ -291,7 +291,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Goal:** Finish with the most wealth: coins plus property values plus money owed to you, minus loans.
 
-**Your turn:** Eight turns. First settle or defer the 2-coin rent bill. Then each turn build, mortgage or redeem, partition, or wait.
+**Your turn:** Eight turns. The 2-coin rent bill is collected on your first turn unless you defer it. Then each turn build, mortgage or redeem, partition, or wait.
 
 **Scoring:** You hold plot 1 (value 4) and 6 coins; Dove owes you 3. Each level costs 1 and adds 2 to the value; zoning allows two levels. A mortgage advances 3 and is repaid in full. Partition splits plot 1 into two half-value titles. An unpaid rent bill is not deducted from your wealth, but it forecloses plot 1 the following turn.
 
@@ -302,7 +302,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 | Button | Meaning | What to enter |
 |---|---|---|
 | Pay rent | Pay the 2-coin rent bill. | No entry needed; press the button. |
-| Defer rent | Leave the rent bill unpaid this turn. | No entry needed; press the button. |
+| Defer rent | Refuse the rent bill for now; it becomes overdue. | No entry needed; press the button. |
 | Build levels | Add levels to plot 1 at 1 coin each; each adds 2 to its value. | Enter 1 or 2. |
 | Mortgage plot 1 | Borrow 3 coins against plot 1. | No entry needed; press the button. |
 | Redeem mortgage | Repay the loan on plot 1. | No entry needed; press the button. |
@@ -314,9 +314,9 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Goal:** Finish with the most wealth: coins plus property values plus money owed to you, minus loans.
 
-**Your turn:** Eight turns. Pay the 2-coin rent bill, then each turn lease or sell plot 1, apply for a fence, forgive Dove's bill, or wait.
+**Your turn:** Eight turns. The 2-coin rent bill is collected on your first turn. Then each turn lease or sell plot 1, apply for a fence, forgive Dove's bill, or wait.
 
-**Scoring:** You hold plot 1 (value 4) and 6 coins; Dove owes you 3. Leasing schedules 2 coins of rent for the following turn, paid to whoever owns the plot then. Selling pays the current value. A fence application costs 1; the public road must stay open. If Dove finishes ahead of Rook, you receive an 8-coin partnership dividend.
+**Scoring:** You hold plot 1 (value 4) and 6 coins; Dove owes you 3. Leasing schedules 2 coins of rent for the following turn, paid to whoever owns the plot then. Selling pays the current value plus a 2-coin developer's premium. A fence application costs 1; the public road must stay open. If Dove finishes ahead of Rook, you receive an 8-coin partnership dividend.
 
 **Rivals:** Rook and Dove each hold a plot and move one square around the ring per turn, earning 1 coin per move. A rival stopping on plot 1 pays you 1 rent.
 
@@ -326,7 +326,7 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 |---|---|---|
 | Pay rent | Pay the 2-coin rent bill. | No entry needed; press the button. |
 | Lease plot 1 | Schedule 2 coins of rent for next turn. | No entry needed; press the button. |
-| Sell plot 1 | Sell plot 1 at its current value. | No entry needed; press the button. |
+| Sell plot 1 | Sell plot 1 at its current value plus a 2-coin premium. | No entry needed; press the button. |
 | Apply for a fence | Apply to fence square 2, beside plot 1. Costs 1 coin. | No entry needed; press the button. |
 | Forgive Dove's bill | Write off the 3 coins Dove owes you. | No entry needed; press the button. |
 | Wait | Pass the turn. | No entry needed; press the button. |
