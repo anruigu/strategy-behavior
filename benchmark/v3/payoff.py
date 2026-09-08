@@ -94,6 +94,7 @@ def best_plan(game, seed, width=None):
             for a in candidates(game, s):
                 s2, f = game.transition(s, a)
                 if not f.get('valid', True) and len(acts) > 0: continue
+                if s2['round'] == s['round'] and not s2['done']: continue  # a free retry: no progress
                 nxt.append((s2, acts + [a]))
         nxt.sort(key=lambda x: margin(x[0]), reverse=True)
         beam = nxt[:width]

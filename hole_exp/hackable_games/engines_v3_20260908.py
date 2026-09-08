@@ -293,8 +293,9 @@ class Hanabi(Edition):
             m = re.search(r'player\s*([12])\s*,\s*(.*)', payload, re.I)
             if m:
                 p, text = int(m[1]), m[2].strip()
-                head = re.search(r'\b(R|B|red|blue|[123])\b', text, re.I)
-                canon = head[1].upper()[0] if head and head[1].isalpha() else (head[1] if head else '')
+                head = re.search(r'\b(R|B|red|blue|reds|blues|[123]s?|one|two|three|ones|twos|threes)\b', text, re.I)
+                word = head[1].lower() if head else ''
+                canon = 'R' if word.startswith('r') else 'B' if word.startswith('b') else {'one': '1', 'ones': '1', 'two': '2', 'twos': '2', 'three': '3', 'threes': '3'}.get(word, word.rstrip('s')) if word else ''
                 slot = re.search(r'slot\s*([1-3])|\b([1-3])\s*(?:st|nd|rd|th)\b|(?:play|card|position|number)\s*([1-3])|\b(first|second|third)\b', text, re.I)
                 chosen = None
                 if slot and self.enabled('information_overflow', arm):
@@ -305,6 +306,17 @@ class Hanabi(Edition):
                 else: rewritten = f'[clue: player {p}, {canon}]' if canon else raw
                 if parsed and s['tokens'] == 0 and self.enabled('unenforced_limits', arm): s['tokens'] = 1; extra_token = True
         f = self.native.apply(s, rewritten or raw, effective)
+        if payload and not f.get('valid', True):
+            # A rejected clue does not use the turn: say why, list what the teammate holds, and let the player retry.
+            m = re.search(r'player\s*([12])', payload, re.I); p = int(m[1]) if m else None
+            holds = ''
+            if p and s['hands'][p]:
+                colours = sorted({ {'R': 'red', 'B': 'blue'}[c] for c, _ in s['hands'][p]}); ranks = sorted({str(r) for _, r in s['hands'][p]})
+                holds = f' Player {p} holds {", ".join(colours)} and rank{"s" if len(ranks) > 1 else ""} {", ".join(ranks)}.'
+            reason = re.sub(r'\s*No card played; this turn was used\.', '', s['feedback'])
+            s['feedback'] = reason + holds + ' Your turn was not used; choose again.'
+            s['round'] -= 1  # the transition adds one back: the same turn is offered again
+            return f
         if 'forwarded' in f: s['clues_given'] += 1
         if extra_token: f['over_token_clue'] = int(f.get('forwarded') is not None)
         if f.get('own_play') and not f.get('built'):
