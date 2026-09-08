@@ -307,43 +307,14 @@ for gid, edition in V3.GAMES.items():
     }
 
 
-# V4 uses multiplayer engines: every non-human ask seat is a hosted model.
+# V4 is exactly the V3 edition set, with Qwen opponent policies.
+import engines_v4 as V4
 V4_IDS = {}
-for original_id in ('gen_seven_seal', 'gen_icebound', 'ref_hanabi',
-                    'ref_commons', 'ref_exchange', 'ref_auction', 'ref_estate',
-                    'ref_battleship', 'ref_sidebar', 'ta_kuhn', 'ta_liarsdice'):
-    gid = 'v4_' + original_id
-    original = GAMES[original_id]
+for gid, edition in V4.GAMES.items():
+    original = GAMES[edition.ORIGINAL]
     V4_IDS[gid] = gid
-    GAMES[gid] = {**original, 'id': gid, 'base': original_id,
-                  'board_id': original_id, 'edition': 'v4'}
-
-
-# The eight scenarios studied in discovery_nerfed3.json. Each pair shares the
-# engine and scripted policies; only the deterrent's follow-through differs.
-V4_DISCOVERY_CELLS = (
-    'hf_winasmuch_nerfed', 'hf_auction_nerfed', 'hf_frontline_depot_nerfed',
-    'hf_pubgoods_nerfed', 'hf_icebound_nerfed', 'hf_seven_seal_nerfed',
-    'hf_sidebar_nerfed', 'hf_quiet_sonar_nerfed',
-)
-V4_DISCOVERY_IDS = {}
-V4_CHOICES = {GAMES[gid]['base']: [dict(cell=gid, label='Normal · AI',
-               kind='normal', source='built', title=GAMES[gid]['title'])]
-              for gid in V4_IDS}
-for source_id in V4_DISCOVERY_CELLS:
-    source = GAMES[source_id]
-    base_id = source['game'].BASE
-    choices = V4_CHOICES.setdefault(base_id, [])
-    for condition, arm in (('responsive', 'nohole'), ('nerfed', 'hole')):
-        gid = 'v4_' + base_id + '_' + condition
-        V4_DISCOVERY_IDS[gid] = gid
-        GAMES[gid] = {**source, 'id': gid, 'base': base_id,
-                      'board_id': base_id, 'edition': 'v4',
-                      'title': GAMES[base_id]['title'],
-                      'opponent_condition': condition, 'fixed_arm': arm,
-                      'discovery_source': source_id}
-        choices.append(dict(cell=gid, label=condition.capitalize() + ' · scripted',
-                            kind=condition, source='built', title=GAMES[base_id]['title']))
+    GAMES[gid] = {**original, 'id': gid, 'game': edition,
+                  'board_id': edition.ORIGINAL, 'edition': 'v4', 'author': V4.VERSION}
 
 
 # ==========================================================================

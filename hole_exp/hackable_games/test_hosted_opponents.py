@@ -79,12 +79,12 @@ class HostedTests(unittest.TestCase):
     def test_every_v4_game_routes_opponents_and_has_boards(self):
         for gid in catalog.V4_IDS:
             c = catalog.GAMES[gid]
-            scripted = server.Session._make_bot(c['family'], 'honest', 0, c['game'])
+
             seen = set()
             def ask(pid, phase, prompt):
                 if pid:
                     seen.add(pid)
-                    return scripted(pid, phase, prompt)
+                    return '[choice: 0]'
                 view = views.build(c['board_id'], phase, prompt)
                 self.assertIsNotNone(view, (gid, phase))
                 return _from_view(view, phase, prompt)
@@ -93,12 +93,8 @@ class HostedTests(unittest.TestCase):
             self.assertIn(0, ep.scores)
 
     def test_complete_play_persistence_and_repeated_settlement(self):
-        gid = 'v4_ta_kuhn'
-        scripted = server.Session._make_bot('textarena', 'honest', 0, catalog.GAMES[gid]['game'])
-        def answer(messages):
-            text = messages[-1]['content']
-            phase = text.split('Phase: ', 1)[1].split('.', 1)[0]
-            return scripted(1, phase, text.split('\n', 1)[1])
+        gid = 'v4_ta_ipd_palmers_word'
+        def answer(messages): return '[choice: 0]'
         client = FakeClient(answer)
         with tempfile.TemporaryDirectory() as tmp, patch.object(HostedConfig, 'client', return_value=client):
             collector = PlayCollector(tmp)
@@ -111,7 +107,7 @@ class HostedTests(unittest.TestCase):
                 if state['pending'] and state['turn'] != turn:
                     turn = state['turn']
                     p = state['pending']
-                    session.submit(_from_view(views.build('ta_kuhn', p['phase'], p['prompt']), p['phase'], p['prompt']))
+                    session.submit(_from_view(views.build('v3_ta_ipd_palmers_word', p['phase'], p['prompt']), p['phase'], p['prompt']))
                 time.sleep(.001)
             self.assertTrue(session.done.is_set())
             self.assertIsNone(session.error)
@@ -128,10 +124,10 @@ class HostedTests(unittest.TestCase):
 
     def test_provider_failure_stops_without_scripted_fallback(self):
         def broken(*args): raise RuntimeError('provider unavailable')
-        session = server.Session('v4_ta_kuhn', 0, 'hole', 0, 'ai', bot=broken)
+        session = server.Session('v4_ta_ipd_palmers_word', 0, 'hole', 0, 'ai', bot=broken)
         deadline = time.monotonic() + 5
         while not session.done.is_set() and time.monotonic() < deadline:
-            if session.pending: session.submit('[act: bet]')
+            if session.pending: session.submit('[move: cooperate]')
             time.sleep(.005)
         self.assertTrue(session.done.is_set())
         self.assertIn('provider unavailable', session.error)

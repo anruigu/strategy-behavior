@@ -59,8 +59,6 @@ let epoch = 0;
 function show(view) {
   ['view-name', 'view-list', 'view-play', 'view-between', 'view-done']
     .forEach(v => $(v).classList.toggle('hidden', v !== view));
-  $('discovery-panel').classList.toggle('hidden', !RUN || !RUN.discoveryEnabled ||
-    !['view-play', 'view-between', 'view-done'].includes(view));
 }
 
 function esc(s) {
@@ -504,7 +502,7 @@ function renderGames() {
     $('edition-' + e).onclick = () => selectEdition(e);
   });
   $('edition-description').textContent = EDITION === 'v4'
-    ? 'Play against AI, or test responsive and nerfed scripted opponents. Three plays per game; record when you discover a pattern.'
+    ? 'The V3 games with Qwen choosing the opponent actions. Same boards and scoring; three plays per game.'
     : EDITION === 'v3'
     ? 'Nineteen short editions of ten games, each with a rules card and a few actions. Three plays per edition; the second edition of a game reuses its rules.'
     : EDITION === 'v2'
@@ -554,11 +552,7 @@ async function startRun(gid, card, variantOrNull) {
     run_id: st.run.run_id, game: gid,
     title: (variantOrNull && variantOrNull.title) || card.title,
     plays: st.run.plays, variant: variantOrNull || null,
-    discoveryEnabled: !!variantOrNull && ['responsive', 'nerfed'].includes(variantOrNull.kind)
   };
-  $('discovery-form').reset();
-  $('btn-discovery').disabled = false;
-  $('discovery-status').textContent = '';
   $('play-title').textContent = RUN.title;
   const vt = $('play-variant');
   const variant = variantOrNull || null;
@@ -783,26 +777,6 @@ $('btn-quit').onclick = async () => {
 
 $('home-link').onclick = () => { if (!RUN) show(PLAYER ? 'view-list' : 'view-name'); };
 
-$('discovery-form').onsubmit = async (event) => {
-  event.preventDefault();
-  if (!RUN || !RUN.discoveryEnabled) return;
-  const runId = RUN.run_id;
-  const hypothesis = $('discovery-hypothesis').value.trim();
-  if (!hypothesis) return;
-  $('btn-discovery').disabled = true;
-  try {
-    const reply = await post('/api/run/discovery', {run: runId, hypothesis});
-    if (!RUN || RUN.run_id !== runId) return;
-    if (reply.error) throw new Error(reply.error);
-    const d = reply.discovery;
-    $('discovery-status').textContent = `Recorded after ${d.total_moves} moves, ` +
-      `${Math.round(d.elapsed_s)} seconds into this run (play ${d.play_index + 1}).`;
-  } catch (err) {
-    if (!RUN || RUN.run_id !== runId) return;
-    $('discovery-status').textContent = err.message || 'Could not save. Please retry.';
-    $('btn-discovery').disabled = false;
-  }
-};
 
 // ── boot ────────────────────────────────────────────────────────────
 (async () => {
