@@ -55,7 +55,7 @@ DEFAULT_DIR = HERE / "play_data"
 # Bumped whenever the recorded schema changes shape. An analysis that pools
 # two schema versions without noticing is a silent wrong answer, so the
 # version travels in every row rather than in a README.
-SCHEMA = 3
+SCHEMA = 4
 
 
 def player_slug(name: str) -> str:
@@ -123,6 +123,7 @@ class PlayRecord:
     ui_aids: List[str] = field(default_factory=list)
     frontend_build: str = ""
     schema: int = SCHEMA
+    opponent: dict = field(default_factory=dict)
     abandoned: bool = False
 
 
@@ -164,6 +165,24 @@ class PlayCollector:
         with self._lock:
             self._live[rec.play_id] = rec
         return rec.play_id
+
+    def record_discovery(self, *, player: str, event: dict):
+        """Separate durable event: can be marked even after a play is settled."""
+        row = dict(event, player=player, player_slug=player_slug(player))
+        line = json.dumps(row, separators=(",", ":")) + "\n"
+        for path in (self._dir / row['game'] / 'discoveries.jsonl',
+                     self._dir / 'players' / player_slug(player) / 'discoveries.jsonl'):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                with path.open('a') as fh:
+                    fh.write(line)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+
+    def record_opponent(self, play_id: str, metadata: dict):
+        with self._lock:
+            if play_id in self._live:
+                self._live[play_id].opponent = metadata
 
     def record_move(self, play_id: str, *, phase: str, reply: str,
                     prompt: str = "", view: Optional[dict] = None,

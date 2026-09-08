@@ -43,7 +43,7 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-const EDITIONS = ['v1', 'v2', 'v3'];
+const EDITIONS = ['v1', 'v2', 'v3', 'v4'];
 let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('version'))
   ? new URLSearchParams(location.search).get('version') : 'v3';
 let RUN = null;        // {run_id, game, title, plays, variant}
@@ -59,6 +59,8 @@ let epoch = 0;
 function show(view) {
   ['view-name', 'view-list', 'view-play', 'view-between', 'view-done']
     .forEach(v => $(v).classList.toggle('hidden', v !== view));
+  $('discovery-panel').classList.toggle('hidden', !RUN || !RUN.discoveryEnabled ||
+    !['view-play', 'view-between', 'view-done'].includes(view));
 }
 
 function esc(s) {
@@ -501,14 +503,16 @@ function renderGames() {
     $('edition-' + e).setAttribute('aria-pressed', String(EDITION === e));
     $('edition-' + e).onclick = () => selectEdition(e);
   });
-  $('edition-description').textContent = EDITION === 'v3'
+  $('edition-description').textContent = EDITION === 'v4'
+    ? 'Play against AI, or test responsive and nerfed scripted opponents. Three plays per game; record when you discover a pattern.'
+    : EDITION === 'v3'
     ? 'Nineteen short editions of ten games, each with a rules card and a few actions. Three plays per edition; the second edition of a game reuses its rules.'
     : EDITION === 'v2'
     ? 'Ten short games with resources, alliances, hidden information and shared boards. Each play starts fresh.'
     : 'The original games and their existing versions.';
   $('guide-link').href = EDITION === 'v3' ? '/guide-v3' : '/guide';
   $('guide-link').textContent = EDITION === 'v3' ? 'How to play: guide to the V3 editions ↗' : 'How to play: guide to the ten V2 games ↗';
-  $('guide-link').parentElement.classList.toggle('hidden', EDITION === 'v1');
+  $('guide-link').parentElement.classList.toggle('hidden', EDITION === 'v1' || EDITION === 'v4');
   const g = $('grid');
   g.innerHTML = '';
   GAMES.filter(c => (c.edition || 'v1') === EDITION).forEach(c => {
@@ -549,8 +553,12 @@ async function startRun(gid, card, variantOrNull) {
   RUN = {
     run_id: st.run.run_id, game: gid,
     title: (variantOrNull && variantOrNull.title) || card.title,
-    plays: st.run.plays, variant: variantOrNull || null
+    plays: st.run.plays, variant: variantOrNull || null,
+    discoveryEnabled: !!variantOrNull && ['responsive', 'nerfed'].includes(variantOrNull.kind)
   };
+  $('discovery-form').reset();
+  $('btn-discovery').disabled = false;
+  $('discovery-status').textContent = '';
   $('play-title').textContent = RUN.title;
   const vt = $('play-variant');
   const variant = variantOrNull || null;
@@ -562,7 +570,9 @@ async function startRun(gid, card, variantOrNull) {
   paint(st);
 }
 
+let pollTimer = null;
 function paint(st) {
+  clearTimeout(pollTimer);
   // Every redraw retires the contexts the previous one handed out.
   epoch++;
 
@@ -583,6 +593,8 @@ function paint(st) {
       'leave and pick another one.');
   }
   RUN.plays = st.run.plays;
+  $('table-notice').textContent = st.table_notice || '';
+  $('table-notice').classList.toggle('hidden', !st.table_notice);
 
   $('play-title').textContent = RUN.title;
   $('play-meta').textContent =
@@ -591,6 +603,16 @@ function paint(st) {
 
   if (st.done || !st.pending) {
     if (st.done) return between(st);
+    const runId = RUN.run_id;
+    pollTimer = setTimeout(async () => {
+      if (!RUN || RUN.run_id !== runId) return;
+      try {
+        const next = await api('/api/state?run=' + encodeURIComponent(runId));
+        if (RUN && RUN.run_id === runId) paint(next);
+      } catch (err) {
+        boardUnavailable('Could not reach the table.', 'Check your connection.');
+      }
+    }, 700);
     return boardNote('waiting for the other seats…');
   }
 
@@ -760,6 +782,27 @@ $('btn-quit').onclick = async () => {
 };
 
 $('home-link').onclick = () => { if (!RUN) show(PLAYER ? 'view-list' : 'view-name'); };
+
+$('discovery-form').onsubmit = async (event) => {
+  event.preventDefault();
+  if (!RUN || !RUN.discoveryEnabled) return;
+  const runId = RUN.run_id;
+  const hypothesis = $('discovery-hypothesis').value.trim();
+  if (!hypothesis) return;
+  $('btn-discovery').disabled = true;
+  try {
+    const reply = await post('/api/run/discovery', {run: runId, hypothesis});
+    if (!RUN || RUN.run_id !== runId) return;
+    if (reply.error) throw new Error(reply.error);
+    const d = reply.discovery;
+    $('discovery-status').textContent = `Recorded after ${d.total_moves} moves, ` +
+      `${Math.round(d.elapsed_s)} seconds into this run (play ${d.play_index + 1}).`;
+  } catch (err) {
+    if (!RUN || RUN.run_id !== runId) return;
+    $('discovery-status').textContent = err.message || 'Could not save. Please retry.';
+    $('btn-discovery').disabled = false;
+  }
+};
 
 // ── boot ────────────────────────────────────────────────────────────
 (async () => {

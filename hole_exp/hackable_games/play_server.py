@@ -70,6 +70,7 @@ sys.path.insert(0, str(HERE.parent))
 import catalog                                  # noqa: E402
 import server                                   # noqa: E402  (session driver)
 import views                                    # noqa: E402
+from hosted_opponents import HostedOpponent
 from collector import PlayCollector, player_slug  # noqa: E402
 
 import referee_repeat as RR                     # noqa: E402
@@ -130,21 +131,25 @@ def _board_gid(gid: str) -> str:
 class PlaySession(server.Session):
     """A `server.Session` that also writes itself down.
 
-    Bot seats are not recorded: they are scripted, deterministic given the
-    seed, and reconstructible. Only the human's decisions go to disk.
+    Human decisions and hosted opponent observations/replies are recorded.
+    Scripted opponents remain reconstructible from the seed.
     """
 
     def __init__(self, gid, seat, arm, seed, bot_mode, *,
-                 collector: PlayCollector, play_id: str):
+                 collector: PlayCollector, play_id: str, bot=None):
         # Set before super().__init__ -- that call starts the episode thread,
         # which can reach ask() before the constructor returns.
         self.collector = collector
         self.play_id = play_id
         self._via = "ui"
-        super().__init__(gid, seat, arm, seed, bot_mode)
+        super().__init__(gid, seat, arm, seed, bot_mode, bot=bot)
 
     def ask(self, pid, phase, prompt):
-        reply = super().ask(pid, phase, prompt)
+        try:
+            reply = super().ask(pid, phase, prompt)
+        finally:
+            if self.bot_mode == "ai":
+                self.collector.record_opponent(self.play_id, self.bot.metadata())
         if pid == self.seat:
             self.collector.record_move(
                 self.play_id, phase=phase, reply=reply, prompt=prompt,
@@ -184,6 +189,12 @@ class PlaySession(server.Session):
                 "view": views.build(_board_gid(self.gid), pending["phase"],
                                     pending["prompt"]),
             }
+        if pending and self.gid in catalog.V4_DISCOVERY_IDS:
+            # Notices and findings are already public engine text; show them
+            # above the board so the deterrent is not buried in a drawer.
+            out['table_notice'] = "\n\n".join(
+                block.strip() for block in pending['prompt'].split('\n\n')
+                if block.strip().startswith(('NOTICE', 'FINDING')))
         if st["done"]:
             r = st.get("result") or {}
             # Own final score and own unparsed count. Nothing else: `margin`,
@@ -205,10 +216,20 @@ class Run:
         self.id = uuid.uuid4().hex[:12]
         self.player = (player or "anon").strip() or "anon"
         self.slug = player_slug(self.player)
+        config = catalog.GAMES[gid]
+        if gid in catalog.V4_DISCOVERY_IDS:
+            arm, bots, p_caught = config['fixed_arm'], 'honest', 0.0
         self.gid, self.arm, self.plays, self.bots = gid, arm, plays, bots
+        self.started_at = time.time()
+        self.started_clock = time.monotonic()
+        self.discovery = None
+        self.discovery_lock = threading.Lock()
+        self.completed_moves = 0
         self.p_caught = p_caught
         self.collector = collector
         self.ui_aids = ui_aids
+        self.ai = HostedOpponent() if bots == "ai" else None
+        self.last_result = None
         self.index = -1
         self.session: Optional[PlaySession] = None
         self.memory = RR.Memory()
@@ -242,19 +263,30 @@ class Run:
             # still gets written -- a participant who bailed out of round 4
             # is data, and dropping it would leave the collector holding a
             # live record forever.
+            self.completed_moves += len(self.session.history)
+            self._closed.add(self.session.play_id)
             self.collector.finish(self.session.play_id, None, abandoned=True)
             self.session.kill()
         if self.remaining <= 0:
             self.finished = True
             return None
         self.index += 1
+        self.last_result = None
+        if self.ai is not None and self.index > 0:
+            self.ai = HostedOpponent(self.ai.config)
         seed = self._rng.randint(1, 10 ** 6)
         play_id = self.collector.start(
             player=self.player, game=self.gid, seat=0, arm=self.arm,
             seed=seed, bots=self.bots, run_id=self.id, play_index=self.index,
             ui_aids=self.ui_aids, frontend_build=BUILD)
+        if self.gid in catalog.V4_DISCOVERY_IDS:
+            c = catalog.GAMES[self.gid]
+            self.collector.record_opponent(play_id, {
+                'type': 'scripted', 'condition': c['opponent_condition'],
+                'source_game': c['discovery_source'], 'arm': self.arm,
+                'mechanism': getattr(c['game'], 'MODE', 'engine-policy')})
         self.session = PlaySession(self.gid, 0, self.arm, seed, self.bots,
-                                   collector=self.collector, play_id=play_id)
+                                   collector=self.collector, play_id=play_id, bot=self.ai)
         return self.session
 
     def close_play(self) -> Optional[dict]:
@@ -264,7 +296,18 @@ class Run:
             return None
         self._closed.add(s.play_id)
         result = s.result()
+        self.completed_moves += len(s.history)
         ep = s.episode
+        if self.gid in catalog.V4_DISCOVERY_IDS and ep is not None:
+            c = catalog.GAMES[self.gid]
+            self.collector.record_opponent(s.play_id, {
+                'type': 'scripted', 'condition': c['opponent_condition'],
+                'source_game': c['discovery_source'], 'arm': self.arm,
+                'mechanism': getattr(c['game'], 'MODE', 'engine-policy'),
+                'engine_events': ep.extras})
+        if ep is None:
+            self.collector.finish(s.play_id, None, abandoned=True)
+            return None
         game = catalog.GAMES[self.gid]["game"]
 
         caught = fine = clawback = 0.0
@@ -299,6 +342,7 @@ class Run:
                "audited": rec.audited}
         if standings:
             out.update(standings)
+        self.last_result = out
         return out
 
     def _standings(self, result: dict, game) -> Optional[dict]:
@@ -306,7 +350,7 @@ class Run:
         scores are public on every turn anyway (V2 and V3). V1 cells keep
         rival scores server-side."""
         c = catalog.GAMES[self.gid]
-        if c.get("edition") not in ("v2", "v3") or "scores" not in result:
+        if c.get("edition") not in ("v2", "v3", "v4") or "scores" not in result:
             return None
         scores = result["scores"]
         seats = list(getattr(game, "SEATS", ()) or [])
@@ -319,13 +363,37 @@ class Run:
         names = [seats[i] if i < len(seats) else ("You" if i == 0 else f"Rival {i}")
                  for i in range(len(scores))]
         table = [{"seat": names[i], "score": scores[str(i)]} for i in range(len(scores))]
-        if len(table) == 1 or (seats and seats[0] == "Team"):
+        if len(table) == 1:
+            return {"standings": table, "outcome": "score"}
+        if (seats and seats[0] == "Team") or c.get("base") == "ref_hanabi":
             outcome = "team"
             table = table[:1]   # one shared score; the seats are teammates
         else:
             mine, others = table[0]["score"], [t["score"] for t in table[1:]]
             outcome = "won" if mine > max(others) else "tied" if mine == max(others) else "lost"
         return {"standings": table, "outcome": outcome}
+
+    def mark_discovery(self, hypothesis: str) -> dict:
+        if self.gid not in catalog.V4_DISCOVERY_IDS:
+            raise ValueError('Discovery checkpoints are available on the scripted V4 variants')
+        with self.discovery_lock:
+            if self.discovery is None:
+                s = self.session
+                if s is None:
+                    raise ValueError('Start a play before recording a discovery')
+                current_moves = 0 if s.play_id in self._closed else len(s.history)
+                c = catalog.GAMES[self.gid]
+                event = dict(run_id=self.id, game=self.gid, play_id=s.play_id,
+                             play_index=self.index, condition=c['opponent_condition'],
+                             source_game=c['discovery_source'], arm=self.arm,
+                             hypothesis=hypothesis, recorded_at=time.time(),
+                             elapsed_s=round(time.monotonic() - self.started_clock, 3),
+                             total_moves=self.completed_moves + current_moves,
+                             play_moves=len(s.history))
+                self.collector.record_discovery(player=self.player, event=event)
+                self.discovery = event
+            return {k: self.discovery[k] for k in
+                    ('hypothesis', 'elapsed_s', 'total_moves', 'play_moves', 'play_index')}
 
     def summary(self) -> dict:
         return {"run_id": self.id, "game": self.gid, "player": self.player,
@@ -431,6 +499,14 @@ def public_catalogue() -> List[dict]:
                     "teaser": c["teaser"], "n_players": c["n_players"],
                     "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
                     "plays": V3_PLAYS, "variants": []})
+    for base, choices in catalog.V4_CHOICES.items():
+        gid = choices[0]['cell']
+        c = catalog.GAMES[gid]
+        base_game = catalog.GAMES[base]
+        out.append({"id": gid, "title": c["title"], "edition": "v4",
+                    "teaser": c["teaser"], "n_players": base_game["n_players"],
+                    "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": 3, "variants": choices})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
@@ -518,7 +594,7 @@ class Handler(BaseHTTPRequestHandler):
             if not r or r.session is None:
                 return self._json({"error": "no such run"}, 404)
             r.touched = time.time()
-            return self._json(self._play_payload(r))
+            return self._json(self._settle(r) if r.session.done.is_set() else self._play_payload(r))
 
         if u.path == "/api/run":
             r = RUNS.get((q.get("run") or [""])[0])
@@ -591,6 +667,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if u.path == "/api/run/start":
             return self._start(body)
+        if u.path == "/api/run/discovery":
+            r = RUNS.get(body.get("run") or "")
+            if r is None:
+                return self._json({"error": "no such run"}, 404)
+            hypothesis = body.get('hypothesis')
+            if not isinstance(hypothesis, str) or not hypothesis.strip() or len(hypothesis) > 2000:
+                return self._json({"error": "Describe your hypothesis in 1–2000 characters"}, 400)
+            try:
+                return self._json({'discovery': r.mark_discovery(hypothesis.strip())})
+            except ValueError as exc:
+                return self._json({'error': str(exc)}, 400)
         if u.path == "/api/move":
             return self._move(body)
         if u.path == "/api/run/next":
@@ -613,18 +700,29 @@ class Handler(BaseHTTPRequestHandler):
         gid = body.get("game")
         if gid not in catalog.GAMES:
             return self._json({"error": "unknown game"}, 400)
-        arm = body.get("arm", "hole")
+        arm = catalog.GAMES[gid].get("fixed_arm", body.get("arm", "hole"))
         if arm not in ("hole", "nohole"):
             return self._json({"error": "bad arm"}, 400)
         bg = _board_gid(gid)
         plays = int(body.get("plays") or RUN_PLAYS.get(gid)
-                      or (V3_PLAYS if gid in catalog.V3_IDS else 0)
+                      or (V3_PLAYS if gid in catalog.V3_IDS or catalog.GAMES[gid].get("edition") == "v4" else 0)
                       or RUN_PLAYS.get(bg, DEFAULT_PLAYS))
         plays = max(1, min(plays, 12))
         p_caught = float(body.get("p_caught") or
                          os.environ.get("HG_P_CAUGHT") or 0.0)
         p_caught = min(max(p_caught, 0.0), 1.0)
 
+        bots = ("honest" if gid in catalog.V4_DISCOVERY_IDS else
+                "ai" if gid in catalog.V4_IDS else body.get("bots", "honest"))
+        if bots == "ai" and gid not in catalog.V4_IDS:
+            return self._json({"error": "Choose a V4 game to play against AI"}, 400)
+        if bots not in ("honest", "exploit", "ai"):
+            return self._json({"error": "unknown opponent mode"}, 400)
+        try:
+            r = Run(player, gid, arm, plays, bots, p_caught, COLLECTOR,
+                    ui_aids=([f"board:{bg}"] if bg in views.ADAPTERS else []))
+        except (ValueError, ImportError) as exc:
+            return self._json({"error": str(exc)}, 400)
         reap_runs()
         make_room()
         slug = player_slug(player)
@@ -638,9 +736,6 @@ class Handler(BaseHTTPRequestHandler):
             if prev:
                 prev.kill()
 
-        r = Run(player, gid, arm, plays, body.get("bots", "honest"), p_caught,
-                COLLECTOR, ui_aids=([f"board:{bg}"] if bg in views.ADAPTERS
-                                    else []))
         with RLOCK:
             RUNS[r.id] = r
             BY_PLAYER[slug] = r.id
@@ -674,7 +769,7 @@ class Handler(BaseHTTPRequestHandler):
     def _settle(self, r: Run) -> dict:
         """A play just ended: write it, fold it into memory, hand back what
         the player may see."""
-        closed = r.close_play()
+        closed = r.close_play() or r.last_result
         payload = self._play_payload(r)
         if closed:
             payload["play_result"] = closed

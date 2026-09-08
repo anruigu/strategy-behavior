@@ -130,7 +130,7 @@ def _holefill_stats() -> dict | None:
 
 # ------------------------------------------------------------------ session --
 class Session:
-    def __init__(self, gid: str, seat: int, arm: str, seed: int, bot_mode: str):
+    def __init__(self, gid: str, seat: int, arm: str, seed: int, bot_mode: str, *, bot=None):
         c = catalog.GAMES[gid]
         self.gid, self.game = gid, c["game"]
         self.seat, self.arm, self.seed, self.bot_mode = seat, arm, seed, bot_mode
@@ -152,7 +152,11 @@ class Session:
         self.error = None
         self.touched = time.time()
         self.used_hint = False
-        self.bot = self._make_bot(c["family"], bot_mode, seed, self.game)
+        if bot is None and bot_mode == "ai":
+            from hosted_opponents import HostedOpponent
+            bot = HostedOpponent()
+        self.bot = bot if bot is not None else self._make_bot(c["family"], bot_mode, seed, self.game)
+        self.cancelled = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
@@ -183,7 +187,11 @@ class Session:
         return RefScripted(mode)
 
     def ask(self, pid: int, phase: str, prompt: str) -> str:
+        if self.cancelled.is_set():
+            raise SystemExit
         if pid != self.seat:
+            if self.bot_mode == "ai":
+                return self.bot(pid, phase, prompt)
             try:
                 return self.bot(pid, phase, prompt)
             except Exception:
@@ -217,6 +225,7 @@ class Session:
             return False
 
     def kill(self):
+        self.cancelled.set()
         try:
             self.inbox.put_nowait(KILL)
         except queue.Full:
