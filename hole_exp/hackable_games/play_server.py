@@ -700,8 +700,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "move too long"}, 400)
         t0 = s.turn
         s.submit(text, body.get("via", "ui"))
-        for _ in range(1500):
-            if s.turn != t0 or s.done.is_set():
+        # Hosted seats may need several calls. Return after the human reply
+        # is consumed and let /api/state polling carry the model turns.
+        for _ in range(50 if s.bot_mode == "ai" else 1500):
+            if (s.bot_mode == "ai" and s.pending is None) or s.turn != t0 or s.done.is_set():
                 break
             time.sleep(0.01)
         if s.done.is_set():

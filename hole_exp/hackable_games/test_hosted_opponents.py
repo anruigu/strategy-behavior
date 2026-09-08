@@ -139,6 +139,33 @@ class HostedTests(unittest.TestCase):
             self.assertTrue(rows[0]['opponent']['decisions'])
             self.assertNotIn('opponent', session.public_state())
 
+    def test_move_returns_while_hosted_opponent_is_thinking(self):
+        import threading
+        release = threading.Event()
+        class SlowClient(FakeClient):
+            def create(self, **request):
+                release.wait(5)
+                return super().create(**request)
+        client = SlowClient(lambda _: '[choice: 0]')
+        with tempfile.TemporaryDirectory() as tmp, patch.object(HostedConfig, 'client', return_value=client):
+            run = play_server.Run('slow-test', 'v4_ta_ipd_palmers_word', 'hole', 1, 'ai', 0, PlayCollector(tmp), [])
+            session = run.start_next()
+            deadline = time.monotonic() + 2
+            while not session.pending and time.monotonic() < deadline: time.sleep(.001)
+            handler = object.__new__(play_server.Handler)
+            handler._json = lambda data, *args: data
+            try:
+                with patch.dict(play_server.RUNS, {run.id: run}):
+                    start = time.monotonic()
+                    state = handler._move({'run': run.id, 'text': '[move: cooperate]'})
+                    self.assertLess(time.monotonic() - start, 2)
+                    self.assertNotIn('pending', state)
+                    self.assertFalse(state['done'])
+            finally:
+                release.set()
+                run.kill()
+                session.done.wait(timeout=2)
+
     def test_provider_failure_stops_without_scripted_fallback(self):
         def broken(*args): raise RuntimeError('provider unavailable')
         session = server.Session('v4_ta_ipd_palmers_word', 0, 'hole', 0, 'ai', bot=broken)
