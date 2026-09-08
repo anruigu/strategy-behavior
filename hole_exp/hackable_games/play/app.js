@@ -675,6 +675,22 @@ async function send(text) {
 }
 
 // ── between plays ───────────────────────────────────────────────────
+function verdictText(outcome) {
+  return outcome === 'won' ? 'You won.' : outcome === 'lost' ? 'You lost.'
+    : outcome === 'tied' ? 'You tied for first.' : outcome === 'team' ? 'Team result.' : '';
+}
+
+// Final standings, highest first. Every seat's score was already on the board
+// each turn in these editions; this only lines them up.
+function standingsTable(rows) {
+  if (!rows || !rows.length) return '';
+  const sorted = rows.map((r, i) => ({ ...r, me: i === 0 }))
+    .sort((a, b) => b.score - a.score);
+  return '<table class="standings">' + sorted.map((r, i) =>
+    `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}.</td><td>${esc(r.seat)}</td>` +
+    `<td class="num">${Number(r.score).toFixed(1)}</td></tr>`).join('') + '</table>';
+}
+
 function between(st) {
   const r = st.play_result || {};
   const complete = st.run && st.run.complete;
@@ -685,6 +701,9 @@ function between(st) {
     $('d-score').textContent =
       `${(s.scores || []).length} plays  ·  scores ` +
       (s.scores || []).map(sc).join(', ');
+    $('d-standings').innerHTML = (s.results || []).map((res, i) =>
+      `<div class="standings-play"><strong>Play ${i + 1}: ${esc(verdictText(res.outcome))}</strong>` +
+      standingsTable(res.standings) + '</div>').join('');
     $('d-memory').textContent = (st.run.memory || '').trim();
     $('d-debrief').innerHTML = '';
     if (st.run.debrief) addDebrief();
@@ -692,7 +711,8 @@ function between(st) {
     return show('view-done');
   }
 
-  $('b-verdict').textContent = 'Play over.';
+  $('b-verdict').textContent = r.outcome ? 'Play over. ' + verdictText(r.outcome) : 'Play over.';
+  $('b-standings').innerHTML = r.standings ? standingsTable(r.standings) : '';
   let line = `your score ${sc(r.score || 0)}`;
   if (r.audited && r.caught) {
     line += `  ·  the referee's review after the play charged you ` +

@@ -218,6 +218,7 @@ class Run:
         self._rng = random.Random(f"run-{self.id}")
         self._arng = random.Random(f"audit-{self.id}")
         self.scores: List[float] = []
+        self.results: List[dict] = []   # per-play standings for public-score editions
         self.touched = time.time()
         self.finished = False
         # Play ids already settled. A client that posts a move after the play
@@ -281,6 +282,9 @@ class Run:
             audited=self.p_caught > 0)
         self.memory.records.append(rec)
         self.scores.append(score)
+        standings = self._standings(result, game)
+        if standings:
+            self.results.append(standings)
 
         self.collector.finish(
             s.play_id, result,
@@ -290,15 +294,45 @@ class Run:
         # model arm gets prepended to its next prompt. Same content, same
         # rule about what may be in it: own tokens, own score, and an audit
         # result when there was an audit. No detector name, ever.
-        return {"score": score, "adjusted": rec.adjusted,
-                "caught": int(caught), "fine": float(fine),
-                "audited": rec.audited}
+        out = {"score": score, "adjusted": rec.adjusted,
+               "caught": int(caught), "fine": float(fine),
+               "audited": rec.audited}
+        if standings:
+            out.update(standings)
+        return out
+
+    def _standings(self, result: dict, game) -> Optional[dict]:
+        """Final scores of every seat and the outcome, for editions whose
+        scores are public on every turn anyway (V2 and V3). V1 cells keep
+        rival scores server-side."""
+        c = catalog.GAMES[self.gid]
+        if c.get("edition") not in ("v2", "v3") or "scores" not in result:
+            return None
+        scores = result["scores"]
+        seats = list(getattr(game, "SEATS", ()) or [])
+        if not seats:
+            try:
+                from views.scaleup_help import GUIDES
+                seats = list(GUIDES.get(c.get("base"), {}).get("seats", []))
+            except ImportError:
+                seats = []
+        names = [seats[i] if i < len(seats) else ("You" if i == 0 else f"Rival {i}")
+                 for i in range(len(scores))]
+        table = [{"seat": names[i], "score": scores[str(i)]} for i in range(len(scores))]
+        if len(table) == 1 or (seats and seats[0] == "Team"):
+            outcome = "team"
+            table = table[:1]   # one shared score; the seats are teammates
+        else:
+            mine, others = table[0]["score"], [t["score"] for t in table[1:]]
+            outcome = "won" if mine > max(others) else "tied" if mine == max(others) else "lost"
+        return {"standings": table, "outcome": outcome}
 
     def summary(self) -> dict:
         return {"run_id": self.id, "game": self.gid, "player": self.player,
                 "plays": self.plays, "played": len(self.scores),
                 "remaining": self.remaining, "finished": self.finished,
                 "scores": [round(v, 2) for v in self.scores],
+                "results": self.results,
                 "memory": self.memory.render().strip()}
 
     def kill(self):
