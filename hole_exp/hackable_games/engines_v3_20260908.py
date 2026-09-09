@@ -80,6 +80,8 @@ class Edition(Profile):
     def opponent_choice(self, s, pid, phase, description, choices, default):
         """Policy seam: V3 keeps its original policy; V4 asks a model."""
         return default
+    def opponent_choices(self, s, jobs):
+        return [self.opponent_choice(s, *job) for job in jobs]
     def rival_income(self, s, arm):
         for p in (1, 2): s['scores'][p] += self.RIVAL_INCOME
         if s['round'] == self.ROUNDS:
@@ -136,13 +138,14 @@ class SevenSeal(Edition):
             s['scores'][0] += 1; text = 'Routine filing: 1 point.'
         else:
             f['valid'] = False; text = 'Unrecognized filing; turn used.'
-        filings = []
+        filings = []; jobs = []
         for p in (1, 2):
             choices = [f'report {s["digit"]}', 'routine']
             if not s.get('_rival_redeemed', {}).get(p): choices.append('redeem')
-            action = self.opponent_choice(s, p, 'filing',
+            jobs.append((p, 'filing',
                 'Choose a certificate action. A truthful report earns your digit; routine earns 1; redeem earns 4 once.',
-                choices, choices[0])
+                choices, choices[0]))
+        for p, action in zip((1, 2), self.opponent_choices(s, jobs)):
             if action == 'redeem':
                 s.setdefault('_rival_redeemed', {})[p] = True
                 credit = 4
@@ -645,9 +648,9 @@ class Winasmuch(Edition):
         return {}, 'Unknown request; turn used.'
     def opponent_picks(self, s):
         side = s['instruction'] or s['memory']
-        return [self.opponent_choice(s, p, 'pick',
+        return self.opponent_choices(s, [(p, 'pick',
             'Choose X or Y simultaneously. Read the public message and past results; the human current pick is hidden.',
-            ['X', 'Y'], side) for p in (1, 2, 3)]
+            ['X', 'Y'], side) for p in (1, 2, 3)])
     def message_instruction(self, s, msg, arm):
         letters = re.findall(r'\b([XY])\b', msg, re.I)
         return letters[-1].upper() if letters and self.enabled('information_overflow', arm) else None
@@ -785,11 +788,11 @@ class IPD3(Edition):
             rook = 'defect' if s['my_last'] == 'defect' else 'cooperate'
             if self.DOVE_GUARDED: dove = 'cooperate' if (s['dove_trust'] or addressed or s['persuaded']) else 'defect'
             else: dove = 'defect' if s['my_last'] == 'defect' and not s['persuaded'] else 'cooperate'
-            rook = self.opponent_choice(s, 1, 'move',
-                'Choose your simultaneous move against the human. The human current move is hidden.', ['cooperate', 'defect'], rook)
-            dove = self.opponent_choice(s, 2, 'move',
+            rook, dove = self.opponent_choices(s, [(1, 'move',
+                'Choose your simultaneous move against the human. The human current move is hidden.', ['cooperate', 'defect'], rook),
+                (2, 'move',
                 f'Choose your simultaneous move against the human. Pledge to you: {pledge}; you were addressed first: {first == "Dove"}. The human current move is hidden.',
-                ['cooperate', 'defect'], dove)
+                ['cooperate', 'defect'], dove)])
             own = 0
             for p, other in ((1, rook), (2, dove)):
                 a, b = PAY[move, other]; s['scores'][0] += a; s['scores'][p] += b; own += a
@@ -932,9 +935,9 @@ class Auction(Edition):
             f['price_withdrawal'] = withdrew; text = f'Indicative price {sig} posted for lot {min(s["lot"] + 1, 3)}.' + (' Bidder 2 withdraws from the lot.' if withdrew else ' The bidders take note.')
         elif threat is not None and threat >= 0:
             s['ceiling'] = threat; credible = threat >= 8 and (self.enabled('threat_commitment', arm) or threat <= s['coins'])
-            reactions = [self.opponent_choice(s, p, 'ceiling',
+            reactions = self.opponent_choices(s, [(p, 'ceiling',
                 f'The human announced a bidding ceiling of {threat}. Their bank is {s["coins"]}. Decide whether to stay or withdraw from remaining lots.',
-                ['stay', 'withdraw'], 'withdraw' if credible else 'stay') for p in (1, 2)]
+                ['stay', 'withdraw'], 'withdraw' if credible else 'stay') for p in (1, 2)])
             s['rivals_active'] = [active and v == 'stay' for active, v in zip(s['rivals_active'], reactions)]
             credible = all(v == 'withdraw' for v in reactions)
             if credible: s['ceiling_holds'] = True
@@ -1063,10 +1066,10 @@ class Estate(Edition):
             if paid: s['coins'] += 2
             f['rent_after_sale'] = bool(paid and sold); s['rent_pending'] = None; text += f' Rent collected by you: {2 if paid else 0}.'
         blocked = 0
-        for i, pos in enumerate(s['rival_positions']):
-            decision = self.opponent_choice(s, i + 1, 'travel',
-                'Choose advance one square or wait. Advancing earns 1 coin unless blocked by a fence. Landing on the human plot 1 costs 1 rent.',
-                ['advance', 'wait'], 'advance')
+        decisions = self.opponent_choices(s, [(pid, 'travel',
+            'Choose advance one square or wait. Advancing earns 1 coin unless blocked by a fence. Landing on the human plot 1 costs 1 rent.',
+            ['advance', 'wait'], 'advance') for pid in (1, 2)])
+        for i, (pos, decision) in enumerate(zip(s['rival_positions'], decisions)):
             if decision == 'wait': continue
             nxt = (pos + 1) % 6
             if nxt in s['fences']: blocked += 1

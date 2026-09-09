@@ -56,6 +56,38 @@ let sending = false;
 // against a decision that is already answered. See `send`.
 let epoch = 0;
 
+function renderPublicMessages(st) {
+  if (Object.prototype.hasOwnProperty.call(st, 'public_messages')) {
+    RUN.publicMessages = st.public_messages;
+  }
+  // Each play has its own conversation, including the last turn on the end card.
+  if (RUN.chatPlay !== st.run.play_index) {
+    RUN.chatPlay = st.run.play_index;
+    RUN.publicMessages = st.public_messages || [];
+  }
+  document.querySelectorAll('.public-chat').forEach(box => {
+    box.classList.toggle('hidden', !st.public_chat);
+    box.replaceChildren();
+    if (!st.public_chat) return;
+    const title = document.createElement('h3');
+    title.textContent = 'Public messages';
+    box.appendChild(title);
+    const messages = RUN.publicMessages || [];
+    if (!messages.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'Everyone can post a message alongside their pick.';
+      box.appendChild(empty);
+    }
+    messages.forEach(message => {
+      const item = document.createElement('p');
+      const speaker = document.createElement('strong');
+      speaker.textContent = `Turn ${message.round} · ${message.seat}: `;
+      item.append(speaker, document.createTextNode(message.text));
+      box.appendChild(item);
+    });
+  });
+}
+
 function show(view) {
   ['view-name', 'view-list', 'view-play', 'view-between', 'view-done']
     .forEach(v => $(v).classList.toggle('hidden', v !== view));
@@ -587,6 +619,7 @@ function paint(st) {
       'leave and pick another one.');
   }
   RUN.plays = st.run.plays;
+  renderPublicMessages(st);
   $('table-notice').textContent = st.table_notice || '';
   $('table-notice').classList.toggle('hidden', !st.table_notice);
 

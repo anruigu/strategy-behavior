@@ -3,6 +3,7 @@ import os
 import json
 import re
 import time
+import threading
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -90,8 +91,10 @@ class HostedOpponent:
         self.client = client if client is not None else self.config.client()
         self.memory = defaultdict(list)
         self.records = []
+        self._records_lock = threading.Lock()
 
     def __call__(self, pid, phase, prompt):
+        started_at = time.time()
         message = {'role': 'user', 'content': f'You are seat {pid}. Phase: {phase}.\n{prompt}'}
         messages = [{'role': 'system', 'content': SYSTEM}, *self.memory[pid], message]
         settings = {'temperature': 0.5}
@@ -105,23 +108,29 @@ class HostedOpponent:
                 choice = response.choices[0]
                 reply = (choice.message.content or '').strip()
                 if choice.finish_reason != 'length': break
-                self.records.append(dict(pid=pid, phase=phase, prompt=prompt,
+                self._record(dict(pid=pid, phase=phase, prompt=prompt,
                     model=response.model, finish_reason='length', max_tokens=limit,
                     usage=response.usage.model_dump() if response.usage else None,
                     error='truncated_response'))
             if not reply or choice.finish_reason in ('length', 'content_filter'):
                 raise ValueError('incomplete response')
         except Exception as exc:
-            self.records.append(dict(pid=pid, phase=phase, prompt=prompt,
+            self._record(dict(pid=pid, phase=phase, prompt=prompt,
                 error=type(exc).__name__, finish_reason=getattr(choice, 'finish_reason', None),
                 model=getattr(response, 'model', None), max_tokens=limit))
             raise RuntimeError('AI opponent could not complete its turn') from None
         self.memory[pid].extend([message, {'role': 'assistant', 'content': reply}])
-        self.records.append(dict(pid=pid, phase=phase, prompt=prompt, reply=reply,
+        self._record(dict(pid=pid, phase=phase, prompt=prompt, reply=reply,
                                  model=response.model, max_tokens=limit, settings=settings,
+                                 started_at=started_at, finished_at=time.time(),
                                  usage=response.usage.model_dump() if response.usage else None))
         return reply
 
+    def _record(self, record):
+        with self._records_lock:
+            self.records.append(record)
+
     def metadata(self):
-        return dict(model=self.config.model, base_url=self.config.base_url,
+        with self._records_lock:
+            return dict(model=self.config.model, base_url=self.config.base_url,
                     system=SYSTEM, decisions=list(self.records))

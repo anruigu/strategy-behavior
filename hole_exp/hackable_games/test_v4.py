@@ -22,7 +22,7 @@ class V4Tests(unittest.TestCase):
         self.assertEqual(len(V4.GAMES), 19)
         for game in V4.GAMES.values():
             base = V3.GAMES[game.ORIGINAL]
-            self.assertEqual([(f['label'], f['token'], f['fields']) for f in game.forms()],
+            self.assertEqual([(f['label'], f['token'], [v for v in f['fields'] if not (f['label'] == 'Choose' and v['name'] == 'say')]) for f in game.forms()],
                              [(f['label'], f['token'], f['fields']) for f in base.forms()])
             self.assertEqual(game.CARD['scoring'], base.CARD['scoring'])
             self.assertEqual(game.ROUNDS, base.ROUNDS)
@@ -35,11 +35,11 @@ class V4Tests(unittest.TestCase):
                 game = self.bind(gid)
                 calls = []
                 def ask(pid, phase, prompt):
-                    if phase in ('move', 'pick'): calls.append(prompt)
+                    if phase in ('move', 'pick'): calls.append((pid, prompt))
                     return '[choice: 0]'
                 game._ask = ask
                 game.transition(game.initial(0), f'[{action}: {value}]')
-                prompts.append(calls)
+                prompts.append(sorted(calls))
             self.assertEqual(prompts[0], prompts[1], gid)
             self.assertTrue(prompts[0])
 
@@ -102,6 +102,61 @@ class V4Tests(unittest.TestCase):
         self.assertEqual(len(o['own_marks']), 3)
         self.assertIn('play slot 1', p)
         self.assertEqual(len(after['_marks'][1]), 2)
+
+    def test_parallel_picks_publish_messages_together_and_share_next_turn(self):
+        import threading
+        game = self.bind('v4_ta_winasmuch_talk')
+        barrier = threading.Barrier(3, timeout=2)
+        seen = {}
+        def ask(pid, phase, prompt):
+            seen[pid] = observation(prompt)
+            barrier.wait()  # Sequential sampling fails rather than passing slowly.
+            return f'[choice: 1] [say: public reply from {pid} <b>hello</b>]'
+        game._ask = ask
+        s = game.initial(0)
+        after, _ = game.transition(s, '[pick: Y] [say: human attached message]')
+        self.assertEqual(set(seen), {1, 2, 3})
+        self.assertTrue(all(not o['public_messages'] for o in seen.values()))
+        messages = after['public_messages']
+        self.assertEqual([m['player'] for m in messages], [0, 1, 2, 3])
+        self.assertEqual(messages[0]['text'], 'human attached message')
+        for pid in (1, 2, 3):
+            self.assertEqual(game.opponent_observation(after, pid)['public_messages'], messages)
+            self.assertEqual(game._ep.decisions[pid], 1)
+        self.assertEqual(game.public(after)['public_messages'], messages)
+        # Mutating a UI projection cannot mutate the game or other seats.
+        game.public(after)['public_messages'].clear()
+        self.assertEqual(len(after['public_messages']), 4)
+
+    def test_message_only_turn_is_seen_by_all_rivals(self):
+        game = self.bind('v4_ta_winasmuch_talk')
+        seen = []
+        def ask(pid, phase, prompt):
+            seen.append(observation(prompt))
+            return '[choice: 0]'
+        game._ask = ask
+        after, _ = game.transition(game.initial(0), '[say: Let us coordinate on Y]')
+        self.assertEqual(len(seen), 3)
+        self.assertTrue(all(o['public_messages'][0]['text'] == 'Let us coordinate on Y' for o in seen))
+        self.assertEqual(len(after['public_messages']), 1)
+
+    def test_parallel_independent_decisions_in_other_games(self):
+        import threading
+        cases = [('v4_ref_auction_lots', None), ('v4_gen_seven_seal_certificates', '[pass: 1]'),
+                 ('v4_ref_exchange_trade', '[work: 1]'), ('v4_ref_estate_development', '[wait: 1]'),
+                 ('v4_ta_ipd3_alliances', '[move: cooperate]')]
+        for gid, action in cases:
+            with self.subTest(game=gid):
+                game = self.bind(gid)
+                barrier = threading.Barrier(2, timeout=2)
+                def ask(pid, phase, prompt):
+                    if phase != 'trade': barrier.wait()
+                    return '[choice: 0]'
+                game._ask = ask
+                s = game.initial(0)
+                if action is None: game.prepare(s)
+                else: game.transition(s, action)
+                self.assertGreaterEqual(len(game._decisions), 2)
 
     def test_invalid_model_reply_has_no_fallback(self):
         game = self.bind('v4_ta_ipd_palmers_word', 'cooperate')

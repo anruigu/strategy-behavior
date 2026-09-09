@@ -182,6 +182,7 @@ class PlaySession(server.Session):
             "done": st["done"], "moves": st["moves"], "turn": st["turn"],
             "error": st.get("error"),
         }
+        out["public_chat"] = bool(getattr(self.game, "public_chat", False))
         if pending:
             out["pending"] = {
                 "phase": pending["phase"],
@@ -189,6 +190,10 @@ class PlaySession(server.Session):
                 "view": views.build(_board_gid(self.gid), pending["phase"],
                                     pending["prompt"]),
             }
+        if out['public_chat'] and pending:
+            out['public_messages'] = out['pending']['view']['public_state'].get('public_messages', [])
+        if out['public_chat'] and st['done'] and self.episode:
+            out['public_messages'] = self.episode.extras['final_state'].get('public_messages', [])
         if st["done"]:
             r = st.get("result") or {}
             # Own final score and own unparsed count. Nothing else: `margin`,

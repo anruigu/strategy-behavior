@@ -109,7 +109,7 @@ window.UI.benchmark_move = function (v, ctx) {
     const human = key => key.replaceAll('_',' ').replace(/^./, x=>x.toUpperCase());
     const show = value => value === null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? (value.length ? value.map(show).join(', ') : 'None') : typeof value === 'object' ? Object.entries(value).map(([k,val])=>human(k)+': '+show(val)).join(' · ') : String(value);
     const hidden = new Set(['sea', 'own_hull', 'shots', 'hits', 'charts', 'probed', 'mines', 'courier', 'rival_positions', 'fences', 'titles']);
-    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea').forEach(([key,value]) => {
+    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea' && key!=='public_messages').forEach(([key,value]) => {
       K.put(ledger, K.panel(human(key), K.note(show(value))));
     });
     K.put(box, ledger);
