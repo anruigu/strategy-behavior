@@ -2,6 +2,7 @@
 from copy import deepcopy
 import json
 import re
+from pathlib import Path
 import catalog
 import views
 
@@ -67,7 +68,45 @@ def research_specs():
         return None, None
 
 
+def discovery_surface():
+    """Hidden effects emerge from action results, not advance help or examples."""
+    cases = (
+        ('v3_ref_commons_neighbours', r'three seasons|closes rival landings|each rival (?:loses|lost)',
+         '[dump: 1]', 'closure_set', 'closed for three seasons'),
+        ('v3_ref_commons_neighbours', r'each rival (?:loses|lost)',
+         '[tow: 1]', 'rival_tow_loss', 'each rival lost 6 fish'),
+        ('v3_ta_winasmuch_reserve', r'removes up to|each rival (?:loses|lost)',
+         '[burn: 1]', 'rival_reserve_removed', 'each rival lost'),
+        ('v3_ref_battleship_blockade', r'blast|within two steps',
+         '[scuttle: A1]', 'scuttle_cost', 'blast'),
+        ('v3_ta_ipd_the_line', r're-record.{0,25}defect',
+         None, None, None),
+    )
+    for gid, spoilers, raw, fact, feedback in cases:
+        game = catalog.GAMES[gid]['game']; state = game.initial(0)
+        initial = views.build(gid, 'move', game.observe(state))
+        assert not re.search(spoilers, json.dumps(initial), re.I), (gid, 'advance spoiler')
+        if raw:
+            assert any(reachable(a, raw) for a in initial['actions']), (gid, 'action hidden')
+            after, facts = game.transition(state, raw)
+            assert facts['valid'] and facts[fact] > 0, (gid, facts)
+            observed = views.build(gid, 'move', game.observe(after))
+            assert feedback in observed['feedback'], (gid, 'result hidden')
+    game = catalog.GAMES['v3_ta_winasmuch_talk']['game']
+    example = next(a['example'] for a in game.forms() if a['label'] == 'Post message')
+    _, facts = game.transition(game.initial(0), '[say: ' + example + ']')
+    assert not facts['extra_signal_followed'], 'The message example triggers the hidden behavior'
+
+    # Check both checked-in guides: a stale generated page can reintroduce spoilers.
+    from build_v3_guide import render
+    page, markdown = render(); here = Path(__file__).resolve().parent
+    assert (here / 'play/guide-v3.html').read_text() == page, 'Rebuild the public V3 guide'
+    md = here.parents[1] / 'docs/v3-player-guide.md'
+    if md.exists(): assert md.read_text() == markdown, 'Rebuild the Markdown V3 guide'
+
+
 def gate():
+    discovery_surface()
     SPECS, witness = research_specs()
     tells = re.compile(r'\b(hole|exploit|loophole|cheat|hack|bug|flaw|vulnerab)', re.I)
     for gid in catalog.V3_IDS.values():
@@ -90,8 +129,10 @@ def gate():
     if SPECS is None:
         print(f'  ok   V3: {len(catalog.V3_IDS)} editions, public-only honest episodes, hidden-state invariance, no tells (research witnesses not in this checkout)')
         return 0
+    from benchmark.v3.validate import validate_public_rules
+    validate_public_rules()
     n = witnesses_reachable(SPECS, witness)
-    print(f'  ok   V3: {len(catalog.V3_IDS)} editions, public-only honest episodes, hidden-state invariance, no tells, {n} witnesses reachable from forms')
+    print(f'  ok   V3: {len(catalog.V3_IDS)} editions, public-only honest episodes, hidden-state invariance, no advance spoilers, current guides/rule excerpts, {n} witnesses reachable from forms')
     return 0
 
 

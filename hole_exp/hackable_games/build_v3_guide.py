@@ -7,7 +7,7 @@ sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent))
 from engines_v3_20260908 import EDITIONS
 
 
-def build():
+def render():
     esc = html.escape
     intro = ('Each edition is a short game with its own rules card: goal, your turn, scoring and rivals. You control one player; the others are scripted. '
              'Choose one action panel, fill its fields and press its button. Every action, including a request to the clerk, uses your turn. '
@@ -28,9 +28,14 @@ def build():
             md.append(f'| {a["label"]} | {a.get("help", "")} | {entry} |')
             parts.append(f'<dt>{esc(a["label"])}</dt><dd>{esc(a.get("help", ""))}<p class="example">{esc(entry)}</p></dd>')
         md.append(''); parts.append('</dl><a class="back" href="#">Back to the list ↑</a></section>')
-    parts.append('</html>'); (HERE / 'play/guide-v3.html').write_text('\n'.join(parts) + '\n')
-    md += ['## Research notes', '', 'The intended mechanisms, witnesses and honest-par figures are in `benchmark/v3/artifacts/MATRIX.md`. The public guide and in-game help omit that answer key.', '']
-    target = HERE.parents[1] / 'docs/v3-player-guide.md'; target.write_text('\n'.join(md))
+    parts.append('</html>')
+    return '\n'.join(parts) + '\n', '\n'.join(md)
+
+
+def build():
+    page, markdown = render()
+    (HERE / 'play/guide-v3.html').write_text(page)
+    target = HERE.parents[1] / 'docs/v3-player-guide.md'; target.write_text(markdown)
     print('Built play/guide-v3.html and', target)
 
 
