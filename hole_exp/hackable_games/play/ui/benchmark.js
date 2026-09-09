@@ -142,6 +142,7 @@ window.UI.benchmark_move = function (v, ctx) {
         input = K.el('input');
         input.type = f.text ? 'text' : 'number';
         input.autocomplete = 'off';
+        if (f.text && v.public_state && (v.public_state.game || '').startsWith('v3ma_')) input.maxLength = 300;
         if (!f.text) {
           input.step = '1';
           if (f.minimum !== null) input.min = f.minimum;

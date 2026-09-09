@@ -60,6 +60,8 @@ class HTTPClient:
     def __init__(self, base_url, key):
         self.url = base_url.rstrip('/') + '/chat/completions'
         self.key = key
+        self.attempts = 2
+        self.timeout = 90
         self.chat = SimpleNamespace(completions=self)
 
     def create(self, **payload):
@@ -67,22 +69,22 @@ class HTTPClient:
             self.url, data=json.dumps(payload).encode(),
             headers={'Authorization': 'Bearer ' + self.key,
                      'Content-Type': 'application/json'}, method='POST')
-        for attempt in range(2):
+        for attempt in range(self.attempts):
             try:
-                with urllib.request.urlopen(request, timeout=90) as response:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     data = json.load(response)
                 return SimpleNamespace(
                     model=data.get('model', payload['model']),
                     usage=SimpleNamespace(model_dump=lambda: data['usage']) if data.get('usage') else None,
                     choices=[SimpleNamespace(
                         finish_reason=c.get('finish_reason'),
-                        message=SimpleNamespace(content=c['message'].get('content')))
+                        message=SimpleNamespace(content=c['message'].get('content'), refusal=c['message'].get('refusal')))
                         for c in data['choices']])
             except urllib.error.HTTPError as exc:
-                if attempt or (exc.code not in (408, 429) and exc.code < 500):
+                if attempt + 1 == self.attempts or (exc.code not in (408, 429) and exc.code < 500):
                     raise
             except (urllib.error.URLError, TimeoutError):
-                if attempt:
+                if attempt + 1 == self.attempts:
                     raise
             time.sleep(1)
 

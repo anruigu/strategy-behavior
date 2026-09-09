@@ -43,18 +43,46 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-const EDITIONS = ['v1', 'v2', 'v3', 'v4'];
+const EDITIONS = ['v0', 'v1', 'v2', 'v3', 'v4'];
 let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('version'))
   ? new URLSearchParams(location.search).get('version') : 'v3';
 let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
+const evalQuery = new URLSearchParams(location.search);
+for (const key of ['condition', 'opponent', 'seed']) {
+  const control = $('eval-' + key);
+  const value = evalQuery.get(key);
+  if (value !== null && (key === 'seed' ? /^\d+$/.test(value) && Number(value) <= 1000000 : [...control.options].some(o => o.value === value))) control.value = value;
+  control.onchange = () => {
+    const url = new URL(location.href);
+    url.searchParams.set(key, control.value);
+    history.replaceState(null, '', url);
+  };
+}
 // Bumped every time the board is redrawn. A renderer captures the value it
 // was built under and its context refuses to send once the value has moved
 // on, so a stale board -- one still on screen for the instant between a click
 // and the redraw, or one a renderer kept a reference to -- cannot post a move
 // against a decision that is already answered. See `send`.
 let epoch = 0;
+
+function renderEvalResults(st) {
+  document.querySelectorAll('.eval-results').forEach(box => {
+    box.replaceChildren();
+    box.classList.toggle('hidden', !st.final_view);
+    if (!st.final_view) return;
+    const title = document.createElement('h3');
+    title.textContent = 'Completed rounds';
+    box.appendChild(title);
+    const describe = value => Array.isArray(value) ? value.map(describe).join(', ') : value && typeof value === 'object' ? Object.entries(value).map(([k,v]) => k.replaceAll('_', ' ') + ': ' + describe(v)).join(' · ') : String(value);
+    for (const round of st.final_view.public_state.history) {
+      const row = document.createElement('p');
+      row.textContent = describe(round);
+      box.appendChild(row);
+    }
+  });
+}
 
 function renderSeatActions(st) {
   if (RUN.actionsPlay !== st.run.play_index) {
@@ -563,7 +591,9 @@ function renderGames() {
     $('edition-' + e).onclick = () => selectEdition(e);
   });
   $('edition-description').textContent = EDITION === 'v4'
-    ? 'The V3 games with Qwen choosing the opponent actions. Same boards and scoring; three plays per game.'
+    ? 'Play the focal agent in ten scenarios from the multi-agent eval. Choose the opponent policy, model, and seed below.'
+    : EDITION === 'v0'
+    ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'
     : EDITION === 'v3'
     ? 'Nineteen short editions of ten games, each with a rules card and a few actions. Three plays per edition; the second edition of a game reuses its rules.'
     : EDITION === 'v2'
@@ -571,12 +601,14 @@ function renderGames() {
     : 'The original games and their existing versions.';
   $('guide-link').href = EDITION === 'v3' ? '/guide-v3' : '/guide';
   $('guide-link').textContent = EDITION === 'v3' ? 'How to play: guide to the V3 editions ↗' : 'How to play: guide to the ten V2 games ↗';
-  $('guide-link').parentElement.classList.toggle('hidden', EDITION === 'v1' || EDITION === 'v4');
+  $('guide-link').parentElement.classList.toggle('hidden', !['v2', 'v3'].includes(EDITION));
+  $('eval-settings').classList.toggle('hidden', EDITION !== 'v4');
   const g = $('grid');
   g.innerHTML = '';
   GAMES.filter(c => (c.edition || 'v1') === EDITION).forEach(c => {
     const d = document.createElement('div');
     d.className = 'card';
+    d.dataset.game = c.id;
     const vs = variantsOf(c);
     const row = vs.length
       ? vs.map((v, i) =>
@@ -611,7 +643,15 @@ async function startRun(gid, card, variantOrNull) {
   if (startingRun) return;
   startingRun = true;
   try {
-  const st = await post('/api/run/start', { player: PLAYER, game: gid });
+  const setup = {};
+  if (gid.startsWith('v4_')) {
+    if (!$('eval-seed').checkValidity() || $('eval-seed').value === '') {
+      $('eval-seed').reportValidity();
+      return;
+    }
+    Object.assign(setup, {condition: $('eval-condition').value, opponent: $('eval-opponent').value, seed: Number($('eval-seed').value)});
+  }
+  const st = await post('/api/run/start', { player: PLAYER, game: gid, ...setup });
   if (st.error) { alert(st.error); return; }
   RUN = {
     run_id: st.run.run_id, game: gid,
@@ -687,13 +727,14 @@ function paint(st) {
   RUN.plays = st.run.plays;
   renderPublicMessages(st);
   renderSeatActions(st);
+  renderEvalResults(st);
   $('table-notice').textContent = st.table_notice || '';
   $('table-notice').classList.toggle('hidden', !st.table_notice);
 
   $('play-title').textContent = RUN.title;
   $('play-meta').textContent =
-    `play ${st.run.play_index + 1} of ${st.run.plays}`;
-  $('memory').textContent = st.run.memory || 'This is your first play.';
+    `play ${st.run.play_index + 1} of ${st.run.plays}` + (st.run.eval ? ` · You: seat 0 · ${st.run.eval.opponent} · ${st.run.eval.condition} · seed ${st.run.eval.seed}` : '');
+  $('memory').textContent = st.run.eval ? 'Fresh game. Your goal is to maximize your final score.' : st.run.memory || 'This is your first play.';
 
   if (st.done || !st.pending) {
     if (st.done) return between(st);
@@ -754,6 +795,7 @@ function paint(st) {
     }
     if (window.console) console.error('renderer failed for ' + view.kind, err);
   }
+  if (st.submission_error) boardWarn(st.submission_error);
 }
 
 async function send(text) {

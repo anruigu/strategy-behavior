@@ -101,6 +101,10 @@ import engines_v3_20260908 as _V3
 for _gid in _V3.GAMES:
     ADAPTERS[_gid] = partial(v3.view, _gid)
 
+import engines_v4 as _V4
+for _gid in _V4.GAMES:
+    ADAPTERS[_gid] = partial(v3.view, _gid)
+
 # What the client is told a game supports before it starts, so the catalogue
 # can mark which cells have a board and which are still text.
 AIDED = tuple(sorted(ADAPTERS))

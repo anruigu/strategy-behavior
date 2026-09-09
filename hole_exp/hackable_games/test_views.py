@@ -54,7 +54,7 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values()}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V4_IDS}
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -83,6 +83,9 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
     if k == 'hanabi_human':
         return v['actions'][-1]['token']
     if k == "v3_move":
+        if v.get('public_state', {}).get('game', '').startswith('v3ma_'):
+            return ' '.join(f['token'].format(value=f['options'][0] if f.get('options') else 'none')
+                            for f in v['actions'][0]['fields'])
         from test_v3_views import normal_from_public as v3_normal
         return v3_normal(v)
     if k == "benchmark_move" and 'public_state' in v:
@@ -189,7 +192,9 @@ def drive(gid: str, seed: int = 11, arm: str = "hole"):
     from test_referee_games import Scripted as RefScripted
 
     c = catalog.GAMES[gid]
-    if c["family"] == "generated":
+    if getattr(c['game'], 'is_eval', False):
+        bot = lambda pid, phase, prompt: _from_view(views.build(gid, phase, prompt), phase, prompt)
+    elif c["family"] == "generated":
         bot = GENBOTS.Scripted("honest", seed)
     elif c["family"] == "textarena":
         bot = TABOTS.Scripted("honest", seed)
@@ -348,7 +353,7 @@ def gate_no_leak(gid="gen_quiet_sonar") -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    expected = 34 + len(catalog.V3_IDS) + len(catalog.V4_IDS)
+    expected = 34 + len(catalog.V3_IDS) + len(catalog.V0_IDS) + len(catalog.V4_IDS)
     if len(catalogue) != expected:
         print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} (24 V1 + 10 V2 + {len(catalog.V3_IDS)} V3 + {len(catalog.V4_IDS)} V4)")
         bad += 1
@@ -771,6 +776,10 @@ def main() -> int:
     bad += gate_scaleup()
     from test_v3_views import gate as gate_v3
     bad += gate_v3()
+    print("\n== V0 ARCHIVE / V4 EVAL PARITY ==")
+    import unittest
+    suite = unittest.defaultTestLoader.loadTestsFromNames(['test_v0', 'test_v4', 'test_hosted_opponents'])
+    bad += int(not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful())
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
     for gid in (*catalog.V2_IDS.values(), *catalog.V3_IDS.values()):

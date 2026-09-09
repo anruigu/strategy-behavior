@@ -1,4 +1,4 @@
-"""Offline V4 integration checks; never call a hosted provider."""
+"""Offline V0 integration checks; never call a hosted provider."""
 import json
 import tempfile
 import time
@@ -93,8 +93,8 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(len(bot.memory[1]), 2)
         self.assertEqual(bot.records[0]['error'], 'truncated_response')
 
-    def test_every_v4_game_routes_opponents_and_has_boards(self):
-        for gid in catalog.V4_IDS:
+    def test_every_v0_game_routes_opponents_and_has_boards(self):
+        for gid in catalog.V0_IDS:
             c = catalog.GAMES[gid]
 
             seen = set()
@@ -109,7 +109,7 @@ class HostedTests(unittest.TestCase):
             self.assertIn(0, ep.scores)
 
     def test_complete_play_persistence_and_repeated_settlement(self):
-        gid = 'v4_ta_ipd_palmers_word'
+        gid = 'v0_ta_ipd_palmers_word'
         def answer(messages): return '[move: cooperate]'
         client = FakeClient(answer)
         with tempfile.TemporaryDirectory() as tmp, patch.object(HostedConfig, 'client', return_value=client):
@@ -136,7 +136,7 @@ class HostedTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]['bots'], 'ai')
             self.assertTrue(rows[0]['opponent']['decisions'])
-            self.assertEqual(rows[0]['engine_version'], 'v4-symmetric-1')
+            self.assertEqual(rows[0]['engine_version'], 'v0-symmetric-1')
             self.assertTrue(rows[0]['engine_trace']['events'])
             self.assertEqual(set(e['player'] for e in rows[0]['engine_trace']['events']), {0, 1})
             self.assertNotIn('engine_trace', session.public_state())
@@ -145,7 +145,7 @@ class HostedTests(unittest.TestCase):
     def test_parallel_metadata_cannot_overwrite_newer_transcript(self):
         with tempfile.TemporaryDirectory() as tmp:
             collector = PlayCollector(tmp)
-            pid = collector.start(player='parallel-log', game='v4_ta_winasmuch_talk', seat=0,
+            pid = collector.start(player='parallel-log', game='v0_ta_winasmuch_talk', seat=0,
                 arm='hole', seed=0, bots='ai', run_id='test', play_index=0)
             newest = dict(model='test-model', decisions=[{'pid': n} for n in (1, 2, 3)])
             collector.record_opponent(pid, newest)
@@ -162,7 +162,7 @@ class HostedTests(unittest.TestCase):
                 return super().create(**request)
         client = SlowClient(lambda _: '[move: cooperate]')
         with tempfile.TemporaryDirectory() as tmp, patch.object(HostedConfig, 'client', return_value=client):
-            run = play_server.Run('slow-test', 'v4_ta_ipd_palmers_word', 'hole', 1, 'ai', 0, PlayCollector(tmp), [])
+            run = play_server.Run('slow-test', 'v0_ta_ipd_palmers_word', 'hole', 1, 'ai', 0, PlayCollector(tmp), [])
             session = run.start_next()
             deadline = time.monotonic() + 2
             while not session.pending and time.monotonic() < deadline: time.sleep(.001)
@@ -182,7 +182,7 @@ class HostedTests(unittest.TestCase):
 
     def test_provider_failure_stops_without_scripted_fallback(self):
         def broken(*args): raise RuntimeError('provider unavailable')
-        session = server.Session('v4_ta_ipd_palmers_word', 0, 'hole', 0, 'ai', bot=broken)
+        session = server.Session('v0_ta_ipd_palmers_word', 0, 'hole', 0, 'ai', bot=broken)
         deadline = time.monotonic() + 5
         while not session.done.is_set() and time.monotonic() < deadline:
             if session.pending: session.submit('[move: cooperate]')

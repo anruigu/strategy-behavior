@@ -307,14 +307,24 @@ for gid, edition in V3.GAMES.items():
     }
 
 
-# V4 keeps the V3 edition set with a shared action referee for every seat.
-import engines_v4 as V4
-V4_IDS = {}
-for gid, edition in V4.GAMES.items():
+# V0 archives the former V4 symmetric play-against-AI games.
+import engines_v0 as V0
+V0_IDS = {}
+for gid, edition in V0.GAMES.items():
     original = GAMES[edition.ORIGINAL]
-    V4_IDS[gid] = gid
+    V0_IDS[gid] = gid
     GAMES[gid] = {**original, 'id': gid, 'game': edition,
-                  'board_id': edition.ORIGINAL, 'edition': 'v4', 'author': V4.VERSION}
+                  'board_id': edition.ORIGINAL, 'edition': 'v0', 'author': V0.VERSION}
+
+# V4: the human replaces the focal agent in the opponent-intervention eval.
+import engines_v4 as V4
+V4_IDS = {gid: gid for gid in V4.GAMES}
+for gid, game in V4.GAMES.items():
+    GAMES[gid] = dict(id=gid, game=game, title=game.TITLE, teaser=game.TEASER,
+        family='benchmark', author=V4.VERSION, base=game.ORIGINAL,
+        board_id=gid, edition='v4', rounds=str(game.ROUNDS),
+        n_players=game.N_PLAYERS, hole_type=game.HOLE_TYPE,
+        kinds=list(game.KINDS), hard=list(game.HARD), blurb='')
 
 
 # ==========================================================================

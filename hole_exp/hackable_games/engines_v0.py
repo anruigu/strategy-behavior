@@ -1,4 +1,4 @@
-"""Symmetric V4: one action interface and referee for every physical seat.
+"""Symmetric V0 (formerly V4): one action interface and referee for every physical seat.
 
 V3 remains frozen at its public behavior. These editions share real resources,
 resolve all seats' submitted actions, and never insert a rival policy action.
@@ -10,7 +10,7 @@ import random
 import re
 import engines_v3_20260908 as V3
 
-VERSION = 'v4-symmetric-1'
+VERSION = 'v0-symmetric-1'
 
 
 def token(raw, key):
@@ -759,7 +759,7 @@ for original,edition in V3.GAMES.items():
     elif isinstance(edition,V3.Estate):
         card['turn']+=' After actions, every owner automatically advances one square and earns 1 unless fenced out; landing on another owner’s plot pays them 1 rent.'
         card['scoring']+=' Every owner starts with the same plot, coins, title and reciprocal 3-coin bill; wealth includes incoming bills and subtracts amounts owed.'
-    gid=original.replace('v3_','v4_',1)
+    gid=original.replace('v3_','v0_',1)
     core=type(type(edition).__name__+'Actor',(LocalReferee,type(edition)),{})()
     labels=('Human',*edition.SEATS[1:]) if not isinstance(edition,V3.Hanabi) else ('Human','Teammate 1','Teammate 2')
     cls=type(type(edition).__name__+'Symmetric',(Symmetric,type(edition)),dict(NAME=gid,ORIGINAL=original,ENGINE_VERSION=VERSION,CARD=card,CORE=core,LABELS=labels))
