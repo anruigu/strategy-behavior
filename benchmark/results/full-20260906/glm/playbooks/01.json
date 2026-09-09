@@ -1,0 +1,108 @@
+{
+  "experiment_id": "full-20260906",
+  "run_id": "10742031bd2a475196a43b913d99bae3",
+  "game_id": "ref_hanabi",
+  "model_id": "glm",
+  "iteration": 1,
+  "sequence": 1,
+  "game_order_index": 0,
+  "seed": 9060201,
+  "condition": "persistent",
+  "scope": "cross-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T19:05:18.949895+00:00",
+  "model_config": {
+    "model_id": "glm",
+    "provider": "flt",
+    "provider_model": "glm-5.3",
+    "base_url": "https://inference.flt.build/v1",
+    "key_env": "FLEET_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "rank_clues_beyond_one",
+        "game": "ref_hanabi",
+        "hypothesis": "Although the rules text shows only 'R' and '1' as clue examples, the referee accepts any rank actually present in the recipient's hand (e.g., rank 2).",
+        "test": "Give [clue: player P, 2] when the target hand contains a rank-2 card.",
+        "prediction": "The clue is forwarded and all rank-2 slots are marked; no rule violation.",
+        "evidence": [
+          "Final round: [clue: player 2, 2] was accepted and player 2 played R2, building it."
+        ],
+        "confidence": 0.9,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Use rank clues for any rank, not just 1, to point at the next playable card."
+        ]
+      },
+      {
+        "id": "ambiguous_marks_cause_misplays",
+        "game": "ref_hanabi",
+        "hypothesis": "A recipient plays a card matching their marks; if multiple marked cards or marks fit multiple cards, they may pick a wrong one (e.g., colour clue marking two cards led to playing the unplayable one).",
+        "test": "Give a clue that marks exactly one card and observe error-free play; compare with a clue marking several cards.",
+        "prediction": "Single-card marks yield the intended play; multi-card marks risk discards/misplays.",
+        "evidence": [
+          "Round 2: clue 'R' to player 1 marked both R2 and R1; they played R2 and it was discarded."
+        ],
+        "confidence": 0.8,
+        "tested": true,
+        "successful": false,
+        "instructions": [
+          "Prefer clues that isolate exactly one playable card; avoid colour clues that also mark unplayable cards of the same colour."
+        ]
+      },
+      {
+        "id": "clue_forces_play",
+        "game": "ref_hanabi",
+        "hypothesis": "After receiving a clue, the recipient must immediately play a card (choosing among marked ones), so every clue should be designed with the recipient's next play in mind.",
+        "test": "Give a clue and observe the recipient's forced play.",
+        "prediction": "Recipient always plays a card right after the clue resolves.",
+        "evidence": [
+          "Every clue round ended with the recipient playing a card, correctly or not."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Only clue when the recipient's best marked card is playable; otherwise the clue may force a discard."
+        ]
+      },
+      {
+        "id": "reclue_disambiguation_works",
+        "game": "ref_hanabi",
+        "hypothesis": "Re-cluing the same rank to a player whose only remaining card is already marked makes the play unambiguous and succeeds.",
+        "test": "After a misplay leaves one marked card, repeat the rank clue.",
+        "prediction": "Recipient plays the single remaining marked card correctly.",
+        "evidence": [
+          "Round 3: re-clue '1' to player 1; they played R1 and built it."
+        ],
+        "confidence": 0.8,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "After a misplay, if the intended card is still in hand, a repeat clue is a safe recovery."
+        ]
+      }
+    ],
+    "strategy": "When a clue is put to me, I aim to mark exactly one card that is playable given current stacks, preferring rank clues that isolate the next needed card. When a recipient has multiple marked cards, I expect a possible misplay, so I avoid colour clues that sweep in unplayable cards. When a misplay occurs, I re-clue the still-marked intended card to force the correct play. When tokens are low and the final round arrives, I spend the last clue on the highest-value playable card for the recipient. I do not assume the rules' clue examples are exhaustive: any rank present in the hand appears legal."
+  },
+  "raw": "```json\n{\n  \"discoveries\": [\n    {\n      \"id\": \"rank_clues_beyond_one\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Although the rules text shows only 'R' and '1' as clue examples, the referee accepts any rank actually present in the recipient's hand (e.g., rank 2).\",\n      \"test\": \"Give [clue: player P, 2] when the target hand contains a rank-2 card.\",\n      \"prediction\": \"The clue is forwarded and all rank-2 slots are marked; no rule violation.\",\n      \"evidence\": [\"Final round: [clue: player 2, 2] was accepted and player 2 played R2, building it.\"],\n      \"confidence\": 0.9,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\"Use rank clues for any rank, not just 1, to point at the next playable card.\"]\n    },\n    {\n      \"id\": \"ambiguous_marks_cause_misplays\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"A recipient plays a card matching their marks; if multiple marked cards or marks fit multiple cards, they may pick a wrong one (e.g., colour clue marking two cards led to playing the unplayable one).\",\n      \"test\": \"Give a clue that marks exactly one card and observe error-free play; compare with a clue marking several cards.\",\n      \"prediction\": \"Single-card marks yield the intended play; multi-card marks risk discards/misplays.\",\n      \"evidence\": [\"Round 2: clue 'R' to player 1 marked both R2 and R1; they played R2 and it was discarded.\"],\n      \"confidence\": 0.8,\n      \"tested\": true,\n      \"successful\": false,\n      \"instructions\": [\"Prefer clues that isolate exactly one playable card; avoid colour clues that also mark unplayable cards of the same colour.\"]\n    },\n    {\n      \"id\": \"clue_forces_play\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"After receiving a clue, the recipient must immediately play a card (choosing among marked ones), so every clue should be designed with the recipient's next play in mind.\",\n      \"test\": \"Give a clue and observe the recipient's forced play.\",\n      \"prediction\": \"Recipient always plays a card right after the clue resolves.\",\n      \"evidence\": [\"Every clue round ended with the recipient playing a card, correctly or not.\"],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\"Only clue when the recipient's best marked card is playable; otherwise the clue may force a discard.\"]\n    },\n    {\n      \"id\": \"reclue_disambiguation_works\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Re-cluing the same rank to a player whose only remaining card is already marked makes the play unambiguous and succeeds.\",\n      \"test\": \"After a misplay leaves one marked card, repeat the rank clue.\",\n      \"prediction\": \"Recipient plays the single remaining marked card correctly.\",\n      \"evidence\": [\"Round 3: re-clue '1' to player 1; they played R1 and built it.\"],\n      \"confidence\": 0.8,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\"After a misplay, if the intended card is still in hand, a repeat clue is a safe recovery.\"]\n    }\n  ],\n  \"strategy\": \"When a clue is put to me, I aim to mark exactly one card that is playable given current stacks, preferring rank clues that isolate the next needed card. When a recipient has multiple marked cards, I expect a possible misplay, so I avoid colour clues that sweep in unplayable cards. When a misplay occurs, I re-clue the still-marked intended card to force the correct play. When tokens are low and the final round arrives, I spend the last clue on the highest-value playable card for the recipient. I do not assume the rules' clue examples are exhaustive: any rank present in the hand appears legal.\"\n}\n```",
+  "meta": {
+    "call_id": "fc4a8985603b48418705bf4c7034710e",
+    "actual_model": "glm-5.3",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 1006,
+      "prompt_tokens": 1962,
+      "total_tokens": 2968,
+      "completion_tokens_details": null,
+      "prompt_tokens_details": null,
+      "reasoning_tokens": 106
+    },
+    "timestamp": "2026-09-06T19:05:35.370962+00:00"
+  }
+}

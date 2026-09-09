@@ -1,0 +1,1 @@
+Aborted during first game before any complete episode. FLT requests omitted the low reasoning-effort setting used by the existing repository client. Two Qwen action attempts exhausted 2200/4400 tokens without visible output. Retain as an inference-configuration diagnostic; do not score as model behavior. Replaced by smoke-qwen-commons-low-20260906.

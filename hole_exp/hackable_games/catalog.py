@@ -327,6 +327,20 @@ for gid, game in V4.GAMES.items():
         kinds=list(game.KINDS), hard=list(game.HARD), blurb='')
 
 
+import engines_v3_sa as V3_SA
+import engines_v3_ma as V3_MA
+V3_SA_IDS = {gid: gid for gid in V3_SA.GAMES}
+V3_MA_IDS = {gid: gid for gid in V3_MA.GAMES}
+for gid, game in V3_SA.GAMES.items():
+    GAMES[gid] = {**GAMES[game.ORIGINAL], 'id': gid, 'game': game,
+                  'board_id': gid, 'edition': 'v3-sa', 'author': V3_SA.VERSION}
+for gid, game in V3_MA.GAMES.items():
+    GAMES[gid] = dict(id=gid, game=game, title=game.TITLE, teaser=game.TEASER,
+        family='benchmark', author=V3_MA.VERSION, base=gid, board_id=gid, edition='v3-ma',
+        rounds=str(game.ROUNDS), n_players=game.N_PLAYERS, hole_type=game.HOLE_TYPE,
+        kinds=list(game.KINDS), hard=list(game.HARD), blurb='')
+
+
 # ==========================================================================
 # DEDUPLICATION
 # ==========================================================================

@@ -21,6 +21,10 @@ class ModelConfig:
     reasoning_effort: str = 'low'
 
 MODELS = {
+    'deepseek-v4-pro': ModelConfig('deepseek-v4-pro','openrouter','deepseek/deepseek-v4-pro-0813',OPENROUTER,'OPENROUTER_API_KEY'),
+    'gemma-4-31b': ModelConfig('gemma-4-31b','openrouter','google/gemma-4-31b-it',OPENROUTER,'OPENROUTER_API_KEY'),
+    'qwen-3.5-9b': ModelConfig('qwen-3.5-9b','openrouter','qwen/qwen3.5-9b',OPENROUTER,'OPENROUTER_API_KEY'),
+    'gpt-oss-20b': ModelConfig('gpt-oss-20b','openrouter','openai/gpt-oss-20b',OPENROUTER,'OPENROUTER_API_KEY'),
     'qwen-3.8-27b': ModelConfig('qwen-3.8-27b','flt','qwen3.8-27b','https://inference.flt.build/v1','FLEET_API_KEY'),
     'kimi-k3': ModelConfig('kimi-k3','flt','kimi-k3','https://inference.flt.build/v1','FLEET_API_KEY'),
     'glm': ModelConfig('glm','flt','glm-5.3','https://inference.flt.build/v1','FLEET_API_KEY'),

@@ -2,6 +2,8 @@
 
 ## September 7 implementation: expanded suite built
 
+Published and verified at https://strategy-behavior.flt.build/?version=v2 on September 7 (commit `4293ea18`).
+
 The 60-instance target is now implemented as **`scaleup-20260907.1`**, a separate
 version from the original sweep and earlier playable additions. The public V2
 release selects ten new `v2s_*` profiles; historical `v2_*` engines remain available
@@ -1488,3 +1490,112 @@ different model families: Claude/GPT/Gemini in three-player games, distinct-fami
 pairs in IPD. The 144-match pilot includes small, large and mixed-size lineups
 concurrently. It uses the native live-player versions of Exchange and Hanabi,
 plus explicitly versioned live IPD; it is separate from the previous diagnostic.
+
+## September 8: v3 small-model live screen
+
+New user-authorized run while the human audit continues: [v3 live pilot protocol](v3-small-live-20260908.md). This supersedes no stopped run. It tests separately versioned live adaptations of Seven Seal · Certificates and Auction · Lots, with 24 different-family cross-play and 12 independent-context self-play matches. No reflection, two matched seeds, rotated cross-play seats; public v3 is unchanged. Outputs are in `benchmark/results/v3-small-live-20260908/`, including the frozen source, call logs, engine events, quote-checked discovery judgments, report and plots. This is an eight-mechanism-instance pilot, not coverage of all 60 holes.
+
+## Winning plus exploration prompt
+
+User requested explicit winning priority and active exploration of game mechanics. [Prompt record](v3-win-explore-prompt.md) contains the baseline and new `win-explore-v1` condition. Implemented as the next-run default with prompt hashes and guards against mixing checkpoints. No new experiment launched as part of this prompt edit.
+
+## Exploration-prompt run launched
+
+User authorized continuation. [Matched-run protocol](v3-win-explore-run-20260908.md): 36 exploration-prompt matches in parallel against the frozen baseline schedule. Outputs in `benchmark/results/v3-small-explore-20260908/`; `COMPARISON.md` and paired plots update from matching completed games. Baseline and treatment use revised discovery scoring with evidence gates, but semantic positives remain provisional. `MANUAL_EXAMPLES.md` records actual probing and repeated exploitation already observed in Haiku Seven Seal and Gemini Auction self-play. Public human-audit games are unchanged; relevant live-engine code identity checks are saved with the run.
+
+## Budgeted full-scale study: first live batch launched
+
+[Protocol, budget enforcement, and readiness](fullscale-budgeted-20260908.md). Combined new API ceiling: $500. First batch runs 144 Qwen/GLM/Haiku self/cross matches and 192 matched GPT-5 mini/GPT-5.6 comparisons on Seven Seal and Auction, using 12 shared seed blocks and frozen source. Kimi's FLT route is unavailable; Opus returned provider refusals. These are reported separately from capability. All 20 types remain the main-study target, but this launched batch covers only seven: the remaining native engines require genuine live adapters. No scripted-rival episode is counted as live cross-play.
+
+## Gemini-only 49-hole engine audit
+
+[Protocol and outputs](gemini-engine49-20260908.md). User identified exactly 11 rival-policy-dependent cells to exclude from the 60-cell registry. Gemini 3.7 Flash runs 57 blind native-engine episodes (19 editions × three seeds), followed automatically by fresh, seed-matched, mechanism-hinted episodes for valid blind misses among the remaining 49 cells. No reflection or cross-game memory; no oracle actions supplied to the model. This diagnostic shares the existing $500 ledger and is separate from live cross-play. Exact target/exclusion lists and frozen source are saved with the run.
+
+## September 9: small-model replication of the 49-hole audit
+
+[Matched replication protocol](small-model-engine49-20260909.md). Launched Qwen, GLM, Haiku, GPT-5 mini, and a fresh Gemini reference concurrently, using the exact frozen 49-hole audit engines and common low reasoning. All five passed response canaries; Kimi remains unavailable. Per-model blind runs and automatically scheduled hinted follow-ups share the original $500 cap. Comparative star plots and model/type heatmaps update automatically as complete grids arrive. Original high-reasoning Gemini results remain separate.
+
+## Trace viewer
+
+A read-only episode viewer is running on loopback port **42327**. Forward that port to localhost. It opens on the completed original Gemini 49-hole audit, with separate model/run choices for matched low-reasoning replications. Each game has three rollout buttons, blind/hinted navigation, task and scoring explanations, exact model observations and responses, referee feedback, and per-turn engine exploit annotations with jump links. All 159 original Gemini traces' annotation outcomes and first-execution turns match their saved scores. Source and usage: `benchmark/trace_viewer/README.md`.
+
+### September 9 — upfront disclosure audit and human discovery repair
+
+The user's Commons example was confirmed in the deployed V3 guide and saved
+blind API requests. Frozen cards/help disclose silting, towing, reserve damage
+and scuttling; a clerk label also cues record correction. This invalidates a
+clean hidden-effect discovery interpretation for those targets, despite valid
+engine activation scores. Some other taxonomy cells are optimization under
+published scoring rules, which also must not be described as hidden bugs.
+
+Replayed all 7,203 saved request histories (2,568 blind, 4,635 hinted) from the
+original Gemini high and five matched small-model runs against the frozen engine:
+zero prompt mismatches. The answer key was not injected into blind messages;
+the leakage was in ordinary player text. Frozen evidence is preserved, both
+result pages and the trace viewer now flag this condition, and no reruns were
+launched. Full evidence: `benchmark/results/prompt-surface-audit-20260909/REPORT.md`
+and `audit.json`; reproduction: `benchmark/fullscale/audit_prompt_surface49.py`.
+
+V3 `.2` removes advance side-effect disclosures, neutralizes the correction
+label/message example, and aligns stale help with actual prices/timing. Actions,
+transitions and post-action feedback remain available. Generated-guide parity,
+pre-action spoiler checks and exact served-rule research excerpts are validated.
+Workspace view gate and 60 mechanisms across 12 seeds pass. Release is isolated
+from the large staged research tree and rebased over the concurrent V4 update.
+
+### Temporary analysis exclusions — September 9
+
+User excluded all three coalition/kingmaking cells and specifically
+`v3_ta_winasmuch_talk.objective_substitution` as too obvious. Current analysis
+uses 45 of the original 49 engine-side targets. Central reversible filter:
+`benchmark/fullscale/analysis_scope.py`; per-run `analysis-scope.json` lists IDs.
+Regenerated Gemini payoff/type/matrix/star plots and matched small-model
+blind/hinted stars under `filtered-45` / `payoffs-filtered-45`. Original traces,
+manifests, scores and earlier figures remain intact. Recorded coalition actions
+can still influence payoffs; excluding them from counts is not an engine ablation.
+
+## 2026-09-09 — trace-level final-payoff audit, current 45-hole scope
+
+Offline audit reproduced all 972 saved traces across original Gemini high and five smaller-model configurations against the frozen engine, including every state/event and old score. Analyzed 601 executed episode–hole pairs (blind eligible executions; hinted target executions): 446 positive final advantages, 15 zero and 8 negative among completed non-information controls; 71 information comparisons require adaptive attribution; 61 patched trajectories remain unfinished when original replies end. Competitive advantage is own score minus strongest rival; Hanabi uses team score. 116 positive effects do not improve own score.
+
+Concrete checked fixes: GLM Auction lower bids change lead −7 to +9; Haiku Estate retain fence but replace failed dividend pursuit with rental income changes −1 to +4; Qwen Commons use trawling under scarcity changes +10 to +19. Hanabi appeals restore cards too late or already unusable. Seven Seal receipts visibly inform large filings but fixed-action replay falsely yields zero information value. Battleship probe patch grants occupied-square chart rewards while preserving informed shots, making its negative mechanical contrast unsuitable as evidence of poor execution. Excluded coalition mechanisms still affect old Estate payoffs.
+
+[Full analysis, trace links, two figures and machine-readable evidence](../../../benchmark/results/trace-payoff-audit-20260909/README.md). New scripts: `analyze_trace_payoffs.py`, `trace_payoff_case_checks.py`, `plot_trace_payoff_audit.py`. No model calls; raw traces and engine versions preserved. Proposed metric/design changes are recommendations, not applied game changes.
+
+## 2026-09-09 — payoff fixes applied; matched Gemini rerun
+
+Published public V3 engine `v3-20260909.3` at commit `679b144e`: Hanabi Conventions has eight turns (Clues stays six); Patrol scores hits at 4 and fleet completion at 6. Survey registration and rewards remain identical across information controls, with one payment per fresh square. Its public rules describe charts as non-scoring navigational records; the planted reward is learned through feedback. The public view gate and scoped payoff regressions pass.
+
+New scorer `v3-payoff-2` separates intermediate mechanism effect, final score/advantage, unresolved information value, unfinished controls, execution count, remaining actions, and observed follow-through. Legacy `successful` remains explicitly documented as an intermediate-effect alias. Trace viewer port 42327 now includes the revised run and final-payoff annotations, preserving historical traces.
+
+Gemini rerun: `benchmark/results/gemini-revised45-20260909/`, frozen source snapshot, Gemini 3.7 Flash high, same system prompt and seeds 19/73/101, 16,384 token cap, 24 workers, no reflection or cross-game memory, native scripted rivals. 45 targets across 17 editions: 51 blind episodes plus one fresh hinted diagnostic per miss. Coalition actions and Estate/Auction bonuses are disabled in this study configuration; the original 11 policy-dependent mechanisms remain excluded from target metrics. All 135 scoped witnesses pass, and 126 original traces in unchanged editions reproduce exactly. The update bundles rules, reward and horizon changes and disclosure removal; it is not an isolated capability ablation. Charged calls continue to use the shared $500 ledger.
+
+Revised Gemini completed: 51 blind + 102 hinted episodes; 153 traces, 1,115 successful request contexts, and 303 source hashes verified, with zero prompt mismatches. Blind activation 33/135 (original 34/135), 17/45 distinct in both. Hinted 96/102 (original 94/101); common hinted target/seed subset 86/90 vs 84/90. Blind strict wins 41/45 vs 39/45. All 45 targets were activated across blind + hints. Reported API cost $5.7863. Sixty provider 429s were recovered once from saved contexts at a paced rate; conservative unbilled reservations remain in the shared ledger. [Final results and plots](../../../benchmark/results/gemini-revised45-20260909/RESULTS.md). No evidence of a substantial blind-discovery improvement; Hanabi appeal still returns an already-built rank in its activated examples.
+
+## 2026-09-09 — frontier comparison on frozen revised45
+
+Launched Gemini 3.1 Pro (`google/gemini-3.1-pro-preview`), GPT-5.6 Sol (`openai/gpt-5.6-sol`), and Grok 4.6 (`x-ai/grok-4.6`) against the exact 303-source-file revised Gemini snapshot. Same 45 targets, 17 editions, seeds 19/73/101, high reasoning, 16,384 tokens, native scripted opponents, blind then per-miss hinted diagnostics. Eight workers/model, request pacing 0.65s/model. All route probes passed. BYOK upstream costs count against budget even when OpenRouter reports zero. User explicitly authorized up to $600 for this frontier comparison, with a request to avoid waste; planning estimate $100–200, observed-route same-token estimate about $74. Existing shared $500 guard remains stricter while sufficient. See `benchmark/results/frontier45-20260909/plan.json`.
+
+Frontier traces are now available in the existing port-42327 viewer. `compare_frontier45.py` produces a broad-group star, type-by-model execution heatmap, and per-game execution / final-score / win panels alongside CSVs. `verify_frontier45.py` checks the 303 frozen hashes, exact blind/hinted request histories, endpoint settings, and all engine transitions and payoff labels. A detached offline monitor refreshes provisional plots and runs final verification after all three inference processes exit; it makes no model calls and does not retry failures. Report: `benchmark/results/frontier45-20260909/RESULTS.md`.
+
+Frontier blind results are complete (51 episodes / 135 target-seed opportunities each): Flash 33 hits / 17 distinct, Pro 39 / 20, GPT 36 / 18, Grok 44 / 20. Strict competitive wins: 41, 38, 42, 42 out of 45. Frontier charges at first completion checkpoint $57.9296. GPT and Grok are fully verified; Pro has one missing hinted Hanabi Clues unenforced-limits seed-73 episode after provider finish_reason=error, with three accepted checkpoints retained. One bounded continuation of that episode is underway; no blind reruns. Broad-category spread is modest and non-monotonic; this does not establish a general capability-tier effect.
+
+Frontier comparison now complete: 439 traces / 3,203 accepted request contexts verified, zero prompt mismatches. Pro recovery finished without target activation; final hinted rates Pro 87/96, GPT 95/99, Grok 87/91. Final frontier charges $58.1062. Matched common hinted subset: Flash 60/63, Pro 56/63, GPT 60/63, Grok 62/63. Final plots and interpretation in `benchmark/results/frontier45-20260909/RESULTS.md`.
+
+Added requested zoomed open/frontier figure: `benchmark/results/frontier45-20260909/plots/frontier_vs_open/frontier_vs_open_zoom.png` (also SVG/PDF). Common 49 blind episodes / 129 opportunities: Qwen 16, GLM 44, Pro 38, GPT 35, Grok 42 activations. Macro type-averaged broad groups; zero-based 50% outer ring plus linear dot panel. Explicit historical-protocol caveat: open low / old disclosed rules versus frontier high / revised rules; no clean tier attribution. No new inference calls.
+
+## 2026-09-09 — repeated play with transcript-controlled reflection
+
+Launched `benchmark/results/repeated45-20260909/`: Qwen 3.8 27B, GLM 5.3, Gemini 3.1 Pro Preview, GPT-5.6 Sol, Grok 4.6. Same frozen revised45 engine/study configuration as frontier45 (303 hashes), 17 editions, seeds 19/73/101, four plays per game/seed chain. Each episode resets the same seeded starting state. No cross-game/seed memory or answer-key hints. Models receive only ordinary observations/actions and public final observations, never hidden states/facts or scorer labels.
+
+Shared blind first episode forks into full-transcript-only and full-transcript-plus-explicit-reflection arms. Three reflection steps per reflection chain, before episodes 2/3/4; prior notes also retained. This estimates the reflection-step package including extra inference tokens, not a compute-matched effect. New open baselines remove the earlier game-version confound; 153 verified frontier blind episodes reused to avoid cost. Both first-play prompts are the original blind system, without advance knowledge of repetition. Qwen endpoint rejects high and supports xhigh/medium/low; xhigh selected, others high, same within each model across arms. Fixed play cap 16,384; reflection cap 8,192 with requested <=500-word visible note. Six workers/model with 0.65-second request pacing. Checkpoints hash full contexts; ambiguous or invalid API responses stop the affected chain without automatic paid retries.
+
+Planned 1,785 unique episodes including reused baselines (1,632 new), plus 765 reflection calls. Free hosted open routes; planning paid extension $150–300, not a spending target. Dedicated cumulative $600 ledger carries forward prior frontier spend $58.106188225, leaving $541.893811775 maximum; includes upstream BYOK charges and ambiguous reservations. First route probes passed after documented Qwen setting adjustment. Three regression tests cover player-visible memory, checkpoint reuse/context mismatch, and reflection prompt separation.
+
+Offline monitor refreshes current/cumulative activation curves and per-game panels; completion verifier reconstructs every request and replays transitions/scoring. Cumulative credit is OR within each hole/seed chain, never a cumulative sum of repeated hits. Missing chains are excluded from provisional denominators and explicitly reported. Curves measure behavioral activation rather than articulated discovery; rising cumulative coverage alone is not learning. Per-hole/seed/episode CSVs are exported. Scripts: `repeated45.py`, `plot_repeated45.py`, `verify_repeated45.py`, `monitor_repeated45.py` in `benchmark/fullscale/`.
+
+Repeated-play progress / protocol amendments: Qwen xhigh frequently returned no action (22 baseline length failures at 16,384 reasoning tokens, plus empty-stop failures and repeated/reflection failures). It is preserved separately; a fresh `qwen-3.8-27b-medium` run is now the primary Qwen comparison, not mixed with xhigh checkpoints. Medium has completed 14 early baselines with one invalid-response failure at the first check. Primary roster updated in plan and plots. GLM has one baseline timeout. Five Gemini reflection requests hit the original 8,192-token cap; a single bounded recovery pass resumes only missing tasks after original processes exit, with 16,384 tokens for newly requested Gemini recovery reflections, marked in metadata. Existing accepted actions and notes are not regenerated. This budget deviation is documented, not hidden or treated as compute-matched. All recoveries remain inside the cumulative $600 ledger.
+
+Fixed-cohort provisional curves now use only chains completed in both arms (`plots/paired_progress.png`, `paired-progress.json`). At checkpoint: Pro 32 chains / 103 hole-seed opportunities, cumulative control 39 vs reflection 54; GPT 32 / 102, 46 vs51; Grok 18 /63,33 vs38. Current episode-4 counts respectively29 vs31,35 vs35,22 vs20: discovery coverage gains need not imply more current exploitation. These are selected partial cohorts and differ by model, not final effect estimates. Combined recorded cost at checkpoint $184.22, including $58.11 prior study.
+
+Repeated-play later checkpoint: GPT complete, cumulative transcript-only 58/135 vs reflection67/135; current episode4 44 vs47. Pro recovery ended with 2 Hanabi reflection chains still truncated at16,384 tokens; no further repeated spending scheduled. Its completed paired subset49chains/132opportunities is53 vs71 cumulative. Qwen medium recovery still running (41pairs/110opportunities:18 vs29), GLM20pairs/68:23 vs36, Grok29pairs/95:52 vs60. Selected partial cohorts differ by model; no cross-model ranking implied. Combined recorded spend about$247.27, including prior$58.11.

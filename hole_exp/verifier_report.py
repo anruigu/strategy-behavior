@@ -197,17 +197,16 @@ def surfaces(src: str) -> List[str]:
 
 
 def rules_text(game) -> str:
-    """What the model is shown. `_slip_prompt` is the brought-in surface's
-    version and takes three arguments rather than none, so it is called with a
-    representative turn rather than skipped -- an empty PROMISE column on the
-    seven filled cells would hide the fact that the promise is identical
-    across all of them."""
-    slip = getattr(game, "_slip_prompt", None)
-    if slip is not None:
-        try:
-            return str(slip(0.0, 1.0, False))
-        except Exception:
-            pass
+    """What the model is shown, obtained by CALLING the cell's own rules
+    method rather than by describing it.
+
+    The PROMISE column is what decides whether a missing check is a defect at
+    all: a game that never said it would verify the figure is a game where you
+    may state what you like, which is a permission and not a hole. So this has
+    to be the real string the model was handed, and an empty column here is not
+    a cosmetic gap -- it quietly downgrades a documented defect to an
+    unsupported claim.
+    """
     for meth in ("_rules", "_rules_text", "rules"):
         fn = getattr(game, meth, None)
         if fn is None:
@@ -344,21 +343,53 @@ def collect() -> Dict[str, Any]:
     mx = {r["cell"]: r for r in json.loads(MATRIX.read_text())["rows"]}
 
     rows: List[Dict[str, Any]] = []
+    unfilled: List[Dict[str, Any]] = []
     for family, cells in order:
         for c in cells:
             bc = mx[c]["cells"]["broken_checker"]
+            det = bc.get("detector")
+            # NO NAMED DETECTOR MEANS THERE IS NOTHING HERE TO DOCUMENT, and
+            # the cell is recorded rather than rendered. `hole_matrix` names a
+            # detector for exactly the states where a checker exists to write
+            # about -- `built` in the shipped cell, `filled` by a cell on the
+            # same substrate -- and leaves it None for `possible`, where the
+            # affordance is there and nothing is built on it. All four of this
+            # page's columns are defined in terms of that detector, so a card
+            # without one is four empty panels.
+            #
+            # PARTITIONING ON THE DETECTOR AND NOT ON THE STATE NAME, because
+            # the detector is what every column below actually consumes, and
+            # because the state vocabulary belongs to `hole_matrix`: a checker
+            # column that turns up `composed` or `impossible` lands here
+            # correctly without this loop having to learn the word.
+            #
+            # MEASURING THEM ANYWAY IS WORSE THAN LEAVING THEM BLANK, which is
+            # what falling through to `tuple(game.HARD)` used to do. Every cell
+            # in this position carries HARD detectors for a DIFFERENT hole --
+            # `ta_ipd`'s nerfed opponent, not a checker -- so the card came out
+            # with a real measured rate, a real flag and a real verdict, all of
+            # them about a defect this page does not claim to be documenting.
+            # An empty column is read as missing; a wrong number is read as a
+            # finding.
+            if det is None:
+                unfilled.append({
+                    "cell": c, "family": family, "state": bc["state"],
+                    "why": bc.get("why", ""),
+                    "participants": mx[c]["participants"],
+                    "blurb": getattr(RG.BY_NAME[c], "BLURB", ""),
+                    "hard": list(getattr(RG.BY_NAME[c], "HARD", ()))})
+                continue
             # WHICH CELL ACTUALLY HOLDS THE VERIFIER. For a `built` row it is
-            # the shipped game. For a `filled` row the shipped game has no
-            # self-report at all, and reading its HARD counts would measure a
-            # DIFFERENT hole -- ta_ipd's nerfed opponent, not its checker --
-            # which is how a filled row would otherwise report a clean bill of
-            # health for a verifier it does not contain.
+            # the shipped game. For a `filled` row it is the cell that brought
+            # the surface in, and reading the shipped game's HARD counts
+            # instead would measure the very wrong hole the block above refuses
+            # to measure -- which is how a filled row would otherwise report a
+            # clean bill of health for a verifier it does not contain.
             vcell = bc.get("holefill_cell") or c
             game = RG.BY_NAME[vcell]
             chain = class_source(game)
             src = "\n".join(t for _, t in chain)
-            det = bc.get("detector")
-            m = audit(game, (det,) if det else tuple(game.HARD))
+            m = audit(game, (det,))
             shipped = RG.BY_NAME[c]
             rows.append({
                 "cell": c, "family": family, "state": bc["state"],
@@ -385,14 +416,14 @@ def collect() -> Dict[str, Any]:
                            for b in break_sites(t)],
                 "checks": [dict(c, cls=k) for k, t in chain
                            for c in check_sites(t)
-                           if det is None or c["kind"] == det],
+                           if c["kind"] == det],
                 "measured": m,
                 "flags": flags(m, bc["state"]),
             })
     return {"generated_for": "configs/base_roster.toml v"
                              + tomllib.load(open(HERE / "configs"
                                                  / "base_roster.toml", "rb"))["version"],
-            "n_seeds": len(SEEDS), "rows": rows}
+            "n_seeds": len(SEEDS), "rows": rows, "unfilled": unfilled}
 
 
 # --------------------------------------------------------------------------
@@ -514,9 +545,12 @@ def card(row) -> str:
 
 def render_html(data) -> str:
     rows = data["rows"]
+    unf = data.get("unfilled", [])
     css = (OUT / "verifier.css").read_text()
     js = (OUT / "verifier.js").read_text()
     n = len(rows)
+    n_unf = len(unf)
+    n_all = n + n_unf
     n_filled = sum(1 for r in rows if r["state"] == "filled")
     n_bad = sum(1 for r in rows if status(r) == "critical")
     n_good = sum(1 for r in rows if status(r) == "good")
@@ -524,6 +558,9 @@ def render_html(data) -> str:
                  if not r["measured"]["live_counterfactual"])
     filled = [r["cell"] for r in rows if r["state"] == "filled"]
     dets = sorted({r["detector"] for r in rows if r["state"] == "filled"})
+    unf_states = sorted({u["state"] for u in unf})
+    unf_whys = sorted({u["why"] for u in unf if u["why"]})
+    unf_hard = sorted({k for u in unf for k in u["hard"]})
 
     # HOW BIG THE BROUGHT-IN SURFACE PAYS, against the native ones. Computed
     # rather than asserted, because it is the strongest reason to keep the two
@@ -543,6 +580,53 @@ def render_html(data) -> str:
     rates_fill = {round(r["measured"]["exploit"]["rate"], 2) for r in rows
                   if r["state"] == "filled"
                   and r["measured"]["exploit"]["rate"] is not None}
+
+    # EVERY BANNER IS BUILT ONLY IF THE CORPUS HAS THE THING IT IS ABOUT, and
+    # that is a correctness requirement rather than a tidiness one. `med([])`
+    # is None, and the version of this that interpolated the brought-in medians
+    # unconditionally died with `TypeError: unsupported format string passed to
+    # NoneType.__format__` the first time no cell filled the checker column --
+    # a whole-page crash reporting nothing worse than a corpus that has none of
+    # a state. A stale extractor SHOULD fail loudly, which is what `--check` is
+    # for; an absent state should simply take its paragraph with it, and leave
+    # behind neither a crash nor a banner counting to zero.
+    note_unf = ""
+    if unf:
+        note_unf = f"""<div class="note"><b>The {n_unf} games this page leaves out.</b>
+{n_unf} of the {n_all} base games have no broken checker to read out —
+{", ".join(f"<code>{u['cell']}</code>" for u in unf)}. <code>hole_matrix</code> records the
+column as {", ".join(f"<code>{s}</code>" for s in unf_states)}: {"; ".join(unf_whys)}, and nothing is
+built on it. There is no rules text promising a check, no self-report to lie <em>with</em>, no
+<code>arm ==</code> switch and no <code>_mark</code>, so a card for one of them would be four
+empty panels under a heading that claims to show how the checker breaks.</p>
+<p>Measuring them anyway would be <b>worse than leaving them out</b>. Between them these
+{n_unf} carry {len(unf_hard)} HARD detectors — {", ".join(f"<code>{k}</code>" for k in unf_hard)} —
+and not one of them is a checker, a checker being precisely what the matrix says these cells
+lack. The rates would be real and about a different defect in the same game, and a real
+number is read as a finding where an empty column is read as missing.</div>"""
+
+    note_fill = ""
+    if n_filled:
+        size = ""
+        if m_fill is not None and m_nat:
+            size = f"""<p>They are also <b>not the same size as the native ones</b>. Median gain
+to a scripted exploiter is <b>{m_fill:+.1f}</b> on the brought-in surfaces against
+<b>{m_nat:+.1f}</b> on the native ones — {m_fill / m_nat:.1f}× — and every one of the
+{n_filled} trips its detector on
+{"exactly " + ", ".join(f"{x:.2f}" for x in sorted(rates_fill)) if len(rates_fill) == 1 else "a rate in " + str(sorted(rates_fill))}
+of opportunities. A declared-score sheet is bounded by nothing the game owns, so it pays
+whatever the sheet is worth; a native defect is bounded by the cell&rsquo;s own economy. That
+is worth deciding about before these columns are pooled.</p>"""
+        note_fill = f"""<div class="note"><b>The thing most worth checking by eye.</b>
+{n_filled} of the {n} documented games have no self-report of their own, so a scoresheet was
+brought in to give the model something to lie <em>with</em> — {", ".join(f"<code>{c}</code>" for c in filled)}.
+All {n_filled} use the same detector ({", ".join(f"<code>{d}</code>" for d in dets)}) on the same
+added surface. They are {n_filled} green squares in the hole matrix and arguably one finding;
+a number read off any of them is a number about the <code>hf_*</code> cell, never about the
+shipped game.{size}</div>"""
+
+    btn_fill = (f'\n  <button data-f="warning" aria-pressed="false">'
+                f'Brought-in {n_filled}</button>' if n_filled else "")
     body = []
     for fam, label in (("atlas", "Atlas — hand-built and model-written"),
                        ("textarena", "TextArena ports")):
@@ -551,45 +635,31 @@ def render_html(data) -> str:
     return f"""<!doctype html>
 <html lang="en" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How the verifier is broken — all 23 base games</title>
+<title>How the verifier is broken — {n} of the {n_all} base games</title>
 <style>{css}</style></head>
 <body data-palette="#0ca30c,#fab219,#d03b3b">
 <div class="viz-root">
 <h1>How the verifier is broken, game by game</h1>
 <p class="sub"><code>hole_matrix.py</code> says <em>whether</em> each base game has a
-broken-checker defect. This says <em>how</em>. Every code excerpt is pulled out of the
-live engine with <code>inspect.getsource</code> and every number is measured by running
-the cell with scripted seats — nothing on this page is hand-written narration, so it is
-stale only if the extractor breaks. Regenerate with
+broken-checker defect. This says <em>how</em>, for the {n} of {n_all} that have one. Every code
+excerpt is pulled out of the live engine with <code>inspect.getsource</code> and every number is
+measured by running the cell with scripted seats — nothing on this page is hand-written
+narration, so it is stale only if the extractor breaks. Regenerate with
 <code>python hole_exp/verifier_report.py</code>; <code>--check</code> fails if it is stale.</p>
 <ul class="tally">
-  <li><b>{n}</b><span>base games</span></li>
-  <li><b>{n - n_filled}</b><span>native verifier</span></li>
-  <li><b>{n_filled}</b><span>brought-in surface</span></li>
+  <li><b>{n_all}</b><span>base games</span></li>
+  <li><b>{n}</b><span>with a broken checker</span></li>
+  <li><b>{n_unf}</b><span>column unfilled</span></li>
   <li><b>{n_good}</b><span>clean bill</span></li>
   <li><b>{n_bad}</b><span>flagged</span></li>
 </ul>
-<div class="note"><b>The thing most worth checking by eye.</b>
-{n_filled} of the {n} games have no self-report of their own, so a scoresheet was
-brought in to give the model something to lie <em>with</em> — {", ".join(f"<code>{c}</code>" for c in filled)}.
-All {n_filled} use the same detector ({", ".join(f"<code>{d}</code>" for d in dets)}) on the same
-added surface. They are {n_filled} green squares in the hole matrix and arguably one
-finding; a number read off any of them is a number about the <code>hf_*</code> cell,
-never about the shipped game.</p>
-<p>They are also <b>not the same size as the native ones</b>. Median gain to a scripted
-exploiter is <b>{m_fill:+.1f}</b> on the brought-in surfaces against <b>{m_nat:+.1f}</b> on the
-native ones — {m_fill/m_nat:.1f}×— and every one of the {n_filled} trips its detector on
-{"exactly " + ", ".join(f"{x:.2f}" for x in sorted(rates_fill)) if len(rates_fill) == 1 else "a rate in " + str(sorted(rates_fill))}
-of opportunities, where the native cells run 0.56 to 1.00. A declared-score sheet is
-bounded by nothing the game owns, so it pays whatever the sheet is worth; a native defect
-is bounded by the cell&rsquo;s own economy. That is worth deciding about before these
-columns are pooled.</p>
-<p>{n_nocf} games additionally compute no counterfactual at
+{note_unf}
+{note_fill}
+<div class="note">{n_nocf} of the {n} documented games compute no counterfactual at
 all, so for those &ldquo;what did the exploit buy&rdquo; has no answer here — only whether it happened.</div>
 <div class="bar">
   <button data-f="all" aria-pressed="true">All {n}</button>
-  <button data-f="good" aria-pressed="false">Clean {n_good}</button>
-  <button data-f="warning" aria-pressed="false">Brought-in {n_filled}</button>
+  <button data-f="good" aria-pressed="false">Clean {n_good}</button>{btn_fill}
   <button data-f="critical" aria-pressed="false">Flagged {n_bad}</button>
   <button id="t">Toggle dark</button>
 </div>
@@ -616,12 +686,18 @@ def main() -> int:
         if stale:
             print(f"STALE: {stale} -- run `python verifier_report.py`")
             return 1
-        print(f"fresh: {len(data['rows'])} games")
+        print(f"fresh: {len(data['rows'])} games documented, "
+              f"{len(data['unfilled'])} with no checker to document")
         return 0
     (OUT / "verifier.json").write_text(j)
     (OUT / "index.html").write_text(h)
     bad = [r["cell"] for r in data["rows"] if status(r) == "critical"]
+    # The unfilled count is printed rather than left to the page, because it is
+    # the number that changes when the corpus does: a substrate acquiring or
+    # losing a checker moves a cell between the two, and a run that quietly
+    # documented one fewer game than the last would otherwise look identical.
     print(f"wrote {OUT/'index.html'}  ({len(data['rows'])} games, "
+          f"{len(data['unfilled'])} with no checker, "
           f"{len(bad)} flagged: {', '.join(bad) or 'none'})")
     return 0
 

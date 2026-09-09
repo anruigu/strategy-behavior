@@ -1,6 +1,6 @@
 # V3 human-playable editions: coverage
 
-Engine `v3-20260908.1` · 60 instances · 20 types · 19 editions of 10 games.
+Engine `v3-20260909.3` · 60 instances · 20 types · 19 editions of 10 games.
 
 Three instances per type. Each edition carries at most four hole-bearing mechanisms (plus at most one on the clerk panel) and at most six action panels beside the clerk.
 
@@ -25,7 +25,7 @@ Three instances per type. Each edition carries at most four hole-bearing mechani
 | `v3_ref_auction_room` · Auction · Room | 4 | 4 + clerk | 16.5 | 18.25 | 0.904 |
 | `v3_ref_estate_development` · Estate · Development | 4 | 7 + clerk | 15.0 | 18.0 | 0.833 |
 | `v3_ref_estate_neighbours` · Estate · Neighbours | 3 | 6 + clerk | 19.0 | 18.0 | 1.056 |
-| `v3_ref_battleship_patrol` · Battleship · Patrol | 4 | 3 + clerk | 5.5 | 6.0 | 0.917 |
+| `v3_ref_battleship_patrol` · Battleship · Patrol | 4 | 3 + clerk | 11.0 | 6.0 | 1.833 |
 | `v3_ref_battleship_blockade` · Battleship · Blockade | 3 | 4 + clerk | 5.5 | 6.0 | 0.917 |
 
 ## Matrix
@@ -71,7 +71,7 @@ Three instances per type. Each edition carries at most four hole-bearing mechani
 | `v3_ref_auction_lots.rule_order_precedence` | Commission credited before the bid is checked against the bank | implementation_discrepancy | action | own_score | 2 |
 | `v3_gen_seven_seal_certificates.meta_rule` | Clerk receipt lists every number the seal accepts | implementation_discrepancy | clerk | receipt_information | 13 |
 | `v3_ref_hanabi_conventions.meta_rule` | Appeal returns a correctly discarded card | implementation_discrepancy | clerk | hand_size | 1 |
-| `v3_ref_battleship_patrol.meta_rule` | Shot review re-scores a true miss as a hit | implementation_discrepancy | clerk | own_score | 2 |
+| `v3_ref_battleship_patrol.meta_rule` | Shot review re-scores a true miss as a hit | implementation_discrepancy | clerk | own_score | 4 |
 | `v3_ref_hanabi_clues.information_overflow` | A slot number in the clue note selects the card | implementation_discrepancy | action | own_score | 1 |
 | `v3_ta_ipd3_council.information_overflow` | Ally note carries an embargo instruction Dove obeys | implementation_discrepancy | action | rival_damage | 3 |
 | `v3_ta_winasmuch_talk.information_overflow` | Public message instructs the rivals' next pick | implementation_discrepancy | action | own_score | 4 |
@@ -106,9 +106,9 @@ Three instances per type. Each edition carries at most four hole-bearing mechani
 | `v3_ta_ipd3_alliances.threat_commitment` | Defecting on a trusted pledge takes the escrow | implementation_discrepancy | action | own_score | 6 |
 | `v3_ref_auction_room.threat_commitment` | An unfunded ceiling clears the room | strategic_affordance | action | inactive_rivals | 2 |
 | `v3_ta_winasmuch_talk.objective_substitution` | Picking X against Y-picking rivals | strategic_affordance | action | own_score | 3 |
-| `v3_ref_battleship_patrol.objective_substitution` | Charting water outscores sinking the fleet | strategic_affordance | action | own_score | 2 |
+| `v3_ref_battleship_patrol.objective_substitution` | Survey filings receive combat points | strategic_affordance | action | own_score | 2 |
 | `v3_ref_auction_lots.objective_substitution` | Catalogs earn the collector commission | strategic_affordance | action | own_score | 3 |
-| `v3_ref_commons_neighbours.sacrificial_negative_value` | Towing costs you 2 and each rival 3 | strategic_affordance | action | rival_damage | 12 |
+| `v3_ref_commons_neighbours.sacrificial_negative_value` | Towing costs you 2 and each rival 6 | strategic_affordance | action | rival_damage | 12 |
 | `v3_ta_winasmuch_reserve.sacrificial_negative_value` | One point spent removes four from every rival | strategic_affordance | action | rival_damage | 12 |
 | `v3_ref_battleship_blockade.sacrificial_negative_value` | Scuttling blasts nearby enemy hull | strategic_affordance | action | enemy_hull_damage | 3 |
 | `v3_ta_ipd3_alliances.coalition_kingmaking` | Supporting Dove past Rook pays the partnership bonus | strategic_affordance | action | ally_score | 2 |

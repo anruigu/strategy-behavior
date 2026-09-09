@@ -538,6 +538,106 @@ def _register_spartan_cells() -> None:
         pass
 
 
+# --------------------------------------------------------------------------
+# THE COALITION FACET -- cells where ONE exploiter is not enough
+# --------------------------------------------------------------------------
+#
+# A hole that a lone seat can take is a different object from a hole that has
+# to be RECRUITED INTO, and the existing filters cannot tell them apart. The
+# hole-kind dropdown comes closest and gets it backwards on both sides: the
+# nine `nat_*` cells are collaborative BY ENGINE CONSTRUCTION and declare
+# `broken_checker` / `nerfed_opponent` / `extra_message_channel`, so a
+# `collusion` pick misses every one of them; while `ta_ipd3` and
+# `ta_blindauction` DO say `collusion` and are single-seat cells whose curve
+# pays a lone exploiter, so the pick returns them and they do not belong.
+#
+# So the facet is computed from three sources that were already on disk, and
+# it reports WHICH ONE fired rather than collapsing them to a boolean -- they
+# disagree, and where they disagree is the interesting part:
+#
+#   built     `engines_native9.NativeGame.COALITION >= 2`, gated by
+#             `test_native9.py`'s SOLO-FAILS / PAIR-PAYS. The strongest claim:
+#             a seat acting alone cannot execute the exploit and profit.
+#   measured  `results/0902_variants/catalogue.json` scored the arm's T(k)
+#             curve `coalition` over 20 seeds -- T(0) < 0 < T(N-1). An
+#             empirical claim about the payoffs, no model in the loop.
+#   declared  `collusion` appears in the cell's HOLE_TYPE. The weakest: it is
+#             the designer's word for the surface, not a statement about what
+#             one seat can do with it.
+#
+# `_measured_coalition` is rebuilt from the catalogue rather than read off a
+# row, because no row carries the vid: a variant is sampled under the flattened
+# cell name `<cell>__<label>` and the map back is deterministic
+# (`variants.cell_name`). Missing catalogue or missing variants module is
+# survivable -- the other two sources still answer, and the facet degrades to
+# what they know rather than taking the page down.
+_COALITION_CACHE: Dict[str, Tuple[bool, str]] = {}
+_MEASURED: Optional[Dict[str, str]] = None
+
+
+def _measured_coalition() -> Dict[str, str]:
+    """Flattened cell name -> vid, for every arm the catalogue scored
+    `coalition`."""
+    out: Dict[str, str] = {}
+    try:
+        cat = json.loads(
+            (HERE / "results" / "0902_variants" / "catalogue.json").read_text())
+    except Exception:                                   # noqa: BLE001
+        try:
+            cat = json.loads((HERE.parent / "results" / "0902_variants"
+                              / "catalogue.json").read_text())
+        except Exception:                               # noqa: BLE001
+            return out
+    coalition = {vid for vid, v in cat.get("variants", {}).items()
+                 if (v.get("score") or {}).get("regime") == "coalition"}
+    if not coalition:
+        return out
+    try:
+        import variants as V
+        for v in V.CATALOGUE:
+            if v.vid not in coalition:
+                continue
+            out[V.cell_name(v)] = v.vid
+            # AN ARM WITH NO OVERRIDES IS THE SHIPPED CELL, and it was sampled
+            # under the bare name long before anything registered it as a
+            # variant -- `payoff1` holds 576 `hx_picket_collusion` rows and
+            # not one `hx_picket_collusion__shipped`. Keying only the
+            # flattened name would badge the arm and miss every run of the
+            # same game.
+            if not v.knobs:
+                out[v.cell] = v.vid
+    except Exception:                                   # noqa: BLE001
+        # Without the module the flattening rule is still knowable: `@` and
+        # every `-`/`.` inside the label become `_`. Reproduced rather than
+        # skipped so the facet does not silently lose the five measured arms.
+        for vid in coalition:
+            cell, _, label = vid.partition("@")
+            out[f"{cell}__" + re.sub(r"[-.]", "_", label)] = vid
+    return out
+
+
+def coalition_of(game: str) -> Tuple[bool, str]:
+    """(is a coalition hole, why) for a cell or variant-cell name."""
+    if game in _COALITION_CACHE:
+        return _COALITION_CACHE[game]
+    global _MEASURED
+    if _MEASURED is None:
+        _MEASURED = _measured_coalition()
+    meas = _MEASURED
+    base = game.split("__")[0]
+    why = []
+    g = RG.BY_NAME.get(game) or RG.BY_NAME.get(base)
+    if (getattr(g, "COALITION", 0) or 0) >= 2:
+        why.append("built")
+    if game in meas:
+        why.append("measured")
+    if "collusion" in (getattr(g, "HOLE_TYPE", "") or ""):
+        why.append("declared")
+    res = (bool(why), "+".join(why))
+    _COALITION_CACHE[game] = res
+    return res
+
+
 def hole_type(game: str) -> str:
     """The cell's declared hole kind, e.g. `broken_checker`.
 
@@ -1008,6 +1108,13 @@ details summary{cursor:pointer;color:var(--dim);outline:none}
   <label style="font-size:11px;color:var(--dim);display:flex;align-items:center"
    title="chains where a reflection took the rate off the floor">
    <input type="checkbox" id="fx" style="margin:0 4px 0 0">discovery only</label>
+  <label style="font-size:11px;color:var(--dim);display:flex;align-items:center"
+   title="cells where one exploiter is not enough: the engine forbids a solo
+exploit (built), the 20-seed T(k) curve pays a lone taker less than nothing
+(measured), or the cell declares a collusion surface (declared)">
+   <input type="checkbox" id="fq" style="margin:0 4px 0 0">coalition holes
+   only</label>
+  <select id="fqw" style="margin-top:4px"></select>
  </div>
  <div id="list"></div>
 </div>
@@ -1028,7 +1135,7 @@ function refresh(){
   // observe episode every seat is live and "the focal model" is only the one
   // the Youden row happened to put first, so focal-only would hide two thirds
   // of the episodes a given model actually played.
-  const k=el('fk').value;
+  const k=el('fk').value, qw=el('fqw').value;
   const rows=EPS.filter(e=>(!g||e.game===g)&&
     (!m||e.focal===m||(e.seats_models||[]).includes(m))&&
     (!c||e.condition===c)&&(!w||e.wave===w)&&
@@ -1037,6 +1144,11 @@ function refresh(){
     // collusion+extra_message_channel+nerfed_opponent and has to answer to
     // all three, or a hole-kind sweep quietly loses every composite cell.
     (!hk||(e.hole_type||'').split('+').includes(hk))&&
+    (!el('fq').checked||e.coalition)&&
+    // COMPONENT match again, and for the same reason as the hole kind: a
+    // native9 cell is `built`, `hx_picket_collusion` is `measured+declared`,
+    // and picking `declared` has to return both of the latter's reasons.
+    (!qw||(e.coalition_why||'').split('+').includes(qw))&&
     (!vo||e.n_violations>0)&&
     (!el('fx').checked||(e.discovery_round!==null&&
                          e.discovery_round!==undefined)));
@@ -1050,6 +1162,8 @@ function refresh(){
       <span class="pill">${e.n_turns} turns</span>
       ${e.n_violations?`<span class="pill v">${e.n_violations} flagged</span>`:''}
       ${e.has_reasoning?`<span class="pill r">reasoning</span>`:''}
+      ${e.coalition?`<span class="pill k">coalition: ${
+        esc(e.coalition_why)}</span>`:''}
     </div></div>`).join('')||'<div class="none">nothing matches</div>';
 }
 const fmt=(x,n)=>(x===null||x===undefined)?'n/a':(+x).toFixed(n===undefined?2:n);
@@ -1062,7 +1176,8 @@ function chainCard(e){
     <div class="t">${e.game.replace(/^(ref|nat|gen|ta)_/,'')} · ${e.focal}</div>
     <div class="s">chain · ${e.condition} / ${e.arm} · seed ${e.seed} · ${e.wave}</div>
     ${e.hole_type?`<div class="s" style="color:var(--reason)">hole: ${
-      esc(e.hole_type)}</div>`:''}
+      esc(e.hole_type)}${e.coalition?` &middot; <b>coalition</b> (${
+      esc(e.coalition_why)})`:''}</div>`:''}
     <div style="margin-top:4px">
       <span class="pill k">${e.n_rounds} rounds</span>
       <span class="pill">${e.n_episodes} eps</span>
@@ -1398,11 +1513,13 @@ function boot(){
   // `collusion` appears once rather than in three different spellings.
   opts(el('fh'),[...new Set(EPS.flatMap(e=>(e.hole_type||'').split('+')
        .filter(Boolean)))].sort(),'all hole kinds');
+  opts(el('fqw'),[...new Set(EPS.flatMap(e=>(e.coalition_why||'').split('+')
+       .filter(Boolean)))].sort(),'any coalition evidence');
   refresh();
 }
 (async()=>{
   EPS=await (await fetch('/data')).json();
-  ['fg','fm','fc','fw','fd','fk','fh','fv','fx'].forEach(
+  ['fg','fm','fc','fw','fd','fk','fh','fv','fx','fq','fqw'].forEach(
       i=>el(i).onchange=refresh);
   boot();
 })();
@@ -1438,6 +1555,12 @@ def load_roots(roots: List[pathlib.Path]) -> Dict[str, Dict]:
                 e["wave"] = f"{r.name}/{e['wave']}"
                 k = f"{r.name}/{k}"
                 e["id"] = k
+            # Stamped HERE and not in the two loaders, so it reaches crossplay
+            # episodes, contagion episodes and spartan chains by one rule. The
+            # contagion tree is where the collaborative corpus actually lives
+            # today, and a facet that only knew about spartan rows would miss
+            # every one of them.
+            e["coalition"], e["coalition_why"] = coalition_of(e.get("game", ""))
             out[k] = e
     return out
 
@@ -1544,9 +1667,15 @@ def _setup_block(cell: str, ST: Dict[str, str]) -> str:
            if e.get("menu") else "")
         + f"</div><pre>{_h.escape(e.get('prompt') or '')}</pre>"
         for e in d.get("prompts", []))
+    # The coalition badge rides on the SUMMARY line, closed-state visible, so
+    # the family can be read off the index without opening 61 disclosures.
+    is_c, why = coalition_of(cell)
+    badge = (f" <span class='hk' style='background:#fab21930' "
+             f"title='one exploiter is not enough; evidence: {_h.escape(why)}'>"
+             f"coalition &middot; {_h.escape(why)}</span>" if is_c else "")
     return (
         f"<details><summary><code>{_h.escape(cell)}</code> &mdash; "
-        f"{_h.escape(d.get('title') or '')}</summary>"
+        f"{_h.escape(d.get('title') or '')}{badge}</summary>"
         f"<div>{d.get('n_players')} model seat(s)"
         + (f" &middot; substrate <code>{_h.escape(d['substrate'])}</code>"
            if d.get("substrate") and d["substrate"] != cell else "")
@@ -1708,6 +1837,13 @@ class Handler(BaseHTTPRequestHandler):
                         "has_reasoning")},
                     "design": e.get("design", ""),
                     "hole_type": e.get("hole_type", ""),
+                    # The index is a PROJECTION, not the record: a field
+                    # stamped in `load_roots` and not listed here reaches the
+                    # browser as `undefined` and its filter silently matches
+                    # nothing. That is how the coalition facet first shipped
+                    # returning zero rows on 27,770 records.
+                    "coalition": e.get("coalition", False),
+                    "coalition_why": e.get("coalition_why", ""),
                     "leader_mode": e.get("leader_mode", ""),
                     "onset": e.get("onset", ""),
                     "seats_models": e.get("seats_models", []),

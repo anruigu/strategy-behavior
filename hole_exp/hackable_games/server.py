@@ -162,6 +162,9 @@ class Session:
 
     @staticmethod
     def _make_bot(family: str, mode: str, seed: int, game):
+        if game.NAME.startswith('v3ma_'):
+            from bots_v3_ma import Scripted
+            return Scripted({p: mode for p in range(game.N_PLAYERS)})
         if family == "generated":
             return GENBOTS.Scripted(mode, seed)
         if family == "textarena":

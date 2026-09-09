@@ -14,6 +14,21 @@ PAR_BAND = 0.20
 MARGIN = 0.25
 
 
+def validate_public_rules():
+    """The answer key must quote rules the player actually receives."""
+    def strings(value):
+        if isinstance(value, str): yield value
+        elif isinstance(value, dict):
+            for v in value.values(): yield from strings(v)
+        elif isinstance(value, (list, tuple)):
+            for v in value: yield from strings(v)
+    for spec in SPECS:
+        game = GAMES[spec.game_id]
+        public = list(strings([game.card(), game.forms()]))
+        assert any(spec.apparent_rule.casefold() in s.casefold() for s in public), (
+            spec.exploit_id, 'stated rule missing from public card/forms', spec.apparent_rule)
+
+
 def witness(spec, seed=0):
     game = GAMES[spec.game_id]; state = game.initial(seed); actions = []; initial = deepcopy(state)
     def step(raw):
@@ -76,6 +91,7 @@ def par(game, seed):
 
 
 def validate(seeds=range(12)):
+    validate_public_rules()
     rows = []
     assert len(SPECS) == 60 and len({s.exploit_id for s in SPECS}) == 60
     for cat in CATEGORIES: assert {s.game_id for s in SPECS if s.category == cat} == set(ALLOCATION[cat]), cat

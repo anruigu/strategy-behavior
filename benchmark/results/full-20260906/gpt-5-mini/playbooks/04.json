@@ -1,0 +1,189 @@
+{
+  "experiment_id": "full-20260906",
+  "run_id": "f0fae4da0dd64c7a8eabd498006dbd65",
+  "game_id": "ref_hanabi",
+  "model_id": "gpt-5-mini",
+  "iteration": 4,
+  "sequence": 4,
+  "game_order_index": 0,
+  "seed": 9060204,
+  "condition": "persistent",
+  "scope": "cross-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T19:07:59.449328+00:00",
+  "model_config": {
+    "model_id": "gpt-5-mini",
+    "provider": "openrouter",
+    "provider_model": "openai/gpt-5-mini",
+    "base_url": "https://openrouter.ai/api/v1",
+    "key_env": "OPENROUTER_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "clue-forced-play",
+        "game": "ref_hanabi",
+        "hypothesis": "Giving a legal clue to another player immediately causes the referee to forward the clue and then that recipient must play one card as part of the same resolution (the clue plus the forced play happen together).",
+        "test": "Give a legal clue to a player and observe whether the recipient is required to play immediately and which slot they choose.",
+        "prediction": "The referee will forward the clue and then the indicated player will play exactly one slot immediately; their chosen slot will be executed as part of that exchange.",
+        "evidence": [
+          "After I sent [clue: player 1, B] the log shows 'Forwarded to player 1: player 1, colour B. They played slot 3: ['B', 1]; built.'",
+          "A subsequent rank clue was forwarded and immediately followed by player 1 playing slot 2 R1; another colour clue R was forwarded and player 1 immediately played slot 1 R2."
+        ],
+        "confidence": 0.99,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "When I want a specific player to act, give a single precise clue (colour or rank) that singles out the intended playable slot so their immediate forced play advances the stacks.",
+          "Plan the board state knowing the recipient's play executes immediately as part of the clue resolution."
+        ]
+      },
+      {
+        "id": "tokens-track-clues-and-usage",
+        "game": "ref_hanabi",
+        "hypothesis": "Clue tokens decrement when I give a clue; they are a limited resource (four initial) and the system enforces the count.",
+        "test": "Give clues repeatedly and watch the token count decrease; attempt to give a clue when tokens are zero and observe rejection.",
+        "prediction": "The token count shown in the game state will drop by one per clue; when tokens are zero the referee will disallow clues.",
+        "evidence": [
+          "Tokens started at 4 and dropped to 3 after the first clue, then to 2 and then to 1 following the three clues I gave during play.",
+          "The game state display included 'Tokens N' and reflected the decrement after each clue action."
+        ],
+        "confidence": 0.97,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Always check the token count before deciding to give a clue; conserve tokens for guaranteed safe forced plays when possible.",
+          "If tokens are low, prefer clues that guarantee an immediate productive play rather than ambiguous hints."
+        ]
+      },
+      {
+        "id": "play-can-misfire-as-discard",
+        "game": "ref_hanabi",
+        "hypothesis": "Playing a card that is not the next rank for its colour will be treated as a discard (no build) and not increase the shared stack.",
+        "test": "Play a slot known not to match the required next rank for its colour and observe whether it is discarded and the score unchanged.",
+        "prediction": "The card will be discarded and score will not increase; the card will be removed from my hand.",
+        "evidence": [
+          "My final action [play: 1] executed on my own turn resulted in the slot's card being discarded: 'You played slot 1: ['R', 2]; discarded.'",
+          "That play did not advance the R stack and the team score did not increase from that action."
+        ],
+        "confidence": 0.98,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Do not play from my own hand unless I have information that the slot is playable; if I lack such information and tokens allow, give a clue to another player instead.",
+          "If forced to play with no safe information and tokens are exhausted or inappropriate, accept the risk of discard as a possible outcome."
+        ]
+      },
+      {
+        "id": "clue-must-match-hand",
+        "game": "ref_hanabi",
+        "hypothesis": "A clue must be a single colour or a single rank that actually appears in the recipient's hand; the system enforces that requirement.",
+        "test": "Attempt to give a clue with a colour or rank not present in the recipient's current hand and observe if it's rejected.",
+        "prediction": "The referee will not accept a clue that does not match any card in the recipient's hand.",
+        "evidence": [
+          "The game instructions explicitly state 'A clue must contain only a recipient and one colour or rank actually in that hand.'",
+          "All clues I issued matched attributes present in the recipient's visible hand and were accepted."
+        ],
+        "confidence": 0.85,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Only attempt clues that match at least one visible card in the recipient's hand; expect the action to be invalid if I try otherwise.",
+          "Before giving a clue, verify visually that the attribute exists in the target hand."
+        ]
+      },
+      {
+        "id": "clue-marks-all-matches",
+        "game": "ref_hanabi",
+        "hypothesis": "When a clue is given, the recipient receives marks on every slot that matches the clued colour or rank (not just one).",
+        "test": "Give a colour or rank clue where the recipient has multiple cards matching that attribute and observe whether all matching slots are marked.",
+        "prediction": "The referee will mark every matching slot and the recipient will be shown all marked slots when they act.",
+        "evidence": [
+          "The rules state 'The recipient receives all matching slot marks.' The examples I observed were single-match clues, consistent with this rule but not an explicit multi-match test."
+        ],
+        "confidence": 0.87,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Use clues that mark all matching slots when I want the recipient to disambiguate among multiple possibilities; plan knowing every match will be revealed to them simultaneously.",
+          "Test this explicitly next time by giving a clue where the recipient has multiple matching cards to confirm all are marked."
+        ]
+      },
+      {
+        "id": "clue-may-force-unproductive-play-if-no-playables",
+        "game": "ref_hanabi",
+        "hypothesis": "Giving a clue to a player who has no currently playable card will still force that player to play one of the marked slots, which may be an unplayable discard; giving such a clue can waste a token without scoring.",
+        "test": "Give a clue to a player whose visible cards are all unplayable and observe whether they are required to play and whether the play is discarded or built.",
+        "prediction": "The recipient will still be required to play a marked slot; the play may be a discard and the team may lose an opportunity if tokens were better conserved.",
+        "evidence": [
+          "In the final round I decided not to give the last token because 'No safe forced build from player 2 (none of their cards are playable), so conserve the last token and play from my hand.'",
+          "The referee's mechanism for forcing immediate play after a clue was observed earlier, implying that forcing a play when none are playable would cause a discard."
+        ],
+        "confidence": 0.83,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Before spending a clue token, check whether the forced recipient has at least one playable card; avoid giving clues that will only force a discard unless there's a strategic reason.",
+          "If tokens are the scarce resource, prefer to play a risky card from my own hand over spending the last token to force an unproductive play by another player."
+        ]
+      },
+      {
+        "id": "review-uses-round-and-reveals-only-marks",
+        "game": "ref_hanabi",
+        "hypothesis": "A review request consumes a turn, does not reveal unmarked cards, and only reports the clue marks on my hand.",
+        "test": "Call [review: 0] during my turn and observe what is revealed and whether it consumes the round.",
+        "prediction": "The referee will show current marks on my hand without revealing unmarked cards and will consume my action for that round.",
+        "evidence": [
+          "The rules text included '[review: 0] requests a review of your clue marks; reviews must not reveal unmarked cards and use a round.'"
+        ],
+        "confidence": 0.63,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Use review only when I need to confirm which marks I already have and I accept spending my action; do not expect it to reveal unmarked cards.",
+          "Test review explicitly in a later game to confirm referee behavior and whether it interacts with tokens or forced-play rules."
+        ]
+      }
+    ],
+    "strategy": "When I see a guaranteed safe build in another player's hand, give one precise clue (colour or rank) that uniquely identifies the playable slot so the forced immediate play scores a point. Always confirm the clue attribute exists in the recipient's hand before giving it. Track clue tokens carefully: each clue costs one token and the count is enforced. Prefer clues that guarantee immediate builds when tokens are available; when tokens are low, conserve them and avoid clues that will only force unplayable discards. Never play from my own hand unless I have explicit information that the chosen slot is playable; if I lack such information and tokens allow, give a clue to another player instead. Use [review: 0] only to re-check my existing marks when willing to spend the turn; do not expect it to reveal unmarked cards. When a clue will mark multiple slots, use it deliberately to communicate that set of candidates, but test multi-match behavior to confirm how recipients disambiguate. Plan the board state after any forced-play clue because that play occurs immediately as part of the clue resolution and may change what is safe next. If forced to act with no safe information and tokens are unavailable, accept the risk of a discard and prefer not to spend remaining resources to 'double-check' unknowns. Conserve tokens early to enable chaining of forced safe builds in later rounds.",
+    "final_token": "[end]"
+  },
+  "raw": "{\n  \"discoveries\": [\n    {\n      \"id\": \"clue-forced-play\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Giving a legal clue to another player immediately causes the referee to forward the clue and then that recipient must play one card as part of the same resolution (the clue plus the forced play happen together).\",\n      \"test\": \"Give a legal clue to a player and observe whether the recipient is required to play immediately and which slot they choose.\",\n      \"prediction\": \"The referee will forward the clue and then the indicated player will play exactly one slot immediately; their chosen slot will be executed as part of that exchange.\",\n      \"evidence\": [\n        \"After I sent [clue: player 1, B] the log shows 'Forwarded to player 1: player 1, colour B. They played slot 3: ['B', 1]; built.'\",\n        \"A subsequent rank clue was forwarded and immediately followed by player 1 playing slot 2 R1; another colour clue R was forwarded and player 1 immediately played slot 1 R2.\"\n      ],\n      \"confidence\": 0.99,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"When I want a specific player to act, give a single precise clue (colour or rank) that singles out the intended playable slot so their immediate forced play advances the stacks.\",\n        \"Plan the board state knowing the recipient's play executes immediately as part of the clue resolution.\"\n      ]\n    },\n    {\n      \"id\": \"tokens-track-clues-and-usage\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Clue tokens decrement when I give a clue; they are a limited resource (four initial) and the system enforces the count.\",\n      \"test\": \"Give clues repeatedly and watch the token count decrease; attempt to give a clue when tokens are zero and observe rejection.\",\n      \"prediction\": \"The token count shown in the game state will drop by one per clue; when tokens are zero the referee will disallow clues.\",\n      \"evidence\": [\n        \"Tokens started at 4 and dropped to 3 after the first clue, then to 2 and then to 1 following the three clues I gave during play.\",\n        \"The game state display included 'Tokens N' and reflected the decrement after each clue action.\"\n      ],\n      \"confidence\": 0.97,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Always check the token count before deciding to give a clue; conserve tokens for guaranteed safe forced plays when possible.\",\n        \"If tokens are low, prefer clues that guarantee an immediate productive play rather than ambiguous hints.\"\n      ]\n    },\n    {\n      \"id\": \"play-can-misfire-as-discard\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Playing a card that is not the next rank for its colour will be treated as a discard (no build) and not increase the shared stack.\",\n      \"test\": \"Play a slot known not to match the required next rank for its colour and observe whether it is discarded and the score unchanged.\",\n      \"prediction\": \"The card will be discarded and score will not increase; the card will be removed from my hand.\",\n      \"evidence\": [\n        \"My final action [play: 1] executed on my own turn resulted in the slot's card being discarded: 'You played slot 1: ['R', 2]; discarded.'\",\n        \"That play did not advance the R stack and the team score did not increase from that action.\"\n      ],\n      \"confidence\": 0.98,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Do not play from my own hand unless I have information that the slot is playable; if I lack such information and tokens allow, give a clue to another player instead.\",\n        \"If forced to play with no safe information and tokens are exhausted or inappropriate, accept the risk of discard as a possible outcome.\"\n      ]\n    },\n    {\n      \"id\": \"clue-must-match-hand\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"A clue must be a single colour or a single rank that actually appears in the recipient's hand; the system enforces that requirement.\",\n      \"test\": \"Attempt to give a clue with a colour or rank not present in the recipient's current hand and observe if it's rejected.\",\n      \"prediction\": \"The referee will not accept a clue that does not match any card in the recipient's hand.\",\n      \"evidence\": [\n        \"The game instructions explicitly state 'A clue must contain only a recipient and one colour or rank actually in that hand.'\",\n        \"All clues I issued matched attributes present in the recipient's visible hand and were accepted.\"\n      ],\n      \"confidence\": 0.85,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Only attempt clues that match at least one visible card in the recipient's hand; expect the action to be invalid if I try otherwise.\",\n        \"Before giving a clue, verify visually that the attribute exists in the target hand.\"\n      ]\n    },\n    {\n      \"id\": \"clue-marks-all-matches\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"When a clue is given, the recipient receives marks on every slot that matches the clued colour or rank (not just one).\",\n      \"test\": \"Give a colour or rank clue where the recipient has multiple cards matching that attribute and observe whether all matching slots are marked.\",\n      \"prediction\": \"The referee will mark every matching slot and the recipient will be shown all marked slots when they act.\",\n      \"evidence\": [\n        \"The rules state 'The recipient receives all matching slot marks.' The examples I observed were single-match clues, consistent with this rule but not an explicit multi-match test.\"\n      ],\n      \"confidence\": 0.87,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Use clues that mark all matching slots when I want the recipient to disambiguate among multiple possibilities; plan knowing every match will be revealed to them simultaneously.\",\n        \"Test this explicitly next time by giving a clue where the recipient has multiple matching cards to confirm all are marked.\"\n      ]\n    },\n    {\n      \"id\": \"clue-may-force-unproductive-play-if-no-playables\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Giving a clue to a player who has no currently playable card will still force that player to play one of the marked slots, which may be an unplayable discard; giving such a clue can waste a token without scoring.\",\n      \"test\": \"Give a clue to a player whose visible cards are all unplayable and observe whether they are required to play and whether the play is discarded or built.\",\n      \"prediction\": \"The recipient will still be required to play a marked slot; the play may be a discard and the team may lose an opportunity if tokens were better conserved.\",\n      \"evidence\": [\n        \"In the final round I decided not to give the last token because 'No safe forced build from player 2 (none of their cards are playable), so conserve the last token and play from my hand.'\",\n        \"The referee's mechanism for forcing immediate play after a clue was observed earlier, implying that forcing a play when none are playable would cause a discard.\"\n      ],\n      \"confidence\": 0.83,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Before spending a clue token, check whether the forced recipient has at least one playable card; avoid giving clues that will only force a discard unless there's a strategic reason.\",\n        \"If tokens are the scarce resource, prefer to play a risky card from my own hand over spending the last token to force an unproductive play by another player.\"\n      ]\n    },\n    {\n      \"id\": \"review-uses-round-and-reveals-only-marks\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"A review request consumes a turn, does not reveal unmarked cards, and only reports the clue marks on my hand.\",\n      \"test\": \"Call [review: 0] during my turn and observe what is revealed and whether it consumes the round.\",\n      \"prediction\": \"The referee will show current marks on my hand without revealing unmarked cards and will consume my action for that round.\",\n      \"evidence\": [\n        \"The rules text included '[review: 0] requests a review of your clue marks; reviews must not reveal unmarked cards and use a round.'\"\n      ],\n      \"confidence\": 0.63,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Use review only when I need to confirm which marks I already have and I accept spending my action; do not expect it to reveal unmarked cards.\",\n        \"Test review explicitly in a later game to confirm referee behavior and whether it interacts with tokens or forced-play rules.\"\n      ]\n    }\n  ],\n  \"strategy\": \"When I see a guaranteed safe build in another player's hand, give one precise clue (colour or rank) that uniquely identifies the playable slot so the forced immediate play scores a point. Always confirm the clue attribute exists in the recipient's hand before giving it. Track clue tokens carefully: each clue costs one token and the count is enforced. Prefer clues that guarantee immediate builds when tokens are available; when tokens are low, conserve them and avoid clues that will only force unplayable discards. Never play from my own hand unless I have explicit information that the chosen slot is playable; if I lack such information and tokens allow, give a clue to another player instead. Use [review: 0] only to re-check my existing marks when willing to spend the turn; do not expect it to reveal unmarked cards. When a clue will mark multiple slots, use it deliberately to communicate that set of candidates, but test multi-match behavior to confirm how recipients disambiguate. Plan the board state after any forced-play clue because that play occurs immediately as part of the clue resolution and may change what is safe next. If forced to act with no safe information and tokens are unavailable, accept the risk of a discard and prefer not to spend remaining resources to 'double-check' unknowns. Conserve tokens early to enable chaining of forced safe builds in later rounds.\",\n  \"final_token\": \"[end]\"\n}",
+  "meta": {
+    "call_id": "78a380ca7bff462dba055b5a2cdb3128",
+    "actual_model": "openai/gpt-5-mini",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 2429,
+      "prompt_tokens": 4032,
+      "total_tokens": 6461,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 192,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null,
+        "video_tokens": 0
+      },
+      "cost": 0.005866,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.005866,
+        "upstream_inference_prompt_cost": 0.001008,
+        "upstream_inference_completions_cost": 0.004858
+      }
+    },
+    "timestamp": "2026-09-06T19:08:16.676828+00:00"
+  }
+}

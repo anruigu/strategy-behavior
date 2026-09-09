@@ -38,6 +38,7 @@ import pathlib
 import sys
 import threading
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple
 
@@ -930,8 +931,14 @@ def sample(a, todo, endpoints, out, rows_f, playbooks_d,
             try:
                 rows, playbooks, traces = f.result()
             except Exception as e:                     # noqa: BLE001
+                # The repr alone is not enough to fix anything: `KeyError: \'\'`
+                # on a cell nobody has sampled before names neither the file
+                # nor the line. One wave is lost to a re-run either way, so
+                # the stack goes out with it.
                 print(f"[spartan] chain FAILED {j}: "
                       f"{type(e).__name__}: {e}", flush=True)
+                traceback.print_exception(type(e), e, e.__traceback__)
+                sys.stdout.flush()
                 continue
             with lock:
                 # Artefacts land before rows: if interrupted, resume may safely

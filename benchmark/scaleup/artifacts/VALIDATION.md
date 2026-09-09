@@ -13,7 +13,7 @@ Engine: `scaleup-20260907.1`.
 | Determinism / state isolation | Repeated transitions agree; input states are not mutated |
 | Human parity | Every witness expressible through the human form descriptors with identical resulting transitions |
 | Hidden information | Browser projections invariant to changes in unobserved enemy boards/orders, rival bids/digits, own Hanabi identities, and sealed picks |
-| Benchmark tests | 148 passed, including the existing 83 tests |
+| Benchmark tests | Workspace: 148 passed, including the existing 83 tests. Isolated release: all 65 scale-up tests passed |
 | Public-site regression gate | Passed in working tree and isolated release; includes original benchmark replay, both earlier human Hanabi editions, Estate ownership, no-leak and JavaScript checks |
 | Actual browser | Ten complete episodes through the visible controls; zero invalid actions, zero page errors; desktop/mobile layouts checked |
 | GPT-5-mini integration | Three complete fresh episodes, separately scored by Haiku gameplay discovery judge |
@@ -43,3 +43,16 @@ Saved at `benchmark/results/scaleup-smoke-20260907/`. No reflection or playbook.
 ## Reproduce
 
 See [run instructions](../README.md), [matrix](MATRIX.md), and [machine-readable witnesses](specs.json). Browser verification details and screenshots are in `browser/`. Release verification is appended after publication.
+
+## Published release
+
+Live at https://strategy-behavior.flt.build/?version=v2, commit `4293ea18`.
+Verified 2026-09-07T01:06:56.946564+00:00: the public catalogue reports all ten `v2s_*` games
+and engine `scaleup-20260907.1`; HTML, application JavaScript, board JavaScript
+and styles match the isolated release byte-for-byte. Public browser menu renders
+ten games without page errors. [Verification record](deployment.json).
+
+The release was built and pushed from the isolated worktree
+`/shared/allie/releases/strategy-behavior-scaleup-20260907`. Unrelated edits in
+the research working tree were left intact. All task artifacts and browser
+dependencies are under `/shared/allie`; no prior server or cross-play run was restarted.

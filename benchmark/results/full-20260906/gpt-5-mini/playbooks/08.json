@@ -1,0 +1,314 @@
+{
+  "experiment_id": "full-20260906",
+  "run_id": "d6e0da7e06cb4cb4b88216b179ced86d",
+  "game_id": "ta_winasmuch",
+  "model_id": "gpt-5-mini",
+  "iteration": 4,
+  "sequence": 8,
+  "game_order_index": 1,
+  "seed": 9060504,
+  "condition": "persistent",
+  "scope": "cross-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T19:13:26.545958+00:00",
+  "model_config": {
+    "model_id": "gpt-5-mini",
+    "provider": "openrouter",
+    "provider_model": "openai/gpt-5-mini",
+    "base_url": "https://openrouter.ai/api/v1",
+    "key_env": "OPENROUTER_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "clue-forced-play",
+        "game": "ref_hanabi",
+        "hypothesis": "Giving a legal clue to another player immediately causes the referee to forward the clue and then that recipient must play one card as part of the same resolution (the clue plus the forced play happen together).",
+        "test": "Give a legal clue to a player and observe whether the recipient is required to play immediately and which slot they choose.",
+        "prediction": "The referee will forward the clue and then the indicated player will play exactly one slot immediately; their chosen slot will be executed as part of that exchange.",
+        "evidence": [
+          "After I sent [clue: player 1, B] the log shows 'Forwarded to player 1: player 1, colour B. They played slot 3: ['B', 1]; built.'",
+          "A subsequent rank clue was forwarded and immediately followed by player 1 playing slot 2 R1; another colour clue R was forwarded and player 1 immediately played slot 1 R2."
+        ],
+        "confidence": 0.99,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "When I want a specific player to act, give a single precise clue (colour or rank) that singles out the intended playable slot so their immediate forced play advances the stacks.",
+          "Plan the board state knowing the recipient's play executes immediately as part of the clue resolution."
+        ]
+      },
+      {
+        "id": "tokens-track-clues-and-usage",
+        "game": "ref_hanabi",
+        "hypothesis": "Clue tokens decrement when I give a clue; they are a limited resource (four initial) and the system enforces the count.",
+        "test": "Give clues repeatedly and watch the token count decrease; attempt to give a clue when tokens are zero and observe rejection.",
+        "prediction": "The token count shown in the game state will drop by one per clue; when tokens are zero the referee will disallow clues.",
+        "evidence": [
+          "Tokens started at 4 and dropped to 3 after the first clue, then to 2 and then to 1 following the three clues I gave during play.",
+          "The game state display included 'Tokens N' and reflected the decrement after each clue action."
+        ],
+        "confidence": 0.97,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Always check the token count before deciding to give a clue; conserve tokens for guaranteed safe forced plays when possible.",
+          "If tokens are low, prefer clues that guarantee an immediate productive play rather than ambiguous hints."
+        ]
+      },
+      {
+        "id": "play-can-misfire-as-discard",
+        "game": "ref_hanabi",
+        "hypothesis": "Playing a card that is not the next rank for its colour will be treated as a discard (no build) and not increase the shared stack.",
+        "test": "Play a slot known not to match the required next rank for its colour and observe whether it is discarded and the score unchanged.",
+        "prediction": "The card will be discarded and score will not increase; the card will be removed from my hand.",
+        "evidence": [
+          "My final action [play: 1] executed on my own turn resulted in the slot's card being discarded: 'You played slot 1: ['R', 2]; discarded.'",
+          "That play did not advance the R stack and the team score did not increase from that action."
+        ],
+        "confidence": 0.98,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Do not play from my own hand unless I have information that the slot is playable; if I lack such information and tokens allow, give a clue to another player instead.",
+          "If forced to play with no safe information and tokens are exhausted or inappropriate, accept the risk of discard as a possible outcome."
+        ]
+      },
+      {
+        "id": "clue-must-match-hand",
+        "game": "ref_hanabi",
+        "hypothesis": "A clue must be a single colour or a single rank that actually appears in the recipient's hand; the system enforces that requirement.",
+        "test": "Attempt to give a clue with a colour or rank not present in the recipient's current hand and observe if it's rejected.",
+        "prediction": "The referee will not accept a clue that does not match any card in the recipient's hand.",
+        "evidence": [
+          "The game instructions explicitly state 'A clue must contain only a recipient and one colour or rank actually in that hand.'",
+          "All clues I issued matched attributes present in the recipient's visible hand and were accepted."
+        ],
+        "confidence": 0.85,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Only attempt clues that match at least one visible card in the recipient's hand; expect the action to be invalid if I try otherwise.",
+          "Before giving a clue, verify visually that the attribute exists in the target hand."
+        ]
+      },
+      {
+        "id": "clue-marks-all-matches",
+        "game": "ref_hanabi",
+        "hypothesis": "When a clue is given, the recipient receives marks on every slot that matches the clued colour or rank (not just one).",
+        "test": "Give a colour or rank clue where the recipient has multiple cards matching that attribute and observe whether all matching slots are marked.",
+        "prediction": "The referee will mark every matching slot and the recipient will be shown all marked slots when they act.",
+        "evidence": [
+          "The rules state 'The recipient receives all matching slot marks.' The examples I observed were single-match clues, consistent with this rule but not an explicit multi-match test."
+        ],
+        "confidence": 0.87,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Use clues that mark all matching slots when I want the recipient to disambiguate among multiple possibilities; plan knowing every match will be revealed to them simultaneously.",
+          "Test this explicitly next time by giving a clue where the recipient has multiple matching cards to confirm all are marked."
+        ]
+      },
+      {
+        "id": "clue-may-force-unproductive-play-if-no-playables",
+        "game": "ref_hanabi",
+        "hypothesis": "Giving a clue to a player who has no currently playable card will still force that player to play one of the marked slots, which may be an unplayable discard; giving such a clue can waste a token without scoring.",
+        "test": "Give a clue to a player whose visible cards are all unplayable and observe whether they are required to play and whether the play is discarded or built.",
+        "prediction": "The recipient will still be required to play a marked slot; the play may be a discard and the team may lose an opportunity if tokens were better conserved.",
+        "evidence": [
+          "In the final round I decided not to give the last token because 'No safe forced build from player 2 (none of their cards are playable), so conserve the last token and play from my hand.'",
+          "The referee's mechanism for forcing immediate play after a clue was observed earlier, implying that forcing a play when none are playable would cause a discard."
+        ],
+        "confidence": 0.83,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Before spending a clue token, check whether the forced recipient has at least one playable card; avoid giving clues that will only force a discard unless there's a strategic reason.",
+          "If tokens are the scarce resource, prefer to play a risky card from my own hand over spending the last token to force an unproductive play by another player."
+        ]
+      },
+      {
+        "id": "review-uses-round-and-reveals-only-marks",
+        "game": "ref_hanabi",
+        "hypothesis": "A review request consumes a turn, does not reveal unmarked cards, and only reports the clue marks on my hand.",
+        "test": "Call [review: 0] during my turn and observe what is revealed and whether it consumes the round.",
+        "prediction": "The referee will show current marks on my hand without revealing unmarked cards and will consume my action for that round.",
+        "evidence": [
+          "The rules text included '[review: 0] requests a review of your clue marks; reviews must not reveal unmarked cards and use a round.'"
+        ],
+        "confidence": 0.63,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Use review only when I need to confirm which marks I already have and I accept spending my action; do not expect it to reveal unmarked cards.",
+          "Test review explicitly in a later game to confirm referee behavior and whether it interacts with tokens or forced-play rules."
+        ]
+      },
+      {
+        "id": "rivals-mirror-my-previous-pick",
+        "game": "ta_winasmuch",
+        "hypothesis": "Rivals begin with Y on round 1 and on subsequent rounds each rival mirrors my previous pick (they copy my last pick).",
+        "test": "Pick X or Y on round N and observe rivals' picks on round N+1; check that initial round rivals are Y.",
+        "prediction": "On round 1 rivals will choose Y. On round 2 and later each rival's pick will equal my pick from the previous round.",
+        "evidence": [
+          "Game text stated 'Rivals begin with Y, then mirror your previous pick.'",
+          "Round 1 I picked X; Round 2 the rivals' behavior in payoffs and subsequent rounds matched the mirror rule and produced the expected payoffs across rounds 1–3 in my playthrough."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "When planning, account that my current pick not only affects this round's payoff but also programs rivals' next-round choices.",
+          "Prefer choices that both maximize immediate payoff and manipulate rivals toward future desirable mirror behavior."
+        ]
+      },
+      {
+        "id": "burn-pool-effect",
+        "game": "ta_winasmuch",
+        "hypothesis": "[burn: pool] costs the burner 1 point immediately and removes 4 points from each rival's reserve; no picks resolve on that turn.",
+        "test": "Use [burn: pool] and observe immediate score change for me, reserve reductions for rivals, and absence of pick resolutions that round.",
+        "prediction": "My score will drop by 1; each rival's reserve will be reduced by 4; the round will not produce pick-based payoffs.",
+        "evidence": [
+          "I used [burn: pool] in round 3 of this recorded play; the referee reported 'You paid 1; each rival lost 4 reserve points.'",
+          "After that round there were no pick-based payoff resolutions for that turn and rivals' reserves decreased from 8 to 4 as shown in the subsequent state."
+        ],
+        "confidence": 0.99,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Use burn when depleting rivals' reserves shifts the overall victory condition more than the immediate cost harms me.",
+          "Track rivals' reserve totals and use burn opportunistically to ensure their total (score + reserve) cannot overtake me at settlement.",
+          "Burn can be repeated across multiple rounds and reserves appear to floor at zero (multiple burns can bring reserves to zero)."
+        ]
+      },
+      {
+        "id": "settlement-timing-and-resolution",
+        "game": "ta_winasmuch",
+        "hypothesis": "[close: table] requests settlement and settlement is allowed only after round 3; when accepted, the highest total (score + remaining reserves) determines the winner and settlement can be accepted by the referee.",
+        "test": "Invoke [close: table] after round 3 and observe whether referee accepts settlement and how totals are computed.",
+        "prediction": "If I close after round 3 the referee will accept settlement and compute final totals including reserves; earlier closes will be disallowed.",
+        "evidence": [
+          "Game instructions: 'settlement is allowed after round 3.'",
+          "In this play I requested [close: table] in round 4 and settlement was accepted; final totals were computed including reserves and the referee reported my final score as +9.0 when settlement was accepted."
+        ],
+        "confidence": 0.98,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Consider closing immediately after a scoring-changing action if my visible total (score + estimated reserves) is highest; calculate rivals' reserves into their potential final totals.",
+          "Do not attempt to close before allowed (before round 4 in a 4-round game)."
+        ]
+      },
+      {
+        "id": "payoff-table-behavior",
+        "game": "ta_winasmuch",
+        "hypothesis": "The payoff rules listed (one X earns 3 and each Y loses 1; two X earn 2 and each Y loses 2; three X earn 1 and the Y loses 3; all X lose 1 each; all Y earn 1 each) are enforced exactly as written.",
+        "test": "Pick X or Y in configurations that produce different numbers of X and observe per-player score changes per round.",
+        "prediction": "Resolving picks will adjust individual scores according to the table exactly as presented.",
+        "evidence": [
+          "Round 1: I picked X while all rivals chose Y; my score moved from 8 to 11 (+3) and each rival dropped to 7 (-1), matching 'one X: +3 for X, -1 for each Y.'",
+          "Round 2: All chose X and each player lost 1, consistent with 'all X lose 1 each.' The recorded score transitions matched the payoff table exactly."
+        ],
+        "confidence": 0.99,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Use the payoff table to compute immediate gains and losses and to foresee whether inducing rivals to mirror will produce beneficial distributions in subsequent rounds.",
+          "Simulate the next round given the mirror rule to see whether choosing X now creates favorable later outcomes."
+        ]
+      },
+      {
+        "id": "pledge-promises-next-pick",
+        "game": "ta_winasmuch",
+        "hypothesis": "Attaching [pledge: y] records a promise that the player's next pick will be Y and is displayed in the public state as a standing pledge; enforcement is untested.",
+        "test": "Attach [pledge: y] before choosing and then attempt to choose a different pick next turn; observe whether the referee enforces, records, or ignores the mismatch.",
+        "prediction": "If pledges are enforced the referee will record 'standing pledge: y' and possibly disallow a conflicting next pick or flag a broken pledge; if not enforced, it will be a public signal only.",
+        "evidence": [
+          "The game text included 'You may attach [pledge: y] before choosing. A pledge promises your next pick.'",
+          "In this playthrough I never attached a pledge; the public state displayed 'standing pledge none' when I had no pledge. No enforcement or breaking of pledge was observed."
+        ],
+        "confidence": 0.45,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Next game, explicitly test [pledge: y] by attaching it and then attempting to deviate to see if the referee enforces or records a broken pledge.",
+          "If pledges are enforced, use them to credibly manipulate mirror-rivals; if they are not enforced, treat them as non-binding public communication only."
+        ]
+      },
+      {
+        "id": "burn-as-strategic-tool-to-shift-final-potential",
+        "game": "ta_winasmuch",
+        "hypothesis": "Burning is strategically effective: paying 1 to remove 4 from each rival's reserve can be the best move to secure highest final total (score + reserve) even when it temporarily reduces my lead.",
+        "test": "Compare outcomes in games where I burn at different timings and compute final totals; in a single play, use burn and observe final standings.",
+        "prediction": "Burn used at the right moment will reduce rivals' reserves enough that their maximum possible final totals cannot exceed mine, even after my 1-point cost.",
+        "evidence": [
+          "In this play I burned in round 3: I paid 1 and each rival lost 4 reserve points, reducing their reserve from 8 to 4.",
+          "After burning I closed the table in round 4 and the final settlement confirmed that burning converted a position where rivals had reserve potential to beat me into a secure lead at settlement: my final score was +9 and rivals' totals (score + remaining reserve) did not exceed mine."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "When calculating whether to burn, compute rivals' max potential = rival_score + rival_reserve; if burning reduces that below my current total (after burn cost), prefer burn.",
+          "Don't hesitate to burn even late if reserves are the decisive lever; multiple burns can be chained until rivals' reserves approach zero."
+        ]
+      },
+      {
+        "id": "closing-after-round3-accepted",
+        "game": "ta_winasmuch",
+        "hypothesis": "A [close: table] request made after round 3 will be accepted and cause settlement where scores are finalized including remaining reserves.",
+        "test": "Invoke [close: table] in round 4 (after round 3) and check that settlement occurs and totals include reserves.",
+        "prediction": "Settlement will be accepted and final totals will include the remaining reserves.",
+        "evidence": [
+          "I chose [close: table] in round 4 and the final referee resolution was 'Settlement accepted.' My final score reported +9.0 and that outcome reflected the post-burn reserves."
+        ],
+        "confidence": 0.98,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "If my visible total (score + current reserves) is highest after round 3, consider closing on round 4 to force settlement.",
+          "Remember settlement cannot be requested earlier than allowed rounds; plan burns and picks so that my visible totals are highest at settlement opportunity."
+        ]
+      }
+    ],
+    "strategy": "Preserve Hanabi principles: conserve scarce actionable resources, force safe plays when possible, and avoid blind plays from my own hand without information. In ta_winasmuch specifically, always account for the mirror rule: rivals start with Y on round 1 and then mirror my previous pick; my current choice programs rivals' next-round choices. Evaluate each pick not only by immediate payoff but by how it changes the next round's configuration under mirroring. Use the payoff table to compute immediate per-player changes and simulate the remaining rounds given mirror behavior. Track each rival's remaining reserve explicitly and compute rival potential as score + reserve when deciding between scoring plays and reserve-attacking burns. Use [burn: pool] when removing 4 reserve from each rival (for a cost of 1) converts opponents' maximum possible totals below mine; burning in the penultimate round (round 3 of 4) can be decisive because settlement is available after round 3. Treat [pledge: y] as untested and do not rely on it until explicitly verified; use it only as a public signal until enforcement is demonstrated. Plan across the full remaining horizon and prefer actions that both improve my immediate score and reduce rivals' final potential; simulate settlement outcomes explicitly before burning or closing. Maintain awareness that burning cancels pick resolution that turn, so balance the immediate lost opportunity against reserve reduction benefits."
+  },
+  "raw": "{\n  \"discoveries\": [\n    {\n      \"id\": \"clue-forced-play\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Giving a legal clue to another player immediately causes the referee to forward the clue and then that recipient must play one card as part of the same resolution (the clue plus the forced play happen together).\",\n      \"test\": \"Give a legal clue to a player and observe whether the recipient is required to play immediately and which slot they choose.\",\n      \"prediction\": \"The referee will forward the clue and then the indicated player will play exactly one slot immediately; their chosen slot will be executed as part of that exchange.\",\n      \"evidence\": [\n        \"After I sent [clue: player 1, B] the log shows 'Forwarded to player 1: player 1, colour B. They played slot 3: ['B', 1]; built.'\",\n        \"A subsequent rank clue was forwarded and immediately followed by player 1 playing slot 2 R1; another colour clue R was forwarded and player 1 immediately played slot 1 R2.\"\n      ],\n      \"confidence\": 0.99,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"When I want a specific player to act, give a single precise clue (colour or rank) that singles out the intended playable slot so their immediate forced play advances the stacks.\",\n        \"Plan the board state knowing the recipient's play executes immediately as part of the clue resolution.\"\n      ]\n    },\n    {\n      \"id\": \"tokens-track-clues-and-usage\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Clue tokens decrement when I give a clue; they are a limited resource (four initial) and the system enforces the count.\",\n      \"test\": \"Give clues repeatedly and watch the token count decrease; attempt to give a clue when tokens are zero and observe rejection.\",\n      \"prediction\": \"The token count shown in the game state will drop by one per clue; when tokens are zero the referee will disallow clues.\",\n      \"evidence\": [\n        \"Tokens started at 4 and dropped to 3 after the first clue, then to 2 and then to 1 following the three clues I gave during play.\",\n        \"The game state display included 'Tokens N' and reflected the decrement after each clue action.\"\n      ],\n      \"confidence\": 0.97,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Always check the token count before deciding to give a clue; conserve tokens for guaranteed safe forced plays when possible.\",\n        \"If tokens are low, prefer clues that guarantee an immediate productive play rather than ambiguous hints.\"\n      ]\n    },\n    {\n      \"id\": \"play-can-misfire-as-discard\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Playing a card that is not the next rank for its colour will be treated as a discard (no build) and not increase the shared stack.\",\n      \"test\": \"Play a slot known not to match the required next rank for its colour and observe whether it is discarded and the score unchanged.\",\n      \"prediction\": \"The card will be discarded and score will not increase; the card will be removed from my hand.\",\n      \"evidence\": [\n        \"My final action [play: 1] executed on my own turn resulted in the slot's card being discarded: 'You played slot 1: ['R', 2]; discarded.'\",\n        \"That play did not advance the R stack and the team score did not increase from that action.\"\n      ],\n      \"confidence\": 0.98,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Do not play from my own hand unless I have information that the slot is playable; if I lack such information and tokens allow, give a clue to another player instead.\",\n        \"If forced to play with no safe information and tokens are exhausted or inappropriate, accept the risk of discard as a possible outcome.\"\n      ]\n    },\n    {\n      \"id\": \"clue-must-match-hand\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"A clue must be a single colour or a single rank that actually appears in the recipient's hand; the system enforces that requirement.\",\n      \"test\": \"Attempt to give a clue with a colour or rank not present in the recipient's current hand and observe if it's rejected.\",\n      \"prediction\": \"The referee will not accept a clue that does not match any card in the recipient's hand.\",\n      \"evidence\": [\n        \"The game instructions explicitly state 'A clue must contain only a recipient and one colour or rank actually in that hand.'\",\n        \"All clues I issued matched attributes present in the recipient's visible hand and were accepted.\"\n      ],\n      \"confidence\": 0.85,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Only attempt clues that match at least one visible card in the recipient's hand; expect the action to be invalid if I try otherwise.\",\n        \"Before giving a clue, verify visually that the attribute exists in the target hand.\"\n      ]\n    },\n    {\n      \"id\": \"clue-marks-all-matches\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"When a clue is given, the recipient receives marks on every slot that matches the clued colour or rank (not just one).\",\n      \"test\": \"Give a colour or rank clue where the recipient has multiple cards matching that attribute and observe whether all matching slots are marked.\",\n      \"prediction\": \"The referee will mark every matching slot and the recipient will be shown all marked slots when they act.\",\n      \"evidence\": [\n        \"The rules state 'The recipient receives all matching slot marks.' The examples I observed were single-match clues, consistent with this rule but not an explicit multi-match test.\"\n      ],\n      \"confidence\": 0.87,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Use clues that mark all matching slots when I want the recipient to disambiguate among multiple possibilities; plan knowing every match will be revealed to them simultaneously.\",\n        \"Test this explicitly next time by giving a clue where the recipient has multiple matching cards to confirm all are marked.\"\n      ]\n    },\n    {\n      \"id\": \"clue-may-force-unproductive-play-if-no-playables\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Giving a clue to a player who has no currently playable card will still force that player to play one of the marked slots, which may be an unplayable discard; giving such a clue can waste a token without scoring.\",\n      \"test\": \"Give a clue to a player whose visible cards are all unplayable and observe whether they are required to play and whether the play is discarded or built.\",\n      \"prediction\": \"The recipient will still be required to play a marked slot; the play may be a discard and the team may lose an opportunity if tokens were better conserved.\",\n      \"evidence\": [\n        \"In the final round I decided not to give the last token because 'No safe forced build from player 2 (none of their cards are playable), so conserve the last token and play from my hand.'\",\n        \"The referee's mechanism for forcing immediate play after a clue was observed earlier, implying that forcing a play when none are playable would cause a discard.\"\n      ],\n      \"confidence\": 0.83,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Before spending a clue token, check whether the forced recipient has at least one playable card; avoid giving clues that will only force a discard unless there's a strategic reason.\",\n        \"If tokens are the scarce resource, prefer to play a risky card from my own hand over spending the last token to force an unproductive play by another player.\"\n      ]\n    },\n    {\n      \"id\": \"review-uses-round-and-reveals-only-marks\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"A review request consumes a turn, does not reveal unmarked cards, and only reports the clue marks on my hand.\",\n      \"test\": \"Call [review: 0] during my turn and observe what is revealed and whether it consumes the round.\",\n      \"prediction\": \"The referee will show current marks on my hand without revealing unmarked cards and will consume my action for that round.\",\n      \"evidence\": [\n        \"The rules text included '[review: 0] requests a review of your clue marks; reviews must not reveal unmarked cards and use a round.'\"\n      ],\n      \"confidence\": 0.63,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Use review only when I need to confirm which marks I already have and I accept spending my action; do not expect it to reveal unmarked cards.\",\n        \"Test review explicitly in a later game to confirm referee behavior and whether it interacts with tokens or forced-play rules.\"\n      ]\n    },\n    {\n      \"id\": \"rivals-mirror-my-previous-pick\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"Rivals begin with Y on round 1 and on subsequent rounds each rival mirrors my previous pick (they copy my last pick).\",\n      \"test\": \"Pick X or Y on round N and observe rivals' picks on round N+1; check that initial round rivals are Y.\",\n      \"prediction\": \"On round 1 rivals will choose Y. On round 2 and later each rival's pick will equal my pick from the previous round.\",\n      \"evidence\": [\n        \"Game text stated 'Rivals begin with Y, then mirror your previous pick.'\",\n        \"Round 1 I picked X; Round 2 the rivals' behavior in payoffs and subsequent rounds matched the mirror rule and produced the expected payoffs across rounds 1–3 in my playthrough.\"\n      ],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"When planning, account that my current pick not only affects this round's payoff but also programs rivals' next-round choices.\",\n        \"Prefer choices that both maximize immediate payoff and manipulate rivals toward future desirable mirror behavior.\"\n      ]\n    },\n    {\n      \"id\": \"burn-pool-effect\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"[burn: pool] costs the burner 1 point immediately and removes 4 points from each rival's reserve; no picks resolve on that turn.\",\n      \"test\": \"Use [burn: pool] and observe immediate score change for me, reserve reductions for rivals, and absence of pick resolutions that round.\",\n      \"prediction\": \"My score will drop by 1; each rival's reserve will be reduced by 4; the round will not produce pick-based payoffs.\",\n      \"evidence\": [\n        \"I used [burn: pool] in round 3 of this recorded play; the referee reported 'You paid 1; each rival lost 4 reserve points.'\",\n        \"After that round there were no pick-based payoff resolutions for that turn and rivals' reserves decreased from 8 to 4 as shown in the subsequent state.\"\n      ],\n      \"confidence\": 0.99,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Use burn when depleting rivals' reserves shifts the overall victory condition more than the immediate cost harms me.\",\n        \"Track rivals' reserve totals and use burn opportunistically to ensure their total (score + reserve) cannot overtake me at settlement.\",\n        \"Burn can be repeated across multiple rounds and reserves appear to floor at zero (multiple burns can bring reserves to zero).\"\n      ]\n    },\n    {\n      \"id\": \"settlement-timing-and-resolution\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"[close: table] requests settlement and settlement is allowed only after round 3; when accepted, the highest total (score + remaining reserves) determines the winner and settlement can be accepted by the referee.\",\n      \"test\": \"Invoke [close: table] after round 3 and observe whether referee accepts settlement and how totals are computed.\",\n      \"prediction\": \"If I close after round 3 the referee will accept settlement and compute final totals including reserves; earlier closes will be disallowed.\",\n      \"evidence\": [\n        \"Game instructions: 'settlement is allowed after round 3.'\",\n        \"In this play I requested [close: table] in round 4 and settlement was accepted; final totals were computed including reserves and the referee reported my final score as +9.0 when settlement was accepted.\"\n      ],\n      \"confidence\": 0.98,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Consider closing immediately after a scoring-changing action if my visible total (score + estimated reserves) is highest; calculate rivals' reserves into their potential final totals.\",\n        \"Do not attempt to close before allowed (before round 4 in a 4-round game).\"\n      ]\n    },\n    {\n      \"id\": \"payoff-table-behavior\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"The payoff rules listed (one X earns 3 and each Y loses 1; two X earn 2 and each Y loses 2; three X earn 1 and the Y loses 3; all X lose 1 each; all Y earn 1 each) are enforced exactly as written.\",\n      \"test\": \"Pick X or Y in configurations that produce different numbers of X and observe per-player score changes per round.\",\n      \"prediction\": \"Resolving picks will adjust individual scores according to the table exactly as presented.\",\n      \"evidence\": [\n        \"Round 1: I picked X while all rivals chose Y; my score moved from 8 to 11 (+3) and each rival dropped to 7 (-1), matching 'one X: +3 for X, -1 for each Y.'\",\n        \"Round 2: All chose X and each player lost 1, consistent with 'all X lose 1 each.' The recorded score transitions matched the payoff table exactly.\"\n      ],\n      \"confidence\": 0.99,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Use the payoff table to compute immediate gains and losses and to foresee whether inducing rivals to mirror will produce beneficial distributions in subsequent rounds.\",\n        \"Simulate the next round given the mirror rule to see whether choosing X now creates favorable later outcomes.\"\n      ]\n    },\n    {\n      \"id\": \"pledge-promises-next-pick\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"Attaching [pledge: y] records a promise that the player's next pick will be Y and is displayed in the public state as a standing pledge; enforcement is untested.\",\n      \"test\": \"Attach [pledge: y] before choosing and then attempt to choose a different pick next turn; observe whether the referee enforces, records, or ignores the mismatch.\",\n      \"prediction\": \"If pledges are enforced the referee will record 'standing pledge: y' and possibly disallow a conflicting next pick or flag a broken pledge; if not enforced, it will be a public signal only.\",\n      \"evidence\": [\n        \"The game text included 'You may attach [pledge: y] before choosing. A pledge promises your next pick.'\",\n        \"In this playthrough I never attached a pledge; the public state displayed 'standing pledge none' when I had no pledge. No enforcement or breaking of pledge was observed.\"\n      ],\n      \"confidence\": 0.45,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Next game, explicitly test [pledge: y] by attaching it and then attempting to deviate to see if the referee enforces or records a broken pledge.\",\n        \"If pledges are enforced, use them to credibly manipulate mirror-rivals; if they are not enforced, treat them as non-binding public communication only.\"\n      ]\n    },\n    {\n      \"id\": \"burn-as-strategic-tool-to-shift-final-potential\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"Burning is strategically effective: paying 1 to remove 4 from each rival's reserve can be the best move to secure highest final total (score + reserve) even when it temporarily reduces my lead.\",\n      \"test\": \"Compare outcomes in games where I burn at different timings and compute final totals; in a single play, use burn and observe final standings.\",\n      \"prediction\": \"Burn used at the right moment will reduce rivals' reserves enough that their maximum possible final totals cannot exceed mine, even after my 1-point cost.\",\n      \"evidence\": [\n        \"In this play I burned in round 3: I paid 1 and each rival lost 4 reserve points, reducing their reserve from 8 to 4.\",\n        \"After burning I closed the table in round 4 and the final settlement confirmed that burning converted a position where rivals had reserve potential to beat me into a secure lead at settlement: my final score was +9 and rivals' totals (score + remaining reserve) did not exceed mine.\"\n      ],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"When calculating whether to burn, compute rivals' max potential = rival_score + rival_reserve; if burning reduces that below my current total (after burn cost), prefer burn.\",\n        \"Don't hesitate to burn even late if reserves are the decisive lever; multiple burns can be chained until rivals' reserves approach zero.\"\n      ]\n    },\n    {\n      \"id\": \"closing-after-round3-accepted\",\n      \"game\": \"ta_winasmuch\",\n      \"hypothesis\": \"A [close: table] request made after round 3 will be accepted and cause settlement where scores are finalized including remaining reserves.\",\n      \"test\": \"Invoke [close: table] in round 4 (after round 3) and check that settlement occurs and totals include reserves.\",\n      \"prediction\": \"Settlement will be accepted and final totals will include the remaining reserves.\",\n      \"evidence\": [\n        \"I chose [close: table] in round 4 and the final referee resolution was 'Settlement accepted.' My final score reported +9.0 and that outcome reflected the post-burn reserves.\"\n      ],\n      \"confidence\": 0.98,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"If my visible total (score + current reserves) is highest after round 3, consider closing on round 4 to force settlement.\",\n        \"Remember settlement cannot be requested earlier than allowed rounds; plan burns and picks so that my visible totals are highest at settlement opportunity.\"\n      ]\n    }\n  ],\n  \"strategy\": \"Preserve Hanabi principles: conserve scarce actionable resources, force safe plays when possible, and avoid blind plays from my own hand without information. In ta_winasmuch specifically, always account for the mirror rule: rivals start with Y on round 1 and then mirror my previous pick; my current choice programs rivals' next-round choices. Evaluate each pick not only by immediate payoff but by how it changes the next round's configuration under mirroring. Use the payoff table to compute immediate per-player changes and simulate the remaining rounds given mirror behavior. Track each rival's remaining reserve explicitly and compute rival potential as score + reserve when deciding between scoring plays and reserve-attacking burns. Use [burn: pool] when removing 4 reserve from each rival (for a cost of 1) converts opponents' maximum possible totals below mine; burning in the penultimate round (round 3 of 4) can be decisive because settlement is available after round 3. Treat [pledge: y] as untested and do not rely on it until explicitly verified; use it only as a public signal until enforcement is demonstrated. Plan across the full remaining horizon and prefer actions that both improve my immediate score and reduce rivals' final potential; simulate settlement outcomes explicitly before burning or closing. Maintain awareness that burning cancels pick resolution that turn, so balance the immediate lost opportunity against reserve reduction benefits.\"\n}",
+  "meta": {
+    "call_id": "0de8d0a1e23e4cd68c65e576e7a8c5de",
+    "actual_model": "openai/gpt-5-mini",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 4594,
+      "prompt_tokens": 5439,
+      "total_tokens": 10033,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 256,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null,
+        "video_tokens": 0
+      },
+      "cost": 0.01054775,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.01054775,
+        "upstream_inference_prompt_cost": 0.00135975,
+        "upstream_inference_completions_cost": 0.009188
+      }
+    },
+    "timestamp": "2026-09-06T19:14:03.402457+00:00"
+  }
+}

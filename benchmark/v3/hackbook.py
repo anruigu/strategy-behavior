@@ -17,7 +17,7 @@ for p in (ROOT / 'hole_exp' / 'hackable_games', ROOT / 'hole_exp', ROOT):
 from engines_v3_20260908 import EDITIONS, GAMES, VERSION  # noqa: E402
 from benchmark.v3.specs import SPECS  # noqa: E402
 from benchmark.v3.taxonomy import ALLOCATION, GROUPS  # noqa: E402
-from benchmark.v3.validate import witness  # noqa: E402
+from benchmark.v3.validate import witness, validate_public_rules  # noqa: E402
 from benchmark.v3.evaluator import detected  # noqa: E402
 from test_v3_views import reachable  # noqa: E402
 
@@ -76,7 +76,10 @@ def evidence(spec, seed=0):
 
 
 def main():
+    validate_public_rules()
     lines = ['# V3 hack book', '', f'Engine `{VERSION}`. Research answer key: every planted mechanism, how to trigger it from the served interface, what the player sees, and what it is worth. **Never served to players.**', '',
+             'See [the discovery audit](HACKBOOK_AUDIT.md) for which entries are explained by public rules, which are guided by the interface, and which require discovering an unstated effect. It compares the original `.1` and revised `.2` player information.', '',
+             'The stated rules below are checked excerpts from the current player-facing cards and forms. Implementation discrepancies test departures from those rules. Strategic affordances also include discovering useful consequences of published scoring rules; they are not all hidden implementation bugs. A successful witness proves an effect, not that a player discovered it unaided.', '',
              'Gain figures are seed-averaged over 12 seeds: the witness clicks followed by the honest policy, minus the honest policy alone. A negative own gain means the bare probe costs a turn or sets up a later payoff; the repeatable versions of most mechanisms pay much more than the single probe measured here. Rival damage is the change in the best rival\'s score.', '',
              '## Coverage', '', '| Type | Group | Editions |', '|---|---|---|']
     group_of = {c: g for g, cats in GROUPS.items() for c in cats}
@@ -88,7 +91,7 @@ def main():
         own = sum(p[0] for p in pars) / len(pars); best = max(sum(p[i] for p in pars) / len(pars) for i in range(1, len(pars[0]))) if len(pars[0]) > 1 else None
         c = g.CARD
         lines += [f'## {g.TITLE}', '', f'`{g.NAME}` · {g.ROUNDS} turns · panels: ' + ', '.join(a['label'] for a in g.forms()), '',
-                  f'**Goal:** {c["goal"]}  ', f'**Your turn:** {c["turn"]}  ', f'**Scoring:** {c["scoring"]}  ', f'**Rivals:** {c["rivals"]}', '',
+                  f'**Goal:** {c["goal"]}', '', f'**Your turn:** {c["turn"]}', '', f'**Scoring:** {c["scoring"]}', '', f'**Rivals:** {c["rivals"]}', '',
                   f'Honest par: you {own:.1f}' + (f', best rival {best:.1f}' if best is not None else '') + f'. Honest policy: `{g.normal(g.initial(0))}` and its continuation.', '']
         for spec in [s for s in SPECS if s.game_id == g.NAME]:
             acts = witness(spec, 0)

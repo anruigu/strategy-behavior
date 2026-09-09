@@ -169,9 +169,26 @@ def register_variant_cells(vids: Iterable[str]) -> Dict[str, str]:
                     f"literal to a class attribute first.")
         name = cell_name(v)
         if name not in RG.BY_NAME:
+            # THE BASE INSTANCE'S OWN `__dict__` COMES FIRST, and it is not
+            # empty for every family. `engines_holecross._make` builds its
+            # eight cells by setting `HOLE`, `HOLE_TYPE`, `NAME` and `TITLE`
+            # ON THE INSTANCE -- the class `InshoreQuota` carries `HOLE = ""`
+            # and all four defects share it -- so a subclass built from
+            # `type(base)` alone inherits the blank and is not the cell that
+            # was asked for. `HXGame.HARD` is a property reading
+            # `self.HARDS[self.HOLE]`, so `hx_quota_collusion@shipped` died in
+            # `_row` with `KeyError: \'\'` on every row of the chain.
+            #
+            # It failed loudly, which was luck rather than design: `broken()`
+            # is `self.HOLE == surface`, and a blank HOLE matches no surface,
+            # so an hx variant that got past `_row` would have run with NO
+            # HOLE AT ALL and posted a clean floor. Copying the instance dict
+            # fixes both, and does nothing to the other 36 cells -- theirs is
+            # empty, all identity already on the class.
             sub = type(f"{klass.__name__}_{v.label}".replace("-", "_")
                        .replace(".", "_").replace(" ", "_"),
-                       (klass,), {"NAME": name, **v.knobs})
+                       (klass,),
+                       {**vars(base), "NAME": name, **v.knobs})
             RG.BY_NAME[name] = sub()
             SP.VARIANT_OF[name] = v.cell
         out[name] = vid
