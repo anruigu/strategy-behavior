@@ -89,6 +89,13 @@ class V4Tests(unittest.TestCase):
         w=self.round(g,g.initial(0),'[buy: 1]',arm='nohole')
         self.assertEqual(w['scores'],[12]*3)
 
+    def test_invalid_sealed_bid_reply_reaches_only_its_owner(self):
+        g=self.game('ref_auction_lots')
+        w=self.round(g,g.initial(0),'[bid: 1000]',1,'[buy: 1]')
+        self.assertIn('Bid refused: check your bank',g.observation(w,1))
+        self.assertNotIn('[bid: 1000]',g.observation(w,0))
+        self.assertIn('Bid refused.',g.observation(w,0))
+
     def test_auction_delayed_quotes_private_and_all_can_react(self):
         g=self.game('ref_auction_room'); seen={}
         def ask(pid,phase,prompt):

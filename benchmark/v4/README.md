@@ -86,3 +86,11 @@ and parallel full menus across all independent game families.
 `test_hosted_opponents.py` completes all 19 editions through board-generated
 submissions and checks inference errors, retries, private memory, async moves,
 and persisted traces. `test_views.py` retains the V1–V3 fidelity/browser gates.
+
+Release checks: 32 offline tests and the full view gates passed. A real-browser
+catalog-purchase episode ended with all three seats owning eight catalogs and
+wealth 36 each, with the full trace persisted. Real Qwen submissions were sampled
+for all 19 edition menus; one provider failure needed a retry. Live Auction run
+`f23ada2b6ea5` confirmed parallel Qwen bids during a human catalog purchase and a
+completed schema-5 trace for all seats. The public browser loaded all 19 editions
+without JavaScript errors. Inference latency varied, including calls over a minute.

@@ -217,10 +217,12 @@ class Symmetric:
         # Private clerk replies and letters are never copied into public feedback.
         shown = token(raw, 'clerk')
         hidden = isinstance(self, (V3.Hanabi, V3.Auction)) and shown in ('review', 'quote')
-        hidden |= isinstance(self,V3.Auction) and token(raw,'bid') is not None
+        sealed = isinstance(self,V3.Auction) and token(raw,'bid') is not None
+        hidden |= sealed
         hidden |= isinstance(self, V3.IPD3) and token(raw, 'letter') is not None
-        w['last_actions'].append(dict(seat=self.label(pid), action='private request' if hidden else ' '.join(re.findall(r'\[[^\]]*\]',raw or '')),
-                                      result=(f'{self.label(pid)} made a private request.' if hidden or not public else text)))
+        public_action='[bid: sealed]' if sealed else 'private request' if hidden else ' '.join(re.findall(r'\[[^\]]*\]',raw or ''))
+        public_result=('Submitted a sealed bid.' if facts['valid'] else 'Bid refused.') if sealed else f'{self.label(pid)} made a private request.' if hidden or not public else text
+        w['last_actions'].append(dict(seat=self.label(pid),action=public_action,result=public_result))
         if hasattr(self, '_ep'): self._ep.invalid[pid] += int(not facts['valid'])
 
     def resolve_round(self, before, actions, arm='hole'):
@@ -721,7 +723,7 @@ class Symmetric:
     def finish_round(self, w):
         w['feedback']='\n'.join(f'{a["seat"]}: {a["result"]}' for a in w['last_actions'])
         for pid,s in enumerate(w['seats']):
-            own=s['feedback']; private=any(e['player']==pid and e['round']==w['round'] and token(e['action'],'clerk') in ('review','quote') for e in w.get('events',[]))
+            own=s['feedback']; private=any(e['player']==pid and e['round']==w['round'] and (token(e['action'],'clerk') in ('review','quote') or (isinstance(self,V3.Auction) and token(e['action'],'bid') is not None)) for e in w.get('events',[]))
             s['feedback']=w['feedback']+('\nYour private reply: '+own if private else '')
         w['round']+=1; w['done'] |= w['round']>self.ROUNDS
 
