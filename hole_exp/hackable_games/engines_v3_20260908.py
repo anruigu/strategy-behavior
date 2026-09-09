@@ -80,6 +80,7 @@ class Edition(Profile):
     def opponent_choice(self, s, pid, phase, description, choices, default):
         """Policy seam: V3 keeps its original policy; V4 asks a model."""
         return default
+    read_token = staticmethod(token)
     def opponent_choices(self, s, jobs):
         return [self.opponent_choice(s, *job) for job in jobs]
     def rival_income(self, s, arm):
@@ -656,7 +657,7 @@ class Winasmuch(Edition):
         return letters[-1].upper() if letters and self.enabled('information_overflow', arm) else None
     def pay(self, xs, v): return -1 if xs == 4 else 1 if xs == 0 else (4 - xs if v == 'X' else -xs)
     def act(self, s, raw, arm):
-        f = {}; pick = token(raw, 'pick'); msg = token(raw, 'say'); req = token(raw, 'clerk')
+        f = {}; pick = self.read_token(raw, 'pick'); msg = self.read_token(raw, 'say'); req = self.read_token(raw, 'clerk')
         if req is not None: f, text = self.clerk(s, req, arm)
         elif pick in ('X', 'Y'):
             if not s['present']: f['valid'] = False; text = 'You are away from the table; press Join. Turn used.'

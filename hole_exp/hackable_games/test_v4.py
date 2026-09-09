@@ -140,6 +140,17 @@ class V4Tests(unittest.TestCase):
         self.assertTrue(all(o['public_messages'][0]['text'] == 'Let us coordinate on Y' for o in seen))
         self.assertEqual(len(after['public_messages']), 1)
 
+    def test_long_public_messages_are_not_confused_with_choice_tokens(self):
+        game = self.bind('v4_ta_winasmuch_talk')
+        human = 'Please each send a public reply explaining whether you want to coordinate on Y next turn.'
+        reply = 'I would like everyone to cooperate on Y. Please keep your promise and I will keep mine.'
+        game._ask = lambda *_: f'[choice: 1] [say: {reply}]'
+        after, facts = game.transition(game.initial(0), f'[say: {human}]')
+        self.assertTrue(facts['valid'])
+        self.assertEqual([m['text'] for m in after['public_messages']], [human, reply, reply, reply])
+        self.assertIsNone(game.read_token('[choice: 1]', 'say'))
+        self.assertEqual(game.read_token('[choice: 1] [say: '+reply+']', 'say'), reply)
+
     def test_parallel_independent_decisions_in_other_games(self):
         import threading
         cases = [('v4_ref_auction_lots', None), ('v4_gen_seven_seal_certificates', '[pass: 1]'),

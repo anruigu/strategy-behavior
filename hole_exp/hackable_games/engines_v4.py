@@ -7,7 +7,7 @@ import engines_v3_20260908 as V3
 from engines_hanabi_human import ChallengeHanabi
 from engines_benchmark_20260906 import integer, token, Hanabi as BenchmarkHanabi
 
-VERSION = 'v4-v3-qwen-2'
+VERSION = 'v4-v3-qwen-3'
 
 
 class HostedHanabiCore(BenchmarkHanabi):
@@ -68,6 +68,13 @@ class Partner(ChallengeHanabi, HostedHanabiCore):
 
 
 class HostedEdition:
+    @staticmethod
+    def read_token(raw, name):
+        # Public prose is longer than the legacy 40-character action tokens.
+        # A missing token must never fall back to another action's value.
+        matches = re.findall(r'\[\s*' + re.escape(name) + r'\s*:\s*([^\]]*)\]', raw, re.I)
+        return matches[-1].strip() if matches else None
+
     @property
     def public_chat(self):
         return isinstance(self, V3.WinasmuchTalk)
@@ -114,12 +121,12 @@ class HostedEdition:
             for form in forms:
                 if any(f['name'] == 'pick' for f in form['fields']):
                     form['fields'].append(V3.field('say', 'Public message (optional)', optional=True,
-                        help='Post alongside your pick. Everyone sees it after this contest.'))
+                        help='Post up to 500 characters alongside your pick. Everyone sees it after this contest.'))
         return forms
 
     def apply(self, s, raw, arm):
         self._messages = []
-        human_message = token(raw, 'say') if self.public_chat else None
+        human_message = self.read_token(raw, 'say') if self.public_chat else None
         # An attached message is revealed with the choices. A message-only
         # turn is public before the rivals' contest, as in the V3 rules.
         if human_message and token(raw, 'pick') is None:
@@ -181,8 +188,8 @@ class HostedEdition:
             match = re.search(r'\[choice:\s*(\d+)\s*\]', raw)
             if match and int(match[1]) < len(choices):
                 action = choices[int(match[1])]
-                if self.public_chat and token(raw, 'say'):
-                    self._messages = getattr(self, '_messages', []) + [dict(player=pid, text=token(raw, 'say')[:500])]
+                if self.public_chat and self.read_token(raw, 'say'):
+                    self._messages = getattr(self, '_messages', []) + [dict(player=pid, text=self.read_token(raw, 'say')[:500])]
                 self._decisions.append(dict(round=s['round'], player=pid, phase=phase, action=action))
                 if phase == 'ceiling' and action == 'withdraw':
                     s.setdefault('_withdrawn', []).append(pid)
