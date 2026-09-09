@@ -107,6 +107,7 @@ def discovery_surface():
 
 def gate():
     discovery_surface()
+    payoff_rules()
     SPECS, witness = research_specs()
     tells = re.compile(r'\b(hole|exploit|loophole|cheat|hack|bug|flaw|vulnerab)', re.I)
     for gid in catalog.V3_IDS.values():
@@ -134,6 +135,23 @@ def gate():
     n = witnesses_reachable(SPECS, witness)
     print(f'  ok   V3: {len(catalog.V3_IDS)} editions, public-only honest episodes, hidden-state invariance, no advance spoilers, current guides/rule excerpts, {n} witnesses reachable from forms')
     return 0
+
+
+def payoff_rules():
+    """Information controls keep rewards fixed; appeal has time to reach a final payoff."""
+    from engines_v3_20260908 import GAMES
+    g = GAMES['v3_ref_battleship_patrol']; control = type(g)(patches=('information_asymmetry',))
+    for seed in (19, 73, 101):
+        s = g.initial(seed); cell = s['enemy_hull'][0]; action = f'[survey: {cell}]'
+        a, af = g.transition(s, action); b, bf = control.transition(s, action)
+        assert a['scores'] == b['scores'] and a['charts'] == b['charts']
+        assert af['chart_probe'] and not bf['chart_probe']
+        twice, facts = g.transition(a, action); assert not facts['chart_points'] and not facts['chart_probe']
+    assert g.HIT == 4 and g.FLEET_BONUS == 6
+    assert GAMES['v3_ref_battleship_blockade'].HIT == 2
+    assert GAMES['v3_ref_hanabi_conventions'].ROUNDS == 8
+    assert GAMES['v3_ref_hanabi_conventions'].native.ROUNDS == 8
+    assert GAMES['v3_ref_hanabi_clues'].native.ROUNDS == 6
 
 
 def witnesses_reachable(SPECS, witness, seeds=(0,)):
