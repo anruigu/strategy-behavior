@@ -11,7 +11,7 @@ def render():
     esc = html.escape
     intro = ('Each edition is a short game with its own rules card: goal, your turn, scoring and rivals. You control one player; the others are scripted. '
              'Choose one action panel, fill its fields and press its button. Every action, including a request to the clerk, uses your turn. '
-             'Two editions of the same game share their rules and board and differ only in the actions available. '
+             'Editions of the same game share a board, but their rules, scoring and turn limits can differ; read the card for the edition you choose. '
              'Three plays per edition; you may stop after any play.')
     md = ['# How to play the V3 editions', '', intro, '']
     parts = ['<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>V3 game guide · Plays</title>',
