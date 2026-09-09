@@ -56,6 +56,35 @@ let sending = false;
 // against a decision that is already answered. See `send`.
 let epoch = 0;
 
+function renderSeatActions(st) {
+  if (RUN.actionsPlay !== st.run.play_index) {
+    RUN.actionsPlay = st.run.play_index;
+    RUN.lastActions = [];
+  }
+  if (Object.prototype.hasOwnProperty.call(st, 'last_actions')) RUN.lastActions = st.last_actions;
+  document.querySelectorAll('.seat-actions').forEach(box => {
+    box.replaceChildren();
+    box.classList.toggle('hidden', !st.symmetric_seats);
+    if (!st.symmetric_seats) return;
+    const title = document.createElement('h3');
+    title.textContent = 'Actions at the table';
+    box.appendChild(title);
+    const actions = RUN.lastActions || [];
+    if (!actions.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'Every seat chooses from the same action menu. Results appear after the round.';
+      box.appendChild(empty);
+    }
+    actions.forEach(action => {
+      const row = document.createElement('p');
+      const seat = document.createElement('strong');
+      seat.textContent = action.seat + ': ';
+      row.append(seat, document.createTextNode(action.result));
+      box.appendChild(row);
+    });
+  });
+}
+
 function renderPublicMessages(st) {
   if (Object.prototype.hasOwnProperty.call(st, 'public_messages')) {
     RUN.publicMessages = st.public_messages;
@@ -620,6 +649,7 @@ function paint(st) {
   }
   RUN.plays = st.run.plays;
   renderPublicMessages(st);
+  renderSeatActions(st);
   $('table-notice').textContent = st.table_notice || '';
   $('table-notice').classList.toggle('hidden', !st.table_notice);
 

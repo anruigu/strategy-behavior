@@ -307,7 +307,7 @@ for gid, edition in V3.GAMES.items():
     }
 
 
-# V4 is exactly the V3 edition set, with Qwen opponent policies.
+# V4 keeps the V3 edition set with a shared action referee for every seat.
 import engines_v4 as V4
 V4_IDS = {}
 for gid, edition in V4.GAMES.items():

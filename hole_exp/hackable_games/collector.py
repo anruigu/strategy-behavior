@@ -55,7 +55,7 @@ DEFAULT_DIR = HERE / "play_data"
 # Bumped whenever the recorded schema changes shape. An analysis that pools
 # two schema versions without noticing is a silent wrong answer, so the
 # version travels in every row rather than in a README.
-SCHEMA = 4
+SCHEMA = 5
 
 
 def player_slug(name: str) -> str:
@@ -122,6 +122,8 @@ class PlayRecord:
     # not the same measurement and must be separable after the fact.
     ui_aids: List[str] = field(default_factory=list)
     frontend_build: str = ""
+    engine_version: str = ""
+    engine_trace: dict = field(default_factory=dict)
     schema: int = SCHEMA
     opponent: dict = field(default_factory=dict)
     abandoned: bool = False
@@ -148,7 +150,7 @@ class PlayCollector:
     def start(self, *, player: str, game: str, seat: int, arm: str, seed: int,
               bots: str, run_id: str, play_index: int,
               ui_aids: Optional[List[str]] = None,
-              frontend_build: str = "") -> str:
+              frontend_build: str = "", engine_version: str = "") -> str:
         slug = player_slug(player)
         with self._lock:
             stale = [k for k, r in self._live.items() if r.player_slug == slug]
@@ -160,7 +162,7 @@ class PlayCollector:
             player=(player or "anon").strip() or "anon", player_slug=slug,
             game=game, seat=seat, arm=arm, seed=seed, bots=bots,
             started_at=time.time(), ui_aids=list(ui_aids or []),
-            frontend_build=frontend_build or "",
+            frontend_build=frontend_build or "", engine_version=engine_version,
         )
         with self._lock:
             self._live[rec.play_id] = rec
@@ -217,6 +219,7 @@ class PlayCollector:
         rec.duration_s = round(rec.finished_at - rec.started_at, 3)
         rec.abandoned = abandoned
         if result:
+            rec.engine_trace = result.get("engine_trace", {})
             rec.score = result.get("my_score")
             rec.margin = result.get("margin")
             rec.gain = result.get("gain")

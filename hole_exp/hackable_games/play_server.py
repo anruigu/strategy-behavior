@@ -194,6 +194,12 @@ class PlaySession(server.Session):
             out['public_messages'] = out['pending']['view']['public_state'].get('public_messages', [])
         if out['public_chat'] and st['done'] and self.episode:
             out['public_messages'] = self.episode.extras['final_state'].get('public_messages', [])
+        out["symmetric_seats"] = bool(getattr(self.game, "symmetric_seats", False))
+        if out["symmetric_seats"]:
+            if pending and out["pending"]["view"]:
+                out["last_actions"] = out["pending"]["view"]["public_state"].get("last_actions", [])
+            elif st["done"] and self.episode:
+                out["last_actions"] = self.episode.extras["final_state"].get("last_actions", [])
         if st["done"]:
             r = st.get("result") or {}
             # Own final score and own unparsed count. Nothing else: `margin`,
@@ -273,7 +279,8 @@ class Run:
         play_id = self.collector.start(
             player=self.player, game=self.gid, seat=0, arm=self.arm,
             seed=seed, bots=self.bots, run_id=self.id, play_index=self.index,
-            ui_aids=self.ui_aids, frontend_build=BUILD)
+            ui_aids=self.ui_aids, frontend_build=BUILD,
+            engine_version=str(getattr(catalog.GAMES[self.gid]["game"], "ENGINE_VERSION", "")))
         self.session = PlaySession(self.gid, 0, self.arm, seed, self.bots,
                                    collector=self.collector, play_id=play_id, bot=self.ai)
         return self.session
@@ -311,6 +318,8 @@ class Run:
         if standings:
             self.results.append(standings)
 
+        if getattr(game, "symmetric_seats", False):
+            result["engine_trace"] = {key: ep.extras.get(key) for key in ("seat_requests", "events", "final_state", "rounds_played")}
         self.collector.finish(
             s.play_id, result,
             audit={"p_caught": self.p_caught, "caught": int(caught),

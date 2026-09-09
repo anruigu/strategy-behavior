@@ -47,7 +47,7 @@ window.UI.benchmark_move = function (v, ctx) {
         K.note(n ? 'Built: ' + Array.from({length: n}, (_, i) => i + 1).join(' → ') : 'Empty'),
         K.note(n === 3 ? 'Complete' : 'Next needed: ' + (n + 1))));
     });
-    K.put(box, piles, K.note('Goal: build both colours 1 → 2 → 3 in ' + (t.turn_limit || 8) + ' turns. No replacement draws.'));
+    K.put(box, piles, K.note(t.round_structure ? t.round_structure + '. No replacement draws.' : 'Goal: build both colours 1 → 2 → 3 in ' + (t.turn_limit || 8) + ' turns. No replacement draws.'));
     if (t.completion_bonus) K.put(box, K.note('Each built card: +1 point. Complete BOTH piles: +' + t.completion_bonus + ' bonus (' + t.max_score + ' total). Discards and reviews use a turn too.'));
     function hand(title, cards, mine) {
       const row = K.el('div', 'human-hanabi-hand');
@@ -96,8 +96,8 @@ window.UI.benchmark_move = function (v, ctx) {
         const labels = [];
         if (String(n) in state.titles) labels.push('Your title');
         if (n===1 && ('1a' in state.titles)) labels.push('Your partitioned titles');
-        if (n===3) labels.push('Rook property');
-        if (n===5) labels.push('Dove property');
+        if (n===3 && (!state.seat_accounts || Object.keys(state.seat_accounts[1].titles).length)) labels.push('Rook property');
+        if (n===5 && (!state.seat_accounts || Object.keys(state.seat_accounts[2].titles).length)) labels.push('Dove property');
         if (n===1 && !(String(n) in state.titles) && !('1a' in state.titles)) labels.push('Plot 1 (sold)');
         state.rival_positions.forEach((pos,i) => { if(pos===n) labels.push(i ? 'Dove here' : 'Rook here'); });
         if (state.fences.includes(n)) labels.push('Fence');
@@ -109,7 +109,7 @@ window.UI.benchmark_move = function (v, ctx) {
     const human = key => key.replaceAll('_',' ').replace(/^./, x=>x.toUpperCase());
     const show = value => value === null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? (value.length ? value.map(show).join(', ') : 'None') : typeof value === 'object' ? Object.entries(value).map(([k,val])=>human(k)+': '+show(val)).join(' · ') : String(value);
     const hidden = new Set(['sea', 'own_hull', 'shots', 'hits', 'charts', 'probed', 'mines', 'courier', 'rival_positions', 'fences', 'titles']);
-    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea' && key!=='public_messages').forEach(([key,value]) => {
+    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea' && key!=='public_messages' && key!=='last_actions').forEach(([key,value]) => {
       K.put(ledger, K.panel(human(key), K.note(show(value))));
     });
     K.put(box, ledger);

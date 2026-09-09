@@ -101,7 +101,6 @@ class HostedTests(unittest.TestCase):
             def ask(pid, phase, prompt):
                 if pid:
                     seen.add(pid)
-                    return '[choice: 0]'
                 view = views.build(c['board_id'], phase, prompt)
                 self.assertIsNotNone(view, (gid, phase))
                 return _from_view(view, phase, prompt)
@@ -111,7 +110,7 @@ class HostedTests(unittest.TestCase):
 
     def test_complete_play_persistence_and_repeated_settlement(self):
         gid = 'v4_ta_ipd_palmers_word'
-        def answer(messages): return '[choice: 0]'
+        def answer(messages): return '[move: cooperate]'
         client = FakeClient(answer)
         with tempfile.TemporaryDirectory() as tmp, patch.object(HostedConfig, 'client', return_value=client):
             collector = PlayCollector(tmp)
@@ -137,6 +136,10 @@ class HostedTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]['bots'], 'ai')
             self.assertTrue(rows[0]['opponent']['decisions'])
+            self.assertEqual(rows[0]['engine_version'], 'v4-symmetric-1')
+            self.assertTrue(rows[0]['engine_trace']['events'])
+            self.assertEqual(set(e['player'] for e in rows[0]['engine_trace']['events']), {0, 1})
+            self.assertNotIn('engine_trace', session.public_state())
             self.assertNotIn('opponent', session.public_state())
 
     def test_parallel_metadata_cannot_overwrite_newer_transcript(self):
@@ -157,7 +160,7 @@ class HostedTests(unittest.TestCase):
             def create(self, **request):
                 release.wait(5)
                 return super().create(**request)
-        client = SlowClient(lambda _: '[choice: 0]')
+        client = SlowClient(lambda _: '[move: cooperate]')
         with tempfile.TemporaryDirectory() as tmp, patch.object(HostedConfig, 'client', return_value=client):
             run = play_server.Run('slow-test', 'v4_ta_ipd_palmers_word', 'hole', 1, 'ai', 0, PlayCollector(tmp), [])
             session = run.start_next()
