@@ -139,6 +139,17 @@ class HostedTests(unittest.TestCase):
             self.assertTrue(rows[0]['opponent']['decisions'])
             self.assertNotIn('opponent', session.public_state())
 
+    def test_parallel_metadata_cannot_overwrite_newer_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            collector = PlayCollector(tmp)
+            pid = collector.start(player='parallel-log', game='v4_ta_winasmuch_talk', seat=0,
+                arm='hole', seed=0, bots='ai', run_id='test', play_index=0)
+            newest = dict(model='test-model', decisions=[{'pid': n} for n in (1, 2, 3)])
+            collector.record_opponent(pid, newest)
+            collector.record_opponent(pid, dict(model='test-model', decisions=[{'pid': 1}]))
+            collector.finish(pid, None, abandoned=True)
+            self.assertEqual(collector.player_plays('parallel-log')[0]['opponent'], newest)
+
     def test_move_returns_while_hosted_opponent_is_thinking(self):
         import threading
         release = threading.Event()

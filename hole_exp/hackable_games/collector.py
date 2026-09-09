@@ -182,6 +182,12 @@ class PlayCollector:
     def record_opponent(self, play_id: str, metadata: dict):
         with self._lock:
             if play_id in self._live:
+                previous = self._live[play_id].opponent
+                # Parallel seats may publish snapshots out of completion order.
+                # Never replace a newer AI transcript with an older snapshot.
+                if ('decisions' in metadata and
+                        len(metadata['decisions']) < len(previous.get('decisions', []))):
+                    return
                 self._live[play_id].opponent = metadata
 
     def record_move(self, play_id: str, *, phase: str, reply: str,
