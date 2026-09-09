@@ -606,7 +606,11 @@ function renderGames() {
 }
 
 // ── run loop ────────────────────────────────────────────────────────
+let startingRun = false;
 async function startRun(gid, card, variantOrNull) {
+  if (startingRun) return;
+  startingRun = true;
+  try {
   const st = await post('/api/run/start', { player: PLAYER, game: gid });
   if (st.error) { alert(st.error); return; }
   RUN = {
@@ -623,13 +627,46 @@ async function startRun(gid, card, variantOrNull) {
     : 'vtag hidden';
   show('view-play');
   paint(st);
+  } catch (err) {
+    show('view-play');
+    boardUnavailable('Could not open the table.', 'Check your connection and choose a game again.');
+    const back = document.createElement('button');
+    back.textContent = 'Choose a game';
+    back.onclick = () => { RUN = null; show('view-list'); };
+    $('board').appendChild(back);
+  } finally {
+    startingRun = false;
+  }
 }
 
 let pollTimer = null;
+function expiredRun() {
+  const previous = RUN;
+  RUN = null;
+  PENDING = null;
+  sending = false;
+  $('prompt').textContent = '';
+  boardUnavailable('This game session has ended.',
+    'The site may have updated, the session expired, or another game was opened under your name. Start a fresh game to continue.');
+  if (previous) {
+    const restart = document.createElement('button');
+    restart.textContent = 'Start this game again';
+    restart.onclick = () => {
+      $('movelog').replaceChildren();
+      startRun(previous.game, { title: previous.title }, previous.variant);
+    };
+    $('board').appendChild(restart);
+  }
+  const back = document.createElement('button');
+  back.textContent = 'Choose another game';
+  back.onclick = () => show('view-list');
+  $('board').appendChild(back);
+}
 function paint(st) {
   clearTimeout(pollTimer);
   // Every redraw retires the contexts the previous one handed out.
   epoch++;
+  if (st && st.error === 'no such run' && !st.run) return expiredRun();
 
   // Two different things arrive under `error` and they are not shown the same
   // way. Without a `run` key it is the API refusing the request outright --
