@@ -137,12 +137,15 @@ class PlaySession(server.Session):
     """
 
     def __init__(self, gid, seat, arm, seed, bot_mode, *,
-                 collector: PlayCollector, play_id: str, bot=None):
+                 collector: PlayCollector, play_id: str, bot=None, aids=()):
         # Set before super().__init__ -- that call starts the episode thread,
         # which can reach ask() before the constructor returns.
         self.collector = collector
         self.play_id = play_id
         self._via = "ui"
+        # The run's recorded UI aids. The V4 adapter keeps payoff previews only
+        # when 'preview' is among them, so the stored view is what was shown.
+        self.aids = tuple(aids or ())
         super().__init__(gid, seat, arm, seed, bot_mode, bot=bot)
 
     def ask(self, pid, phase, prompt):
@@ -154,7 +157,7 @@ class PlaySession(server.Session):
         if pid == self.seat:
             self.collector.record_move(
                 self.play_id, phase=phase, reply=reply, prompt=prompt,
-                view=views.build(_board_gid(self.gid), phase, prompt),
+                view=views.build(_board_gid(self.gid), phase, prompt, self.aids),
                 source=self._via, retain_prompt=bool(getattr(self.game, 'is_eval', False)))
         return reply
 
@@ -196,7 +199,7 @@ class PlaySession(server.Session):
                 "phase": pending["phase"],
                 "prompt": pending["prompt"],
                 "view": views.build(_board_gid(self.gid), pending["phase"],
-                                    pending["prompt"]),
+                                    pending["prompt"], self.aids),
             }
         if out['public_chat'] and pending:
             out['public_messages'] = out['pending']['view']['public_state'].get('public_messages', [])
@@ -218,7 +221,7 @@ class PlaySession(server.Session):
             out["invalid"] = r.get("invalid", 0)
             if getattr(self.game, 'is_eval', False) and self.episode:
                 prompt = self.episode.extras['final_observation']
-                out['final_view'] = views.build(_board_gid(self.gid), 'move', prompt)
+                out['final_view'] = views.build(_board_gid(self.gid), 'move', prompt, self.aids)
         return out
 
 
@@ -312,7 +315,8 @@ class Run:
         if self.ai is not None:
             self.collector.record_opponent(play_id, self.ai.metadata())
         self.session = PlaySession(self.gid, 0, self.arm, seed, self.bots,
-                                   collector=self.collector, play_id=play_id, bot=self.ai)
+                                   collector=self.collector, play_id=play_id, bot=self.ai,
+                                   aids=self.ui_aids)
         return self.session
 
     def close_play(self) -> Optional[dict]:
@@ -758,8 +762,13 @@ class Handler(BaseHTTPRequestHandler):
             seed = body.get('seed', 0)
             if not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed <= 1000000:
                 raise ValueError('Seed must be a whole number from 0 to 1000000')
+            aids = [f"board:{bg}"] if bg in views.ADAPTERS else []
+            # V4 only: a recorded, opt-in aid. It shows the stated-rule payoff of
+            # the option under the cursor and is stored with every play.
+            if gid in catalog.V4_IDS and isinstance(body.get('aids'), list) and 'preview' in body['aids']:
+                aids.append('preview')
             r = Run(player, gid, arm, plays, bots, p_caught, COLLECTOR,
-                    ui_aids=([f"board:{bg}"] if bg in views.ADAPTERS else []),
+                    ui_aids=aids,
                     condition=body.get('condition', 'nerfed'), opponent=body.get('opponent', 'qwen-3.8-27b'), seed=seed)
         except (ValueError, ImportError) as exc:
             return self._json({"error": str(exc)}, 400)

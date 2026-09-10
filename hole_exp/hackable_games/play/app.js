@@ -126,6 +126,11 @@ function renderEvalResults(st) {
     const title = document.createElement('h3');
     title.textContent = 'Completed rounds';
     box.appendChild(title);
+    const present = st.final_view.present;
+    if (present && present.history && window.V4 && window.V4.historyTable) {
+      box.appendChild(window.V4.historyTable(present.history));
+      return;
+    }
     const describe = value => Array.isArray(value) ? value.map(describe).join(', ') : value && typeof value === 'object' ? Object.entries(value).map(([k,v]) => k.replaceAll('_', ' ') + ': ' + describe(v)).join(' · ') : String(value);
     for (const round of st.final_view.public_state.history) {
       const row = document.createElement('p');
@@ -704,7 +709,8 @@ async function startRun(gid, card, variantOrNull) {
       $('eval-seed').reportValidity();
       return;
     }
-    Object.assign(setup, {condition: $('eval-condition').value, opponent: $('eval-opponent').value, seed: Number($('eval-seed').value)});
+    Object.assign(setup, {condition: $('eval-condition').value, opponent: $('eval-opponent').value, seed: Number($('eval-seed').value),
+      aids: $('eval-preview').checked ? ['preview'] : []});
   }
   const st = await post('/api/run/start', { player: PLAYER, game: gid, ...setup });
   if (st.error) { alert(st.error); return; }

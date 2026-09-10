@@ -112,13 +112,15 @@ for _gid in (*_V3_SA.GAMES, *_V3_MA.GAMES, *_V4.GAMES):
 AIDED = tuple(sorted(ADAPTERS))
 
 
-def build(game_id: str, phase: str, prompt: str) -> Optional[dict]:
-    """Structured view for one decision, or None (table unavailable)."""
+def build(game_id: str, phase: str, prompt: str, aids=()) -> Optional[dict]:
+    """Structured view for one decision, or None (table unavailable).
+
+    `aids` are the run's recorded UI aids; only the V4 adapter reads them."""
     fn = ADAPTERS.get(game_id)
     if fn is None:
         return None
     try:
-        v = fn(phase, prompt or "")
+        v = fn(phase, prompt or "", aids=tuple(aids or ())) if game_id.startswith('v4_') else fn(phase, prompt or "")
     except Exception:
         # A parser crash must never take the session with it -- the client
         # marks the table unavailable instead of offering a typed-move path.
@@ -129,7 +131,7 @@ def build(game_id: str, phase: str, prompt: str) -> Optional[dict]:
 
 
 KINDS = (
-    "benchmark_move", "v3_move",
+    "benchmark_move", "v3_move", "v4_move",
     "hanabi_human",
     "estate_settle", "sidebar_msg", "sidebar_bet", "exchange_offer",
     "exchange_build", "exchange_accept", "hanabi_turn", "auction_bid",

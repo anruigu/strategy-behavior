@@ -83,7 +83,7 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
     k = v["kind"]
     if k == 'hanabi_human':
         return v['actions'][-1]['token']
-    if k == "v3_move":
+    if k in ("v3_move", "v4_move"):
         if v.get('public_state', {}).get('game', '').startswith('v3ma_'):
             return ' '.join(f['token'].format(value=f['options'][0] if f.get('options') else 'none')
                             for f in v['actions'][0]['fields'])
