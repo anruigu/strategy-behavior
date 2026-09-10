@@ -591,7 +591,7 @@ function renderGames() {
     $('edition-' + e).onclick = () => selectEdition(e);
   });
   $('edition-description').textContent = EDITION === 'v4'
-    ? 'Play the focal agent in ten scenarios from the multi-agent eval. Choose the opponent policy, model, and seed below.'
+    ? 'Ten revised scenarios. Market games last eight rounds; purchase terms, auction withdrawals, and council replies arrive before your final choice. Choose the opponent policy, model, and seed below.'
     : EDITION === 'v0'
     ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'
     : EDITION === 'v3'

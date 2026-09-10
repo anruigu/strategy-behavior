@@ -1,4 +1,4 @@
-"""Exact campaign prompts and request settings for human focal-agent play."""
+"""Versioned opponent prompts and campaign request settings for V4 play."""
 import json
 import re
 import time

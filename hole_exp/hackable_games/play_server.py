@@ -89,7 +89,7 @@ UI_DIR = HERE / "ui"
 # match rather than being decoded into one.
 ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
-BUILD = "play-v4-eval-1"
+BUILD = "play-v4-eval-2"
 
 SHARED = os.environ.get("HG_SHARED") == "1"
 # The debrief is the ONLY route that will name a hole, it is off unless asked
@@ -242,13 +242,19 @@ class Run:
         self.study = {}
         if gid in catalog.V4_IDS:
             from eval_opponents import EvalOpponent, PROTOCOL
+            from engines_v4 import source_hashes
+            from v4_features import structural_features
             if arm != 'hole' or p_caught:
                 raise ValueError('V4 uses the ordinary referee without audits')
             self.ai = EvalOpponent(config['game'].ORIGINAL, condition, opponent)
             self.study = dict(scenario=config['game'].ORIGINAL, focal_seat=0,
                 condition=condition, opponent=opponent, referee='ordinary',
                 seeds=list(range(seed, seed + plays)), protocol=PROTOCOL['protocol'],
-                source_run=PROTOCOL['source_run'], source_hashes=PROTOCOL['source_hashes'])
+                source_run=PROTOCOL['source_run'], source_hashes=source_hashes(),
+                parent_protocol=PROTOCOL['parent_protocol'],
+                treatment_assignment=PROTOCOL['treatment_assignment'],
+                structural_features_by_seed={str(n): structural_features(config['game'], n)
+                                             for n in range(seed, seed + plays)})
         else:
             self.ai = HostedOpponent() if bots == "ai" else None
         self.last_result = None

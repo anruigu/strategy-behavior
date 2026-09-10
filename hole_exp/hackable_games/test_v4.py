@@ -14,7 +14,8 @@ from unittest.mock import patch
 import catalog
 from collector import PlayCollector
 from engines_v3_ma import GAMES as ORIGINAL, parse
-from engines_v4 import GAMES, PROTOCOL
+from engines_v4 import GAMES, PROTOCOL, FROZEN_PROTOCOL, HumanEval, VERSION
+from v4_features import structural_features
 from eval_opponents import EvalOpponent
 import play_server
 import views
@@ -56,7 +57,7 @@ class V4Tests(unittest.TestCase):
         self.assertEqual(len(catalog.V0_IDS), 19)
         self.assertTrue(all(g.family != 'commons' for g in GAMES.values()))
         path = Path(__file__).with_name('engines_v3_ma.py')
-        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), PROTOCOL['source_hashes']['hole_exp/hackable_games/engines_v3_ma.py'])
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), FROZEN_PROTOCOL['source_hashes']['hole_exp/hackable_games/engines_v3_ma.py'])
         for gid in GAMES:
             self.assertTrue(views.build(play_server._board_gid(gid), 'move', GAMES[gid].observe(GAMES[gid].initial(0),0,GAMES[gid].STAGES[0],'hole')))
 
@@ -65,7 +66,9 @@ class V4Tests(unittest.TestCase):
             for seed in (0, 1):
                 with self.subTest(game=gid, seed=seed):
                     reference = ORIGINAL[game.ORIGINAL].run(choice, seed, 'hole')
-                    actual = game.run(choice, seed, 'hole')
+                    frozen = HumanEval(ORIGINAL[game.ORIGINAL])
+                    frozen.ENGINE_VERSION = 'v4-human-eval-1'
+                    actual = frozen.run(choice, seed, 'hole')
                     self.assertEqual(actual.scores, reference.scores)
                     self.assertEqual(actual.decisions, reference.decisions)
                     self.assertEqual(actual.extras['events'], reference.extras['events'])
@@ -73,8 +76,15 @@ class V4Tests(unittest.TestCase):
     def test_independent_seats_start_together(self):
         for gid in ('v4_trust_messages', 'v4_market_ceiling', 'v4_filing_settlement'):
             g = GAMES[gid]
-            barrier = threading.Barrier(g.N_PLAYERS, timeout=3)
+            barriers = {}
             def ask(pid, phase, prompt):
+                t = table(prompt)
+                # Dynamic Room bid stages omit rivals who already withdrew.
+                n = len(g.actors(t['stage']))
+                if t['stage'] == 'bid':
+                    n = 1 + sum(v == 'stay' for v in t['participation'].values())
+                key = (t['round'], t['stage'])
+                barrier = barriers.setdefault(key, threading.Barrier(n, timeout=3))
                 barrier.wait()
                 return choice(pid, phase, prompt)
             g.run(ask,0,'hole')
@@ -86,10 +96,8 @@ class V4Tests(unittest.TestCase):
             self.assertEqual(policy['ordinary']['0'], policy['nerfed']['0'])
             self.assertEqual(policy['ordinary']['0'], policy['defensive']['0'])
             self.assertNotEqual(policy['ordinary']['1'], policy['nerfed']['1'])
-            if canonical != 'v3ma_market_ceiling':
-                self.assertEqual(policy['ordinary']['2'],policy['nerfed']['2'])
-            else:
-                self.assertNotEqual(policy['ordinary']['2'],policy['nerfed']['2'])
+            self.assertNotEqual(policy['ordinary']['2'],policy['nerfed']['2'])
+            self.assertEqual(policy['nerfed']['1'],policy['nerfed']['2'])
 
     def test_exact_prompts_settings_private_memory_and_correction(self):
         game=GAMES['v4_trust_pledge']; s=game.initial(0)
@@ -106,7 +114,7 @@ class V4Tests(unittest.TestCase):
         self.assertIn('No game action has occurred.',repair['messages'][-1]['content'])
         bot(2,'move',prompt)
         self.assertEqual(len(client.calls[-1]['messages']),2)
-        self.assertEqual(client.calls[-1]['messages'][0]['content'],PROTOCOL['systems'][game.ORIGINAL]['ordinary']['2'])
+        self.assertEqual(client.calls[-1]['messages'][0]['content'],PROTOCOL['systems'][game.ORIGINAL]['nerfed']['2'])
         self.assertEqual(len([r for r in bot.records if r.get('format_error')]),1)
 
     def test_invalid_opponent_never_becomes_scripted(self):
@@ -165,6 +173,10 @@ class V4Tests(unittest.TestCase):
                 self.assertEqual(r['study']['condition'],'ordinary')
                 self.assertEqual(r['opponent']['model_key'],'glm')
                 self.assertEqual(r['schema'],6)
+                self.assertEqual(r['engine_version'], VERSION)
+                self.assertEqual(r['study']['protocol'], 'v4-human-playtest.2')
+                self.assertIn('engines_v4_revision.py', r['study']['source_hashes'])
+                self.assertIn('structural_features', r['engine_trace'])
                 self.assertEqual(len(r['engine_trace']['events']),8)
                 self.assertTrue(all(m['observation'] for m in r['moves']))
                 self.assertEqual(r['moves'][0]['observation'],r['engine_trace']['events'][0]['decisions'][0]['observation'])
