@@ -49,6 +49,45 @@ let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('versio
 let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
+let feedbackRun = null;
+let feedbackSending = false;
+document.querySelectorAll('[data-feedback]').forEach(button => {
+  button.onclick = () => {
+    if (!RUN) return;
+    if (feedbackRun !== RUN.run_id) $('feedback-text').value = '';
+    feedbackRun = RUN.run_id;
+    $('feedback-game').textContent = RUN.title;
+    $('feedback-status').textContent = '';
+    $('feedback-dialog').showModal();
+    $('feedback-text').focus();
+  };
+});
+$('feedback-close').onclick = () => $('feedback-dialog').close();
+$('feedback-dialog').addEventListener('cancel', event => {
+  if (feedbackSending) event.preventDefault();
+});
+$('feedback-form').onsubmit = async event => {
+  event.preventDefault();
+  if (feedbackSending) return;
+  const text = $('feedback-text').value.trim();
+  if (!text) { $('feedback-status').textContent = 'Please enter your feedback.'; return; }
+  feedbackSending = true;
+  $('feedback-submit').disabled = $('feedback-close').disabled = true;
+  $('feedback-text').readOnly = true;
+  $('feedback-status').textContent = 'Saving…';
+  try {
+    const result = await post('/api/feedback', {run: feedbackRun, text});
+    if (!result.ok) throw new Error(result.error || 'Feedback could not be saved. Please try again.');
+    $('feedback-text').value = '';
+    $('feedback-status').textContent = 'Feedback submitted. Thank you! You can send another or close this window to keep playing.';
+  } catch (err) {
+    $('feedback-status').textContent = err.message || 'Could not connect. Please try again.';
+  } finally {
+    feedbackSending = false;
+    $('feedback-submit').disabled = $('feedback-close').disabled = false;
+    $('feedback-text').readOnly = false;
+  }
+};
 const evalQuery = new URLSearchParams(location.search);
 for (const key of ['condition', 'opponent', 'seed']) {
   const control = $('eval-' + key);

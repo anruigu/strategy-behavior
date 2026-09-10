@@ -72,6 +72,7 @@ import server                                   # noqa: E402  (session driver)
 import views                                    # noqa: E402
 from hosted_opponents import HostedOpponent
 from collector import PlayCollector, player_slug  # noqa: E402
+from play_feedback import save_feedback
 
 import referee_repeat as RR                     # noqa: E402
 
@@ -671,6 +672,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._start(body)
         if u.path == "/api/move":
             return self._move(body)
+        if u.path == "/api/feedback":
+            return self._feedback(body)
         if u.path == "/api/run/next":
             return self._next(body)
         if u.path == "/api/run/quit":
@@ -681,6 +684,27 @@ class Handler(BaseHTTPRequestHandler):
                 r.kill()
             return self._json({"ok": True})
         return self._json({"error": "not found"}, 404)
+
+    def _feedback(self, body):
+        if not isinstance(body, dict) or not isinstance(body.get('run'), str):
+            return self._json({'error': 'Choose a game before submitting feedback.'}, 400)
+        r = RUNS.get(body['run'])
+        if r is None:
+            return self._json({'error': 'This game session has ended. Open a game and try again.'}, 404)
+        s = r.session
+        try:
+            feedback_id = save_feedback(r.collector._dir, body.get('text'),
+                player=r.player, player_slug=r.slug, game=r.gid,
+                run_id=r.id, play_id=s.play_id if s else None,
+                play_index=r.index, turn=s.turn if s else None,
+                seed=s.seed if s else None,
+                engine_version=getattr(catalog.GAMES[r.gid]['game'], 'ENGINE_VERSION', ''),
+                frontend_build=BUILD)
+        except ValueError as exc:
+            return self._json({'error': str(exc)}, 400)
+        except OSError:
+            return self._json({'error': 'Feedback could not be saved. Please try again.'}, 503)
+        return self._json({'ok': True, 'feedback_id': feedback_id})
 
     def _start(self, body):
         player = (body.get("player") or "").strip()

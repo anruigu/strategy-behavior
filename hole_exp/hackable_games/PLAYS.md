@@ -175,6 +175,19 @@ Two things worth knowing before you analyse it:
 
 ## Deploying it
 
+### Participant feedback
+
+Players can use **Submit Feedback** during a play, between plays, or at the end
+of a run. Submissions do not consume game actions and are not sent to opponents.
+There is no submission-count limit; each note can contain up to 10,000 characters.
+Each successful request is flushed immediately to `HG_DATA_DIR/feedback.jsonl`
+(production: `/shared/allie/plays_data/feedback.jsonl`), independently of whether
+the player finishes the game. Rows include feedback ID, timestamp, text, player
+name/slug, game, run/play IDs, play index, turn, seed, engine version, and frontend
+build. Identity and game context come from the server's run, not submitted labels.
+There is no public feedback-reading endpoint. Failed saves keep the draft in the
+form so the player can retry.
+
 **https://strategy-behavior.flt.build deploys from a git commit, not from the
 working tree and not from `/shared/allie/plays`.** Measured 2026-09-04:
 
