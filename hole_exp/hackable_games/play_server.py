@@ -193,6 +193,8 @@ class PlaySession(server.Session):
             "done": st["done"], "moves": st["moves"], "turn": st["turn"],
             "error": st.get("error"),
         }
+        if getattr(self.game, 'is_eval', False) and out['error']:
+            out['error'] = 'This play could not continue.'
         out["public_chat"] = bool(getattr(self.game, "public_chat", False))
         if pending:
             out["pending"] = {
@@ -657,8 +659,7 @@ class Handler(BaseHTTPRequestHandler):
                      "remaining": r.remaining,
                      "memory": '' if r.study else r.memory.render().strip()}
         if r.study:
-            st['run']['eval'] = {key: r.study[key] for key in ('scenario', 'condition', 'opponent', 'focal_seat')}
-            st['run']['eval']['seed'] = r.study['seeds'][r.index]
+            st['run']['eval'] = {'focal_seat': r.study['focal_seat']}
         return st
 
     # -- POST ------------------------------------------------------------
@@ -753,7 +754,19 @@ class Handler(BaseHTTPRequestHandler):
         if bots not in ("honest", "exploit", "ai"):
             return self._json({"error": "unknown opponent mode"}, 400)
         try:
+            assignment = None
+            condition, opponent = body.get('condition', 'nerfed'), body.get('opponent', 'qwen-3.8-27b')
             seed = body.get('seed', 0)
+            if gid in catalog.V4_IDS:
+                from engines_v4 import PROTOCOL
+                rng = random.SystemRandom()
+                conditions = ['ordinary', 'nerfed', 'defensive']
+                models = list(PROTOCOL['models'])
+                condition, opponent = rng.choice(conditions), rng.choice(models)
+                seed = rng.randrange(1000001)
+                assignment = dict(method='server-uniform-independent-v1', unit='run',
+                    conditions=conditions, models=models, starting_seed_range=[0, 1000000],
+                    assigned_at=time.time())
             if not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed <= 1000000:
                 raise ValueError('Seed must be a whole number from 0 to 1000000')
             aids = [f"board:{bg}"] if bg in views.ADAPTERS else []
@@ -763,9 +776,16 @@ class Handler(BaseHTTPRequestHandler):
                 aids.append('preview')
             r = Run(player, gid, arm, plays, bots, p_caught, COLLECTOR,
                     ui_aids=aids,
-                    condition=body.get('condition', 'nerfed'), opponent=body.get('opponent', 'qwen-3.8-27b'), seed=seed)
+                    condition=condition, opponent=opponent, seed=seed)
+            if assignment:
+                r.study['assignment'] = assignment
+                r.study['treatment_assignment'] = assignment['method']
+                COLLECTOR.record_assignment(player=player, game=gid, run_id=r.id,
+                    frontend_build=BUILD, study=r.study)
         except (ValueError, ImportError) as exc:
             return self._json({"error": str(exc)}, 400)
+        except OSError:
+            return self._json({'error': 'Could not save the game setup. Please try again.'}, 503)
         reap_runs()
         make_room()
         slug = player_slug(player)

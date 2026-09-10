@@ -1,7 +1,10 @@
 """Versioned opponent prompts and campaign request settings for V4 play."""
 import json
+import random
 import re
 import time
+import urllib.error
+from email.utils import parsedate_to_datetime
 
 from engines_v3_ma import parse
 from engines_v4 import PROTOCOL
@@ -21,7 +24,7 @@ class EvalOpponent(HostedOpponent):
         self.game_id, self.condition, self.model_key = game_id, condition, model
         self.systems = PROTOCOL['systems'][game_id][condition]
         super().__init__(HostedConfig(cfg['provider_model'], cfg['base_url'], cfg['key_env']), client)
-        # Two attempts total per submission, including transport failures.
+        # Own transport retries here so each failed request is recorded.
         if hasattr(self.client, 'attempts'):
             self.client.attempts = 1
             self.client.timeout = 180
@@ -61,7 +64,7 @@ class EvalOpponent(HostedOpponent):
                 requested_model=self.config.model, max_tokens=limit, settings=settings,
                 correction_attempt=correction, attempt=attempt, started_at=started)
             try:
-                response = self.client.chat.completions.create(model=self.config.model,
+                response = self._request(record, model=self.config.model,
                     messages=messages, max_tokens=limit, **settings)
                 choice = response.choices[0]
                 reply = choice.message.content or ''
@@ -70,6 +73,9 @@ class EvalOpponent(HostedOpponent):
                 if choice.finish_reason != 'stop' or not reply.strip() or getattr(choice.message, 'refusal', None):
                     raise ValueError('Incomplete response')
             except Exception as exc:
+                if isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError)):
+                    # _request already recorded and retried this transport failure.
+                    raise RuntimeError('AI opponent could not complete its turn') from None
                 record.update(error=type(exc).__name__, finished_at=time.time())
                 self._record(record)
                 if attempt + 1 == len(PROTOCOL['output_allowances']):
@@ -80,9 +86,40 @@ class EvalOpponent(HostedOpponent):
             self._record(record)
             return reply
 
+    def _request(self, record, **payload):
+        """Retry temporary transport failures without spending output allowances."""
+        for attempt in range(4):
+            started = time.time()
+            try:
+                return self.client.chat.completions.create(**payload)
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+                status = exc.code if isinstance(exc, urllib.error.HTTPError) else None
+                headers = getattr(exc, 'headers', None) or {}
+                retryable = status is None or status in (408, 429, 500, 502, 503, 504)
+                delay = 2 ** (attempt + 1) + random.uniform(0, 1)
+                retry_after = headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        delay = max(delay, float(retry_after))
+                    except ValueError:
+                        try:
+                            delay = max(delay, parsedate_to_datetime(retry_after).timestamp() - time.time())
+                        except (ValueError, TypeError, OverflowError):
+                            pass
+                # Do not retry early when the provider asks for a longer pause.
+                will_retry = retryable and attempt < 3 and delay <= 30
+                self._record(dict(record, started_at=started, finished_at=time.time(),
+                    transport_attempt=attempt, error=type(exc).__name__, http_status=status,
+                    request_id=headers.get('x-request-id') or headers.get('request-id'),
+                    retry_delay_s=delay if will_retry else None))
+                if not will_retry:
+                    raise
+                time.sleep(delay)
+
     def metadata(self):
         with self._records_lock:
             return dict(model=self.config.model, model_key=self.model_key, base_url=self.config.base_url,
                 scenario=self.game_id, condition=self.condition, systems=self.systems,
                 protocol=PROTOCOL['protocol'], source_run=PROTOCOL['source_run'],
+                transport_policy='transient-4-backoff-v1',
                 decisions=list(self.records))

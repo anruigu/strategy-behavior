@@ -170,6 +170,14 @@ class PlayCollector:
             self._live[rec.play_id] = rec
         return rec.play_id
 
+    def record_assignment(self, **assignment):
+        """Persist a run's assignment before its first opponent request."""
+        with self._lock:
+            with (self._dir / 'assignments.jsonl').open('a') as fh:
+                fh.write(json.dumps(assignment, separators=(',', ':')) + '\n')
+                fh.flush()
+                os.fsync(fh.fileno())
+
     def record_discovery(self, *, player: str, event: dict):
         """Separate durable event: can be marked even after a play is settled."""
         row = dict(event, player=player, player_slug=player_slug(player))

@@ -100,17 +100,6 @@ $('feedback-form').onsubmit = async event => {
     $('feedback-text').readOnly = false;
   }
 };
-const evalQuery = new URLSearchParams(location.search);
-for (const key of ['condition', 'opponent', 'seed']) {
-  const control = $('eval-' + key);
-  const value = evalQuery.get(key);
-  if (value !== null && (key === 'seed' ? /^\d+$/.test(value) && Number(value) <= 1000000 : [...control.options].some(o => o.value === value))) control.value = value;
-  control.onchange = () => {
-    const url = new URL(location.href);
-    url.searchParams.set(key, control.value);
-    history.replaceState(null, '', url);
-  };
-}
 // Bumped every time the board is redrawn. A renderer captures the value it
 // was built under and its context refuses to send once the value has moved
 // on, so a stale board -- one still on screen for the instant between a click
@@ -647,7 +636,7 @@ function renderGames() {
     $('edition-' + e).onclick = () => selectEdition(e);
   });
   $('edition-description').textContent = EDITION === 'v4'
-    ? 'Ten revised scenarios. Market games last eight rounds; purchase terms, auction withdrawals, and council replies arrive before your final choice. Choose the opponent policy, model, and seed below.'
+    ? 'Ten revised scenarios. Market games last eight rounds; purchase terms, auction withdrawals, and council replies arrive before your final choice. You play two fresh plays at each table.'
     : EDITION === 'v0'
     ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'
     : EDITION === 'v3'
@@ -701,12 +690,7 @@ async function startRun(gid, card, variantOrNull) {
   try {
   const setup = {};
   if (gid.startsWith('v4_')) {
-    if (!$('eval-seed').checkValidity() || $('eval-seed').value === '') {
-      $('eval-seed').reportValidity();
-      return;
-    }
-    Object.assign(setup, {condition: $('eval-condition').value, opponent: $('eval-opponent').value, seed: Number($('eval-seed').value),
-      aids: $('eval-preview').checked ? ['preview'] : []});
+    setup.aids = $('eval-preview').checked ? ['preview'] : [];
   }
   const st = await post('/api/run/start', { player: PLAYER, game: gid, ...setup });
   if (st.error) { alert(st.error); return; }
@@ -790,7 +774,7 @@ function paint(st) {
 
   $('play-title').textContent = RUN.title;
   $('play-meta').textContent =
-    `play ${st.run.play_index + 1} of ${st.run.plays}` + (st.run.eval ? ` · You: seat 0 · ${st.run.eval.opponent} · ${st.run.eval.condition} · seed ${st.run.eval.seed}` : '');
+    `play ${st.run.play_index + 1} of ${st.run.plays}` + (st.run.eval ? ' · You: seat 0' : '');
   $('memory').textContent = st.run.eval ? 'Fresh game. Your goal is to maximize your final score.' : st.run.memory || 'This is your first play.';
 
   if (st.done || !st.pending) {
