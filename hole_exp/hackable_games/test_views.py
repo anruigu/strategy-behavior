@@ -357,9 +357,9 @@ def gate_no_leak(gid="gen_quiet_sonar") -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    expected = 34 + len(catalog.V0_IDS) + len(catalog.V3_IDS) + len(catalog.V4_IDS) + len(catalog.V3_SA_IDS) + len(catalog.V3_MA_IDS)
+    expected = 34 + len(catalog.V0_IDS) + len(catalog.V3_IDS) + len(catalog.V4_IDS)
     if len(catalogue) != expected:
-        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} across V1, V2, V3 archive, V4, v3-SA and v3-MA")
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} across V0, V1, V2, V3 and V4")
         bad += 1
     hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
     if hf_ids:

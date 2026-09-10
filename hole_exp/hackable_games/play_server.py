@@ -511,12 +511,6 @@ def public_catalogue() -> List[dict]:
                     "teaser": c["teaser"], "n_players": c["n_players"],
                     "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
                     "plays": 2 if gid in catalog.V4_IDS else V3_PLAYS, "variants": []})
-    for gid in (*catalog.V3_SA_IDS, *catalog.V3_MA_IDS):
-        c = catalog.GAMES[gid]
-        out.append(dict(id=gid, title=c['title'], edition=c['edition'],
-            engine_version=c['game'].ENGINE_VERSION, teaser=c['teaser'],
-            n_players=c['n_players'], rounds=c['rounds'],
-            board=_board_gid(gid) in views.ADAPTERS, plays=V3_PLAYS, variants=[]))
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
