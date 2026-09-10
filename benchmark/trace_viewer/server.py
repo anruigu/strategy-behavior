@@ -13,13 +13,18 @@ from benchmark.v3.evaluator import detected,attempted
 sys.path.insert(0,str(STATIC))
 import ma
 MA_ROOT=ROOT/'benchmark/results/v3-ma-four-model-20260909'
+MA_REFLECTION_ROOT=ROOT/'benchmark/results/v3-ma-reflection-20260909'
+MA_RUNS={ma.RUN_ID:('v3-MA · four-model cross-play',MA_ROOT),
+         'v3-ma-reflection':('v3-MA · reflection vs transcript',MA_REFLECTION_ROOT)}
+PLOT_FILES={f'/plots/{name}.{ext}':MA_ROOT/f'{name}.{ext}' for name in ('crossplay-matrix','behavior-markers','paired-payoffs') for ext in ('png','svg')}
+PLOT_FILES.update({f'/plots/{name}.{ext}':MA_REFLECTION_ROOT/f'{name}.{ext}' for name in ('reflection-learning-curves','reflection-model-effects','reflection-payoffs') for ext in ('png','svg')})
 RUNS={'gemini-original':('Gemini 3.7 Flash · original / high',REFERENCE)}
 RUNS['gemini-revised45']=('Gemini 3.7 Flash · revised 45 / high',ROOT/'benchmark/results/gemini-revised45-20260909')
 for m,n in [('gemini-3.1-pro','Gemini 3.1 Pro Preview'),('gpt-5.6-sol','GPT-5.6 Sol'),('grok-4.6','Grok 4.6')]:
  RUNS['frontier-'+m]=(n+' · revised 45 / high',ROOT/'benchmark/results/frontier45-20260909'/m)
 for m,n in [('gemini-3.7-flash','Gemini 3.7 Flash'),('claude-haiku-4.5','Claude Haiku 4.5'),('gpt-5-mini','GPT-5 mini'),('qwen-3.8-27b','Qwen 3.8 27B'),('glm','GLM 5.3')]:
  RUNS[m]=(n+' · matched / low',ROOT/'benchmark/results/small-engine49-20260909'/m)
-RUNS[ma.RUN_ID]=('v3-MA · four-model cross-play',MA_ROOT)
+RUNS.update(MA_RUNS)
 CACHE={};LOCK=threading.Lock()
 def read(p):
  stamp=p.stat().st_mtime_ns
@@ -61,13 +66,14 @@ def index():
    episodes.append(dict(id=t['id'],game=t['game'],title=card(t)['title'],seed=t['seed'],condition=t['condition'],target=t['target'],target_name=registry[t['target']].description if t['target'] else None,turns=len(t['turns']),hits=sum(s['executed'] for s in scores),attempts=sum(s['attempted'] for s in scores),total=len(scores)))
   status=read(root/'status.json') if (root/'status.json').exists() else {}
   runs.append(dict(id=rid,name=name,episodes=episodes,status=status.get('status','starting'),errors=len(status.get('errors',[]))))
- if (MA_ROOT/'report.json').exists():runs.append(ma.index(MA_ROOT,read))
+ for rid,(name,root) in MA_RUNS.items():
+  if (root/'report.json').exists():runs.append(ma.index(root,read,rid,name))
  return dict(runs=runs,updated=time.time())
 
 def episode(rid,eid):
  if rid not in RUNS:raise KeyError('Unknown run')
  if not eid or '/' in eid or '\\' in eid or eid in ('.','..'):raise KeyError('Invalid episode')
- if rid==ma.RUN_ID:return ma.episode(MA_ROOT,eid,read)
+ if rid in MA_RUNS:return ma.episode(MA_RUNS[rid][1],eid,read)
  root=RUNS[rid][1];t=read(root/'episodes'/eid/'trace.json');targets=targets_for(root)
  specs=[s for s in specs_for(root).values() if s.game_id==t['game'] and s.exploit_id in targets]
  turns=[]
@@ -86,10 +92,19 @@ class Handler(BaseHTTPRequestHandler):
    if u.path=='/api/index':body=json.dumps(index()).encode();mime='application/json'
    elif u.path=='/api/episode':
     q=parse_qs(u.query);body=json.dumps(episode(q.get('run',[''])[0],q.get('id',[''])[0])).encode();mime='application/json'
+   elif u.path=='/api/reflection-summary':
+    report=read(MA_REFLECTION_ROOT/'report.json');state=read(MA_REFLECTION_ROOT/'status.json')
+    body=json.dumps(dict(updated=report['updated'],status=state['status'],outcomes=report['outcomes'],new_outcomes=report['new_outcomes'],summaries=report['summaries'])).encode();mime='application/json'
+   elif u.path in ('/reflection','/reflection/'):
+    body=(STATIC/'reflection.html').read_bytes();mime='text/html'
+   elif u.path in ('/plots','/plots/'):
+    body=(STATIC/'plots.html').read_bytes();mime='text/html'
+   elif u.path in PLOT_FILES:
+    body=PLOT_FILES[u.path].read_bytes();mime='image/png' if u.path.endswith('.png') else 'image/svg+xml'
    elif u.path in ('/','/app.js','/ma.js','/style.css','/regular.ttf','/bold.ttf'):
     name={'/':'index.html','/app.js':'app.js','/ma.js':'ma.js','/style.css':'style.css','/regular.ttf':'regular.ttf','/bold.ttf':'bold.ttf'}[u.path];body=(STATIC/name).read_bytes();mime={'html':'text/html','js':'text/javascript','css':'text/css','ttf':'font/ttf'}[name.split('.')[-1]]
    else:self.send_error(404);return
-   self.send_response(200);self.send_header('Content-Type',mime+'; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(body)
+   self.send_response(200);self.send_header('Content-Type',mime+('; charset=utf-8' if mime.startswith('text/') or mime=='application/json' else ''));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(body)
   except (KeyError,FileNotFoundError):self.send_error(404)
   except Exception as e:print(type(e).__name__,str(e),flush=True);self.send_error(500)
  def log_message(self,*args):pass

@@ -19,10 +19,10 @@ NAMES = {'gemini-3.1-pro':'Gemini 3.1 Pro','gpt-5.6-sol':'GPT-5.6 Sol','grok-4.6
          'deepseek-v4-pro':'DeepSeek V4-Pro 0813','gemma-4-31b':'Gemma 4 31B',
          'qwen-3.5-9b':'Qwen 3.5 9B','gpt-oss-20b':'GPT-OSS-20B'}
 GROUPS = {
-    'Rule / enforcement':['unchecked_self_report','unenforced_limits','undelivered_punishment','rule_order_precedence','meta_rule'],
-    'Information / interface':['information_asymmetry'],
-    'State / time':['resource_conversion','state_reset_refresh','resource_duplication','board_state_poisoning','turn_order','phase_boundary','terminal_condition'],
-    'Multiplayer / objective':['objective_substitution','sacrificial_negative_value','denial_griefing'],
+    'Rule / enforcement':['unchecked_self_report','unenforced_limits','undelivered_punishment','rule_order_precedence'],
+    'Information / interface':['meta_rule','information_asymmetry'],
+    'State / time':['resource_conversion','state_reset_refresh','resource_duplication','turn_order','phase_boundary','terminal_condition'],
+    'Multiplayer / objective':['objective_substitution','sacrificial_negative_value','board_state_poisoning','denial_griefing'],
 }
 
 

@@ -1,0 +1,40 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MA reflection · Exploit atlas</title><link rel="stylesheet" href="/style.css"><style>
+main{max-width:1500px}.plot img{width:100%;height:auto;display:block}.plot{scroll-margin-top:85px}.links{display:flex;gap:18px;flex-wrap:wrap}.reflection-note{margin:12px 0}.status{padding:12px 16px;background:#fff6e7;border-radius:7px}.numbers{overflow-x:auto}.numbers table{border-collapse:collapse;width:100%}.numbers th,.numbers td{padding:10px;text-align:left;border-bottom:1px solid #dce5e5;white-space:nowrap}
+</style></head><body><header><div class="brand">◎ <b>Exploit atlas</b><span>v3-MA / reflection comparison</span></div><div class="links"><a href="/plots">Original plots</a><a href="/#run=v3-ma-reflection&phase=nerfed&learning=reflection&iteration=2">Reflection traces →</a></div></header>
+<main><div class="eyebrow">Four models · four scenarios · matched experience</div><h1>Does private reflection change play?</h1><p id="status" class="status">Loading experiment status…</p>
+<p>Both conditions start from the same recorded first play and retain the focal player's observations and replies. One adds a private reflection before each new play. Other seats reset their contexts while their identities and policies stay fixed. Plays 1–3 use seed 0; play 4 uses seed 1. This changes the clue targets; the three trust-family games have deterministic starting states.</p>
+<p>The screen covers Council, account resets, clue conventions, and pledges, with all 16 focal/opponent model pairings and ordinary or privately nerfed opponents. Reflection receives only the focal player's experience. No model weights are trained.</p>
+<nav class="links"><a href="#learning">Across plays</a><a href="#models">By focal model</a><a href="#payoffs">Final-play payoffs</a><a href="#numbers">Exact counts</a></nav>
+<section class="card plot" id="learning"><h2>Behavioral markers across four plays</h2><p>Each continuation point uses completed reflection/transcript pairs. The denominator is shown below each play. Gaps indicate missing results, and the dashed line in the clue panels marks the new target sequence.</p><a href="/plots/reflection-learning-curves.png"><img src="/plots/reflection-learning-curves.png" alt="Reflection and transcript-only marker fractions across four plays for four scenarios and two opponent conditions."></a><div class="links"><a href="/plots/reflection-learning-curves.png" download>PNG</a><a href="/plots/reflection-learning-curves.svg" download>SVG</a></div></section>
+<section class="card plot" id="models"><h2>Final play, by focal model</h2><p>Each cell shows transcript-only → reflection marker counts at play 4, across up to four opponent lineups. Only the clue game has new seeded targets. This small screen does not establish a general model ranking.</p><a href="/plots/reflection-model-effects.png"><img src="/plots/reflection-model-effects.png" alt="Final-play behavioral markers by focal model, comparing transcript-only with reflection."></a><div class="links"><a href="/plots/reflection-model-effects.png" download>PNG</a><a href="/plots/reflection-model-effects.svg" download>SVG</a></div></section>
+<section class="card plot" id="payoffs"><h2>Final-play payoff difference</h2><p>Reflection minus transcript-only focal score, paired by original episode. Intervals are exploratory paired-episode bootstrap estimates for these fixed model lineups. Game scores have different scales.</p><a href="/plots/reflection-payoffs.png"><img src="/plots/reflection-payoffs.png" alt="Final-play focal score differences between reflection and transcript memory, with exploratory intervals."></a><div class="links"><a href="/plots/reflection-payoffs.png" download>PNG</a><a href="/plots/reflection-payoffs.svg" download>SVG</a></div></section>
+<section class="card numbers" id="numbers"><h2>Play 4 paired results</h2><p>Both branches must be complete for a lineup to count. Marker counts use the original definitions. Score differences are reflection minus transcript-only, in each game's own points.</p><table><thead><tr><th>Scenario</th><th>Opponents</th><th>Complete pairs</th><th>Transcript marker</th><th>Reflection marker</th><th>Mean score difference</th></tr></thead><tbody id="paired-results"></tbody></table></section>
+<p>Reflection adds inference compute and a structured review prompt. Behavioral markers do not establish intent; code consistency and Council message associations require particular care. Incomplete plays are excluded from paired estimates.</p></main>
+<script>
+let lastUpdate;
+async function refresh() {
+  try {
+    const response = await fetch('/api/reflection-summary', {cache:'no-store'});
+    if (!response.ok) throw Error('Results unavailable');
+    const r = await response.json(), n = r.new_outcomes;
+    document.querySelector('#status').textContent = `${r.status.replaceAll('_',' ')} · ${n.complete||0}/768 new plays complete · ${n.running||0} running · ${n.failed||0} failed plays · ${n.not_started||0} not started · 128 shared first plays · updated ${new Date(r.updated).toLocaleString()}`;
+    const labels = {v3ma_trust_messages:'Council',v3ma_trust_memory:'Account reset',v3ma_signal_convention:'Clue convention',v3ma_trust_pledge:'Pledge'};
+    document.querySelector('#paired-results').replaceChildren(...r.summaries.filter(s=>s.iteration===4).map(s=>{
+      const row = document.createElement('tr'), count = s.complete_pairs;
+      const values = [labels[s.game]||s.game,s.condition,`${count}/${s.planned_pairs}`,
+        count?`${s.transcript_markers}/${count}`:'—',count?`${s.reflection_markers}/${count}`:'—',
+        s.mean_score_delta===null?'—':`${s.mean_score_delta>=0?'+':''}${s.mean_score_delta.toFixed(2)}`];
+      values.forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
+      return row;
+    }));
+    if (lastUpdate !== r.updated) {
+      document.querySelectorAll('.plot img').forEach(img => {
+        img.src = img.src.split('?')[0] + '?updated=' + encodeURIComponent(r.updated);
+      });
+      lastUpdate = r.updated;
+    }
+  } catch(e) { document.querySelector('#status').textContent = e.message; }
+}
+refresh();
+setInterval(refresh, 30000);
+</script></body></html>

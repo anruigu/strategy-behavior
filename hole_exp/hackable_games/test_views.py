@@ -54,7 +54,7 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V4_IDS}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V4_IDS, *catalog.V3_SA_IDS, *catalog.V3_MA_IDS}
 OFF_ROSTER_ADAPTERS.update(catalog.HISTORICAL_V3_IDS)
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
@@ -195,6 +195,9 @@ def drive(gid: str, seed: int = 11, arm: str = "hole"):
     c = catalog.GAMES[gid]
     if getattr(c['game'], 'is_eval', False):
         bot = lambda pid, phase, prompt: _from_view(views.build(gid, phase, prompt), phase, prompt)
+    elif gid in catalog.V3_MA_IDS:
+        from bots_v3_ma import Scripted
+        bot = Scripted()
     elif c["family"] == "generated":
         bot = GENBOTS.Scripted("honest", seed)
     elif c["family"] == "textarena":
@@ -354,9 +357,9 @@ def gate_no_leak(gid="gen_quiet_sonar") -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    expected = 34 + len(catalog.V3_IDS) + len(catalog.V0_IDS) + len(catalog.V4_IDS)
+    expected = 34 + len(catalog.V0_IDS) + len(catalog.V3_IDS) + len(catalog.V4_IDS) + len(catalog.V3_SA_IDS) + len(catalog.V3_MA_IDS)
     if len(catalogue) != expected:
-        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} (24 V1 + 10 V2 + {len(catalog.V3_IDS)} V3 + {len(catalog.V4_IDS)} V4)")
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} across V1, V2, V3 archive, V4, v3-SA and v3-MA")
         bad += 1
     hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
     if hf_ids:
@@ -783,7 +786,7 @@ def main() -> int:
     bad += int(not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful())
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
-    for gid in (*catalog.V2_IDS.values(), *catalog.V3_IDS.values()):
+    for gid in (*catalog.V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V3_SA_IDS, *catalog.V3_MA_IDS):
         bad += gate_no_leak(gid)
     bad += gate_no_leak(catalog.HUMAN_HANABI_ID)
     print("\n== PLAYER-VISIBLE COPY ==")

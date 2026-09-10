@@ -350,7 +350,7 @@ class Run:
 
         if getattr(game, "symmetric_seats", False):
             result["engine_trace"] = {key: ep.extras.get(key) for key in ("seat_requests", "events", "final_state", "rounds_played")}
-        if self.study:
+        if self.study or game.NAME.startswith('v3ma_'):
             result['engine_trace'] = ep.extras
         self.collector.finish(
             s.play_id, result,
@@ -373,7 +373,7 @@ class Run:
         scores are public on every turn anyway (V2 and V3). V1 cells keep
         rival scores server-side."""
         c = catalog.GAMES[self.gid]
-        if c.get("edition") not in ("v0", "v2", "v3", "v4") or "scores" not in result:
+        if c.get("edition") not in ("v0", "v2", "v3", "v4", "v3-sa", "v3-ma") or "scores" not in result:
             return None
         scores = result["scores"]
         seats = list(getattr(game, "SEATS", ()) or [])
@@ -507,6 +507,12 @@ def public_catalogue() -> List[dict]:
                     "teaser": c["teaser"], "n_players": c["n_players"],
                     "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
                     "plays": 2 if gid in catalog.V4_IDS else V3_PLAYS, "variants": []})
+    for gid in (*catalog.V3_SA_IDS, *catalog.V3_MA_IDS):
+        c = catalog.GAMES[gid]
+        out.append(dict(id=gid, title=c['title'], edition=c['edition'],
+            engine_version=c['game'].ENGINE_VERSION, teaser=c['teaser'],
+            n_players=c['n_players'], rounds=c['rounds'],
+            board=_board_gid(gid) in views.ADAPTERS, plays=V3_PLAYS, variants=[]))
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
@@ -734,16 +740,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad arm"}, 400)
         bg = _board_gid(gid)
         plays = int(body.get("plays") or RUN_PLAYS.get(gid)
-                      or (2 if gid in catalog.V4_IDS else V3_PLAYS if gid in catalog.V3_IDS or gid in catalog.V0_IDS else 0)
+                      or (2 if gid in catalog.V4_IDS else V3_PLAYS if catalog.GAMES[gid].get("edition") in ("v0", "v3", "v3-sa", "v3-ma") else 0)
                       or RUN_PLAYS.get(bg, DEFAULT_PLAYS))
         plays = max(1, min(plays, 12))
         p_caught = float(body.get("p_caught") or
                          os.environ.get("HG_P_CAUGHT") or 0.0)
         p_caught = min(max(p_caught, 0.0), 1.0)
 
-        bots = "ai" if gid in catalog.V4_IDS or gid in catalog.V0_IDS else body.get("bots", "honest")
-        if bots == "ai" and gid not in catalog.V4_IDS and gid not in catalog.V0_IDS:
-            return self._json({"error": "Choose a V0 or V4 game to play against AI"}, 400)
+        if gid in catalog.V3_MA_IDS and arm == 'nohole' and catalog.GAMES[gid]['game'].CONTROL == 'policy':
+            return self._json({'error': 'This game uses an opponent strategy control.'}, 400)
+        bots = "ai" if gid in catalog.V4_IDS or gid in catalog.V0_IDS or gid in catalog.V3_MA_IDS else body.get("bots", "honest")
+        if bots == "ai" and gid not in catalog.V4_IDS and gid not in catalog.V0_IDS and gid not in catalog.V3_MA_IDS:
+            return self._json({"error": "Choose a V0, v3-MA or V4 game to play against AI"}, 400)
         if bots not in ("honest", "exploit", "ai"):
             return self._json({"error": "unknown opponent mode"}, 400)
         try:

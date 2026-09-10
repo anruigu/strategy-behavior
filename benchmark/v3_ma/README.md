@@ -5,11 +5,47 @@ Built 2026-09-09 from the [multi-agent taxonomy](../../research_logs/sep09-multi
 45-target single-agent set, spread across 17 editions.** Targets and scenarios
 are different counting units; 45 versus 14 is not a direct coverage comparison.
 
+The private [MA hack book](artifacts/HACKBOOK.md) covers all 14 scenarios with
+player-control recipes, required opponent responses, replayed payoff comparisons,
+and evidence from the saved four-model run. It is a research answer key and must
+not be served to participants. Regenerate it with `python -m benchmark.v3_ma.hackbook`
+in the research environment; `--check` verifies the artifacts without model calls.
+
 The [suite manifest](artifacts/suites.json) contains both sets, stable target IDs,
 roles, controls, and the mapping from the eleven old opponent-dependent cells.
 The old cells are consolidated into mechanism-level successors, not eleven
 byte-for-byte recreations: the original keyword, greeting-order, and price
 threshold triggers are no longer facts enforced by the engine.
+
+## Reflection comparison
+
+The [reflection run protocol](../results/v3-ma-reflection-20260909/RUN.md) branches
+from 128 completed first plays in Council, account reset, clue convention, and
+pledge. All 16 model pairings and both opponent conditions are included. Each
+branch makes three additional plays, for 768 new episodes: one branch retains
+the focal's transcript, and the other also writes a private reflection before
+each continuation. Other seats begin each play with fresh contexts. No weights
+are trained. Play 4 changes the clue targets; the trust games have deterministic
+starting states and remain repetitions of the same setup.
+
+[Paired results](../results/v3-ma-reflection-20260909/REPORT.md) and
+[viewer plots](http://localhost:42327/reflection) show reflection versus transcript
+memory. The viewer labels each play and model and displays the private notes.
+The generic reflection prompt supplies no recipient identity or exploit recipe.
+Accepted replies and notes are checkpointed; the run allows one recovery pass.
+That pass restores the base client's 600-second transport timeout after many
+GLM reflections exceeded the main runner's 180-second wait; the protocol records
+this amendment separately while preserving all model request settings.
+The analysis counts only complete matched plays and reports provider failures
+separately. Additional discovery and Council diagnostics are descriptive.
+
+```bash
+PY=/shared/allie/venvs/hole/bin/python
+$PY -m benchmark.v3_ma.reflection_report --out benchmark/results/v3-ma-reflection-20260909
+$PY -m benchmark.v3_ma.reflection_analysis --out benchmark/results/v3-ma-reflection-20260909
+$PY -m benchmark.v3_ma.reflection_plot --out benchmark/results/v3-ma-reflection-20260909
+$PY -m benchmark.v3_ma.reflection_verify --out benchmark/results/v3-ma-reflection-20260909
+```
 
 ## Four-model cross-play screen
 

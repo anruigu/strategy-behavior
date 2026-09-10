@@ -43,9 +43,9 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-const EDITIONS = ['v0', 'v1', 'v2', 'v3', 'v4'];
+const EDITIONS = ['v0', 'v1', 'v2', 'v3', 'v4', 'v3-sa', 'v3-ma'];
 let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('version'))
-  ? new URLSearchParams(location.search).get('version') : 'v3';
+  ? new URLSearchParams(location.search).get('version') : 'v3-sa';
 let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
@@ -641,7 +641,11 @@ function renderGames() {
     $('edition-' + e).setAttribute('aria-pressed', String(EDITION === e));
     $('edition-' + e).onclick = () => selectEdition(e);
   });
-  $('edition-description').textContent = EDITION === 'v4'
+  $('edition-description').textContent = EDITION === 'v3-sa'
+    ? 'Seventeen editions in the single-agent set. Each game has a rules card and three plays.'
+    : EDITION === 'v3-ma'
+    ? 'Fourteen scenarios across five game families. AI players choose the other seats’ actions; each game has three plays.'
+    : EDITION === 'v4'
     ? 'Ten revised scenarios. Market games last eight rounds; purchase terms, auction withdrawals, and council replies arrive before your final choice. Choose the opponent policy, model, and seed below.'
     : EDITION === 'v0'
     ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'

@@ -39,3 +39,15 @@ callbacks, with no scripted fallback.
 
 The release is prepared from current public main in an isolated worktree,
 `/tmp/strategy-v4-playtest-revision`, and includes only this task's changes.
+
+Published application revision: `c489fba0` (public V4 reports `v4-human-eval-2`).
+The final ordinary-Qwen offer check completed at 33 focal points versus -2
+for the buyer. Posted terms changed across rounds, including positive offers
+and refusals; the zero-price problem from the preliminary check did not recur.
+This is one informed functionality run, not a discovery estimate.
+
+Public verification completed: offer `dde618fc709e`, room `ceb1f2a68707`,
+council `907881b6ad1c`. Each completed a round through the public client,
+then was intentionally abandoned. Saved records confirm current hashes,
+version, structural features, exact focal observations, and completed stages.
+The public browser menu and setup controls passed; deployment is 5/5 ready.

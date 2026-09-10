@@ -228,3 +228,42 @@ The opponent-implementation analysis is primarily a **robustness/control analysi
 The headline result should be a comparison of **human and AI gameability profiles**:
 
 > **Which kinds of game holes do humans discover spontaneously, which do they discover when explicitly encouraged to explore, which do AI agents discover, and how do these patterns differ across exploit mechanisms and opponent behaviors?**
+
+## Interactive pilot implementation (September 9)
+
+The personal-play version is [V4 · Opponent interventions](https://strategy-behavior.flt.build/?version=v4).
+The former symmetric Qwen games moved to [V0 · Play against AI](https://strategy-behavior.flt.build/?version=v0).
+V4 substitutes the human for seat 0 in the frozen
+`benchmark/results/v3-ma-four-model-20260909/` eval. It includes its ten
+recipient-dependent scenarios and keeps the referee ordinary. The four Commons
+scenarios have no nerfed treatment and are outside the current V4 menu.
+
+| Condition | Opponent policy | Referee | Current V4 |
+| --- | --- | --- | --- |
+| Baseline | Ordinary eval prompt | Ordinary/open | Available |
+| Opponent intervention | Exact scenario-specific nerfed eval prompt | Ordinary/open | Available; default |
+| Opponent intervention | Defensive policy from the eval specifications | Ordinary/open | Available; not sampled in the linked four-model screen |
+| Rule intervention | Ordinary | Patched | Deferred |
+| Both | Defensive/nerfed | Patched | Deferred |
+
+The launch controls select Qwen 3.8 27B, GLM 5.3, Claude Haiku 4.5, or GPT-5 mini
+and a starting seed. Two fresh plays use that seed and its successor (default
+0 and 1). Nerfs target the same recipient seats as the eval; outsiders retain
+the ordinary prompt. Simultaneous submissions run concurrently and remain
+private until their stage resolves. Dependent stages remain ordered.
+
+This is an operator-visible personal-play pilot, not yet blinded/randomized
+participant assignment. The human sees the same game information and action
+choices as the focal AI, presented as controls. There is no scripted substitute
+for an invalid or failed AI response. Models are sampled anew; matching a seed
+does not force them to repeat a saved action.
+
+Schema 6 records include condition, model, canonical scenario, seed, protocol,
+source hashes, exact human observations/actions, private opponent histories,
+and completed referee events. See
+[the implementation notes](../../hole_exp/hackable_games/V4.md) for persistence
+limits and validation. All ten scenarios passed browser playthroughs. Replaying
+saved AI actions from every scenario in ordinary and nerfed conditions reproduced
+byte-identical observations/system prompts and final scores.
+
+[Consolidated AI results: win-only, exploration and hints, with inline stars and matrices](model-prompt-results.md).

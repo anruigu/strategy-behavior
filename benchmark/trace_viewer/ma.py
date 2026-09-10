@@ -24,11 +24,13 @@ def model_name(name):
     return MODEL_NAMES.get(name, name)
 
 
-def index(root, read):
+def index(root, read, run_id=RUN_ID, name='v3-MA · four-model cross-play'):
     report, plan = read(root / 'report.json'), read(root / 'plan.json')
     specs = {s['id']: s for s in plan['suite']['scenarios']}
     titles, episodes = {}, []
     for row in report['episodes']:
+        if row['status'] == 'not_started':
+            continue
         game = row['game']
         if game not in titles:
             trace = read(root / 'episodes' / row['id'] / 'trace.json')
@@ -39,11 +41,13 @@ def index(root, read):
             focal=row['focal'], opponent=row['opponent'], focal_name=model_name(row['focal']),
             opponent_name=model_name(row['opponent']), status=row['status'],
             turns=specs[game]['rounds'], target=None, target_name=None,
+            iteration=row.get('iteration'), learning_arm=row.get('learning_arm'),
             hits=int(mark['episode_marker']) if mark else None,
             hit_rounds=mark['hit_rounds'] if mark else None,
             attempts=mark['attempted_rounds'] if mark else None, total=1))
     status = read(root / 'status.json')
-    return dict(id=RUN_ID, name='v3-MA · four-model cross-play', suite='v3-MA', episodes=episodes,
+    return dict(id=run_id, name=name, suite='v3-MA', episodes=episodes, planned=len(plan['tasks']),
+                learning_arms=plan.get('learning_arms'),
                 phases=[dict(id='ordinary', name='Ordinary opponents'), dict(id='nerfed', name='Nerfed opponents')],
                 models=[dict(id=m, name=model_name(m)) for m in plan['models']],
                 status=status['status'], errors=report['outcomes'].get('failed', 0))
@@ -108,7 +112,7 @@ def episode(root, eid, read):
     trace = read(root / 'episodes' / eid / 'trace.json')
     task = trace['task']
     spec = next(s for s in plan['suite']['scenarios'] if s['id'] == task['game'])
-    complete = trace['status'] == 'complete'
+    complete = trace['status'] == 'complete' and bool(row.get('marker'))
     participants = []
     for pid in range(spec['seats']):
         key = task['focal'] if pid == 0 else task['opponent']
@@ -130,7 +134,7 @@ def episode(root, eid, read):
     saved = row.get('marker')
     markers = {m['round']: m for m in saved['by_round']} if saved else {}
     definition = next(g['definition'] for g in report['games'] if g['game'] == task['game'])
-    events = trace.get('episode', {}).get('extras', {}).get('events', [])
+    events = trace.get('episode', {}).get('extras', {}).get('events', []) if complete else []
     rounds = []
     for number in range(1, spec['rounds'] + 1):
         stages, annotations = [], []
@@ -156,14 +160,23 @@ def episode(root, eid, read):
             payoff=[a-b for a, b in zip(scores, before)] if scores is not None else None,
             scored=complete, recorded=bool(stages)))
     opposite = 'nerfed' if task['condition'] == 'ordinary' else 'ordinary'
-    counterpart = next((r for r in report['episodes'] if r['condition'] == opposite and
-                       all(r[k] == task[k] for k in ('game', 'focal', 'opponent', 'seed'))), None)
+    counterpart = next((r for r in report['episodes'] if r['condition'] == opposite and r['status'] != 'not_started' and
+                       all(r[k] == task[k] for k in ('game', 'focal', 'opponent', 'seed')) and
+                       all(r.get(k) == task.get(k) for k in ('iteration','learning_arm'))), None)
+    learning_pair = next((r for r in report['episodes'] if task.get('iteration',1) > 1 and
+        r.get('baseline_id') == task.get('baseline_id') and r.get('iteration') == task.get('iteration') and
+        r.get('learning_arm') != task.get('learning_arm') and r['status'] != 'not_started'), None)
+    decisions = trace['decisions'] or read(root/'episodes'/task['baseline_id']/'trace.json')['decisions']
     return dict(suite='v3-MA', id=eid, game=task['game'], seed=task['seed'], condition=task['condition'],
-        status=trace['status'], error=trace.get('error'), recovery=trace.get('recovery'),
-        card=field(trace['decisions'][0]['observation'], 'Card'),
+        status='awaiting_report' if trace['status'] == 'complete' and not complete else trace['status'],
+        error=trace.get('error'), recovery=trace.get('recovery'),
+        card=field(decisions[0]['observation'], 'Card'),
+        iteration=task.get('iteration'), learning_arm=task.get('learning_arm'),
+        incoming_reflections=trace.get('incoming_reflections', []),
         focal=task['focal'], opponent=task['opponent'], participants=participants, rounds=rounds,
         systems=trace['systems'], definition=definition, marker=saved,
         final_scores=[trace['episode']['scores'][str(p)] for p in range(spec['seats'])] if complete else None,
         paired_episode=dict(id=counterpart['id'], condition=opposite, status=counterpart['status']) if counterpart else None,
+        paired_learning_episode=dict(id=learning_pair['id'], learning_arm=learning_pair['learning_arm']) if learning_pair else None,
         interpretation='Markers use the saved v3-MA report. They describe observed behavior, not intent, learning, or causal payoff effects. '
                        'Purple marks are limited code-pattern or message-association evidence. Failed episodes are unscored.')

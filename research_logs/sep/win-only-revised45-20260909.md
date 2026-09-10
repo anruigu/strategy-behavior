@@ -37,3 +37,7 @@ Missing episodes never become zeros; partial model cohorts may differ. Primary m
 Four regression tests cover prompt-only removal, no hidden-state leakage, same-round retry checkpoints, complete-history resume checks, paired-case selection and missing-versus-zero handling. 303 source identities and 253 reused traces passed verification before new inference. Each completed new model run verifies all new traces and accepted API contexts before finishing.
 
 Source: `benchmark/fullscale/prompt45.py`, `plot_prompt45.py`, `test_prompt45.py`; executable copies under the output's `runner/`. Model `process.json` records exact launch commands. Set `PROMPT45_PROJECT_ROOT=/shared/allie/strategy-behavior` when invoking archived runner copies. The plot watcher is read-only with respect to API calls.
+
+## Consolidated three-condition report
+
+[All model results with inline stars and matrices](model-prompt-results.md) combines revised win-only/exploration data with compatible frontier hints, and keeps historical open-model hints in a separate labeled section. The initial win-only star renderer grouped meta-rule and board-state poisoning differently from the original benchmark stars; this was corrected to the original assignments (Information/interface and Multiplayer/objective respectively). Overall activation counts are unchanged. The report refreshes automatically without API calls.

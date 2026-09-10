@@ -9,6 +9,9 @@ function configureRun() {
     button.classList.toggle('active', phases[i].id === phase);
   });
   $('#ma-filters').hidden = !multi;
+  $('#reflection-filters').hidden = !multi || !r.learning_arms;
+  $('#learning').value = learningFilter;
+  $('#iteration').value = iterationFilter;
   const oldOutcome = $('#outcome').value;
   $('#outcome').innerHTML = multi
     ? '<option value="all">All episodes</option><option value="hit">With an episode marker</option><option value="miss">Complete · no episode marker</option><option value="incomplete">Incomplete episodes</option>'
@@ -28,22 +31,24 @@ function listMA(r) {
   filtered = r.episodes.filter(e => e.condition === phase &&
     (focalFilter === 'all' || e.focal === focalFilter) &&
     (opponentFilter === 'all' || e.opponent === opponentFilter) &&
+    (!r.learning_arms || learningFilter === 'all' || e.learning_arm === learningFilter) &&
+    (!r.learning_arms || iterationFilter === 'all' || String(e.iteration) === iterationFilter) &&
     (!q || `${e.title} ${e.game} ${e.focal_name} ${e.opponent_name}`.toLowerCase().includes(q)) &&
     (outcome === 'all' || (outcome === 'incomplete' ? e.status !== 'complete' :
       e.status === 'complete' && (outcome === 'hit' ? e.hits > 0 : e.hits === 0))));
   const complete = filtered.filter(e => e.status === 'complete').length;
-  $('#count').textContent = `${complete} complete · ${filtered.length - complete} incomplete shown · ${r.episodes.length} in run`;
+  $('#count').textContent = `${complete} complete · ${filtered.length - complete} unfinished shown · ${r.episodes.length}/${r.planned||r.episodes.length} recorded in run`;
   const groups = new Map();
   for (const e of filtered) {
-    const key = [e.game,e.focal,e.opponent].join('|');
+    const key = [e.game,e.focal,e.opponent,e.learning_arm||'',e.iteration||''].join('|');
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(e);
   }
   $('#episodes').innerHTML = [...groups.values()].sort((a,b) =>
     a[0].title.localeCompare(b[0].title) || a[0].focal_name.localeCompare(b[0].focal_name) || a[0].opponent_name.localeCompare(b[0].opponent_name)
   ).map(es => `<div class="game"><div class="game-name">${esc(es[0].title)}</div>
-    <div class="hintname">Focal: ${esc(es[0].focal_name)}<br>Other seats: ${esc(es[0].opponent_name)}</div>
-    <div class="seedrow">${es.sort((a,b) => a.seed-b.seed).map(e => `<button class="seed ${e.hits?(['v3ma_signal_convention','v3ma_trust_messages'].includes(e.game)?'pattern':'hit'):''} ${e.status!=='complete'?'failed':''} ${selected===e.id?'selected':''}" data-id="${esc(e.id)}">Seed ${e.seed}<small>${e.status!=='complete'?'Incomplete':e.hits?'Marker observed':'No episode marker'}</small></button>`).join('')}</div></div>`).join('') || '<p class="muted">No matching episodes. Commons have an ordinary condition only.</p>';
+    <div class="hintname">Focal: ${esc(es[0].focal_name)}<br>Other seats: ${esc(es[0].opponent_name)}${es[0].learning_arm?'<br>'+esc(label(es[0].learning_arm)):''}</div>
+    <div class="seedrow">${es.sort((a,b) => a.seed-b.seed).map(e => `<button class="seed ${e.hits?(['v3ma_signal_convention','v3ma_trust_messages'].includes(e.game)?'pattern':'hit'):''} ${e.status!=='complete'?'failed':''} ${selected===e.id?'selected':''}" data-id="${esc(e.id)}">${e.iteration?'Play '+e.iteration+' · ':''}Seed ${e.seed}<small>${e.status!=='complete'?esc(label(e.status)):e.hits?'Marker observed':'No episode marker'}</small></button>`).join('')}</div></div>`).join('') || '<p class="muted">No matching recorded episodes. Commons have an ordinary condition only.</p>';
   document.querySelectorAll('[data-id]').forEach(b => b.onclick = () => openEpisode(b.dataset.id));
 }
 
@@ -98,11 +103,15 @@ function maRound(t, r) {
 function renderMA(t) {
   const mark = t.marker, first = t.rounds.find(r => r.annotations.some(a=>a.round_hit));
   const markerClass = mark?.episode_marker ? (['v3ma_signal_convention','v3ma_trust_messages'].includes(t.game)?'pattern':'hit') : '';
-  $('#main').innerHTML = `<div class="eyebrow">v3-MA · four-model cross-play · ${esc(t.condition)} opponents</div>
+  $('#main').innerHTML = `<div class="eyebrow">${esc(data.runs.find(r=>r.id===run).name)} · ${esc(t.condition)} opponents</div>
     <h1>${esc(t.card.title)}</h1><div class="topline">${pill('Seed '+t.seed)}${pill(t.rounds.length+' rounds')}${pill(t.status==='complete'?'Complete':'Incomplete',t.status==='complete'?'':'failed')}${pill(mark?(mark.episode_marker?'Episode marker observed':'No episode marker'):'Unscored',markerClass)}
-    ${t.paired_episode?`<button id="pairedlink">Open matched ${esc(t.paired_episode.condition)} episode${t.paired_episode.status==='complete'?'':' · incomplete'} ↔</button>`:''}</div>
+    ${t.iteration?pill('Play '+t.iteration+' · '+label(t.learning_arm)):''}
+    ${t.paired_episode?`<button id="pairedlink">Open matched ${esc(t.paired_episode.condition)} episode${t.paired_episode.status==='complete'?'':' · unfinished'} ↔</button>`:''}
+    ${t.paired_learning_episode?`<button id="learninglink">Compare ${esc(label(t.paired_learning_episode.learning_arm))} ↔</button>`:''}</div>
     <div class="ma-lineup top-lineup">${t.participants.map(p => maActor(p)).join('')}</div>
-    ${t.status!=='complete'?`<div class="notice failure"><b>Incomplete · excluded from score and marker estimates</b><p>The provider returned no usable final action. Saved submissions are shown below; scores and exploit outcomes are unscored.</p><code>${esc(t.error)}</code></div>`:''}
+    ${t.status!=='complete'?`<div class="notice failure"><b>${esc(label(t.status))} · scores and markers unavailable</b><p>Saved submissions are shown below. Final outcomes will appear only after the episode and report complete.</p>${t.error?'<code>'+esc(t.error)+'</code>':''}</div>`:''}
+    ${t.iteration?`<div class="card private-notes"><h2>Focal experience before play ${t.iteration}</h2><p>${t.learning_arm==='shared'?'Shared original first play.':t.learning_arm==='reflection'?'The focal retained its earlier observations, responses, and private reflection notes. Other seats started with fresh contexts.':'The focal retained its earlier observations and responses. No reflection call was added; other seats started with fresh contexts.'}</p>
+      ${(t.incoming_reflections||[]).map(n=>`<details class="reflection-note"><summary>After play ${n.after_iteration} · Seat 0 · ${esc(n.metadata.actual_model)}</summary><div class="response">${esc(n.reply)}</div><details><summary>Reflection instruction</summary><pre class="raw">${esc(n.request)}</pre></details></details>`).join('')}</div>`:''}
     ${t.recovery?'<p class="footnote">Recovery replayed every earlier recorded reply unchanged before requesting a continuation.</p>':''}
     <div class="card"><h2>The task</h2><p class="goal">${esc(t.card.goal)}</p><div class="rules"><div><h3>How a round works</h3><p>${esc(t.card.turn)}</p></div><div><h3>Scoring</h3><p>${esc(t.card.scoring)}</p></div></div>
       <details style="margin-top:15px"><summary>Exact private system prompt for each seat</summary>${t.participants.map(p=>`<h3>Seat ${p.pid} · ${esc(p.model_name)} · ${p.nerfed?'nerfed':'ordinary'}</h3><pre class="raw">${esc(t.systems[p.pid])}</pre>`).join('')}</details></div>
@@ -123,6 +132,10 @@ function renderMA(t) {
   if ($('#pairedlink')) $('#pairedlink').onclick = () => {
     phase = t.paired_episode.condition; $('#outcome').value = 'all';
     setPhase(); openEpisode(t.paired_episode.id); window.scrollTo(0,0);
+  };
+  if ($('#learninglink')) $('#learninglink').onclick = () => {
+    learningFilter=t.paired_learning_episode.learning_arm;$('#outcome').value='all';
+    setPhase();openEpisode(t.paired_learning_episode.id);window.scrollTo(0,0);
   };
   for (const [id,offset] of [['previous',-1],['next',1]]) {
     const i = filtered.findIndex(x=>x.id===selected)+offset;

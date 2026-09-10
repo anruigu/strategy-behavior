@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s), esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data,run='gemini-original',phase='blind',selected='',filtered=[],request=0,focalFilter='all',opponentFilter='all';
+let data,run='gemini-original',phase='blind',selected='',filtered=[],request=0,focalFilter='all',opponentFilter='all',learningFilter='all',iterationFilter='all';
 const label=c=>c.replaceAll('_',' '), pill=(text,cls='')=>`<span class="pill ${cls}">${esc(text)}</span>`;
-function syncHash(){history.replaceState(null,'','#'+new URLSearchParams({run,phase,episode:selected,...(run==='v3-ma-four-model'?{focal:focalFilter,opponent:opponentFilter}:{})}));}
+function syncHash(){history.replaceState(null,'','#'+new URLSearchParams({run,phase,episode:selected,...(run.startsWith('v3-ma')?{focal:focalFilter,opponent:opponentFilter,learning:learningFilter,iteration:iterationFilter}:{})}));}
 function list(){const r=data.runs.find(r=>r.id===run);if(!r)return;if(r.suite==='v3-MA')return listMA(r);const q=$('#search').value.toLowerCase(),o=$('#outcome').value;
 filtered=r.episodes.filter(e=>e.condition===phase&&(!q||(e.title+' '+(e.target_name||'')).toLowerCase().includes(q))&&(o==='all'||(o==='hit'?e.hits>0:e.hits===0)));
 $('#count').textContent=`${filtered.length} completed episodes · ${r.status.replaceAll('_',' ')}${r.errors?' · '+r.errors+' incomplete episodes':''}`;
@@ -48,4 +48,5 @@ $('#run').onchange=e=>{run=e.target.value;selected='';setPhase();if(filtered[0])
 document.querySelectorAll('[data-phase]').forEach(b=>b.onclick=()=>{phase=b.dataset.phase;selected='';setPhase();if(filtered[0])openEpisode(filtered[0].id);else $('#main').innerHTML='<div class="empty">No completed episodes in this phase yet.</div>';});
 $('#search').oninput=list;$('#outcome').onchange=list;$('#refresh').onclick=refresh;
 for(const id of ['focal','opponent'])$('#'+id).onchange=e=>{if(id==='focal')focalFilter=e.target.value;else opponentFilter=e.target.value;selected='';list();syncHash();if(filtered[0])openEpisode(filtered[0].id);else $('#main').innerHTML='<div class="empty">No episodes match these filters.</div>';};
-const initial=new URLSearchParams(location.hash.slice(1));run=initial.get('run')||run;phase=initial.get('phase')||phase;selected=initial.get('episode')||'';focalFilter=initial.get('focal')||'all';opponentFilter=initial.get('opponent')||'all';refresh();
+for(const id of ['learning','iteration'])$('#'+id).onchange=e=>{if(id==='learning')learningFilter=e.target.value;else iterationFilter=e.target.value;selected='';list();syncHash();if(filtered[0])openEpisode(filtered[0].id);else $('#main').innerHTML='<div class="empty">No recorded episodes match these filters yet.</div>';};
+const initial=new URLSearchParams(location.hash.slice(1));run=initial.get('run')||run;phase=initial.get('phase')||phase;selected=initial.get('episode')||'';focalFilter=initial.get('focal')||'all';opponentFilter=initial.get('opponent')||'all';learningFilter=initial.get('learning')||'all';iterationFilter=initial.get('iteration')||'all';refresh();
