@@ -686,6 +686,20 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found"}, 404)
 
     def _feedback(self, body):
+        if isinstance(body, dict) and body.get('scope') == 'general':
+            player = body.get('player')
+            if not isinstance(player, str) or not player.strip() or len(player.strip()) > 40:
+                return self._json({'error': 'Enter a player name of up to 40 characters.'}, 400)
+            try:
+                feedback_id = save_feedback(COLLECTOR._dir, body.get('text'),
+                    scope='general', player=player.strip(), player_slug=player_slug(player),
+                    game=None, run_id=None, play_id=None, play_index=None, turn=None,
+                    seed=None, engine_version=None, frontend_build=BUILD)
+            except ValueError as exc:
+                return self._json({'error': str(exc)}, 400)
+            except OSError:
+                return self._json({'error': 'Feedback could not be saved. Please try again.'}, 503)
+            return self._json({'ok': True, 'feedback_id': feedback_id})
         if not isinstance(body, dict) or not isinstance(body.get('run'), str):
             return self._json({'error': 'Choose a game before submitting feedback.'}, 400)
         r = RUNS.get(body['run'])
@@ -694,7 +708,7 @@ class Handler(BaseHTTPRequestHandler):
         s = r.session
         try:
             feedback_id = save_feedback(r.collector._dir, body.get('text'),
-                player=r.player, player_slug=r.slug, game=r.gid,
+                scope='game', player=r.player, player_slug=r.slug, game=r.gid,
                 run_id=r.id, play_id=s.play_id if s else None,
                 play_index=r.index, turn=s.turn if s else None,
                 seed=s.seed if s else None,

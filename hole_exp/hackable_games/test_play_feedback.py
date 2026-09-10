@@ -52,6 +52,23 @@ class FeedbackTests(unittest.TestCase):
         rows = [json.loads(s) for s in (self.path/'feedback.jsonl').read_text().splitlines()]
         self.assertEqual({r['text'] for r in rows}, {f'note {n}' for n in range(40)})
 
+    def test_general_feedback_needs_no_run_and_has_no_game(self):
+        with patch.object(play_server, 'COLLECTOR', self.run.collector):
+            for n in range(2):
+                code, data = self.submit(dict(scope='general', player=' New Pilot ',
+                    text=f'General note {n}', game='forged-game', run='expired'))
+                self.assertEqual(code, 200)
+                self.assertTrue(data['ok'])
+            for player in ['', ' ', None, 123, 'x'*41]:
+                self.assertEqual(self.submit(dict(scope='general', player=player, text='note'))[0], 400)
+        rows = [json.loads(s) for s in (self.path/'feedback.jsonl').read_text().splitlines()]
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(row['scope'], 'general')
+            self.assertEqual(row['player'], 'New Pilot')
+            self.assertIsNone(row['game'])
+            self.assertIsNone(row['run_id'])
+
 
 if __name__ == '__main__':
     unittest.main()

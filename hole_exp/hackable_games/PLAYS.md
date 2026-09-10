@@ -178,7 +178,9 @@ Two things worth knowing before you analyse it:
 ### Participant feedback
 
 Players can use **Submit Feedback** during a play, between plays, or at the end
-of a run. Submissions do not consume game actions and are not sent to opponents.
+of a run. **Submit General Feedback** is available on the landing and game-selection
+pages, with a player-name field and no game session required. These rows have
+`scope: "general"` and null game/run context. Submissions do not consume game actions and are not sent to opponents.
 There is no submission-count limit; each note can contain up to 10,000 characters.
 Each successful request is flushed immediately to `HG_DATA_DIR/feedback.jsonl`
 (production: `/shared/allie/plays_data/feedback.jsonl`), independently of whether

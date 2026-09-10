@@ -53,10 +53,20 @@ let feedbackRun = null;
 let feedbackSending = false;
 document.querySelectorAll('[data-feedback]').forEach(button => {
   button.onclick = () => {
-    if (!RUN) return;
-    if (feedbackRun !== RUN.run_id) $('feedback-text').value = '';
-    feedbackRun = RUN.run_id;
-    $('feedback-game').textContent = RUN.title;
+    const general = button.dataset.feedback === 'general';
+    if (!general && !RUN) return;
+    const run = general ? null : RUN.run_id;
+    if (feedbackRun !== run) $('feedback-text').value = '';
+    feedbackRun = run;
+    $('feedback-title').textContent = general ? 'Submit General Feedback' : 'Submit Feedback';
+    $('feedback-submit').textContent = general ? 'Submit General Feedback' : 'Submit Feedback';
+    $('feedback-game').textContent = general ? 'Feedback about the overall experience.' : RUN.title;
+    $('feedback-name-row').classList.toggle('hidden', !general);
+    $('feedback-name').required = general;
+    if (general) $('feedback-name').value = PLAYER || $('player').value.trim();
+    $('feedback-context').textContent = general
+      ? 'Saved with your player name, without a specific game. You can submit feedback as often as you like.'
+      : 'Saved with your player name and this game. You can submit feedback as often as you like.';
     $('feedback-status').textContent = '';
     $('feedback-dialog').showModal();
     $('feedback-text').focus();
@@ -76,10 +86,12 @@ $('feedback-form').onsubmit = async event => {
   $('feedback-text').readOnly = true;
   $('feedback-status').textContent = 'Saving…';
   try {
-    const result = await post('/api/feedback', {run: feedbackRun, text});
+    const body = feedbackRun ? {run: feedbackRun, text}
+      : {scope: 'general', player: $('feedback-name').value.trim(), text};
+    const result = await post('/api/feedback', body);
     if (!result.ok) throw new Error(result.error || 'Feedback could not be saved. Please try again.');
     $('feedback-text').value = '';
-    $('feedback-status').textContent = 'Feedback submitted. Thank you! You can send another or close this window to keep playing.';
+    $('feedback-status').textContent = 'Feedback submitted. Thank you! You can send another or close this window.';
   } catch (err) {
     $('feedback-status').textContent = err.message || 'Could not connect. Please try again.';
   } finally {
