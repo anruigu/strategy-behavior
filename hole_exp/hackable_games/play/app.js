@@ -595,7 +595,7 @@ function renderGames() {
     : EDITION === 'v0'
     ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'
     : EDITION === 'v3'
-    ? 'Nineteen short editions of ten games, each with a rules card and a few actions. Three plays per edition; the second edition of a game reuses its rules.'
+    ? 'Seventeen short editions, each with its own rules card and a few actions. Three plays per edition; read the rules for each game.'
     : EDITION === 'v2'
     ? 'Ten short games with resources, alliances, hidden information and shared boards. Each play starts fresh.'
     : 'The original games and their existing versions.';

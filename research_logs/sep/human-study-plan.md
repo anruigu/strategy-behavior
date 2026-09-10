@@ -10,6 +10,13 @@ The central question is:
 
 ## Participants
 
+### Informal pilot: message to friends
+
+Please play a few games and try whatever strategies seem promising. I'm mainly looking for feedback on whether the rules and controls make sense, where you get confused or stuck, and whether the games give you enough turns and feedback to work out what's happening. If you notice something unusual or exploitable, tell me what first tipped you off, what you tried, what you expected, and what actually happened—including whether you could repeat it and tell that it helped. Please also flag anything tedious, frustrating, or broken, and anything that felt like guessing rather than something you could reasonably discover. It's completely useful if you don't find a hack; I want to know what the experience was like, not just whether you managed to exploit the game.
+
+These friends already know the games are hackable, so this pilot informs usability
+and discoverability; it is not an unprimed normal-play measurement.
+
 Recruit approximately **50–100 participants**, depending on the final number of games and desired statistical power. Each participant plays a subset of the benchmark's short multiplayer games.
 
 Participants are told that their goal is to **maximize their final standing/score**. They should not initially be told that the study is specifically about finding exploits, since this would directly prime exploit-seeking behavior.

@@ -55,6 +55,7 @@ import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
 OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V4_IDS}
+OFF_ROSTER_ADAPTERS.update(catalog.HISTORICAL_V3_IDS)
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 

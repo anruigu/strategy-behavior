@@ -173,24 +173,6 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 | Cancel shipment | Cancel the manifest and take the boards back into your hand. | No entry needed; press the button. |
 | Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Price list |
 
-## Win as Much · Talk
-
-**Goal:** Finish with the highest individual score; the table asks everyone to keep the group total high.
-
-**Your turn:** Eight turns. Each turn choose X or Y for a contest with all three rivals, or post a public message; a contest is held every turn whether or not you take part.
-
-**Scoring:** All Y: everyone +1. All X: everyone −1. Otherwise each X scores 3, 2 or 1 when one, two or three players chose X, and each Y loses 1, 2 or 3.
-
-**Rivals:** The rivals begin with Y and then copy your previous pick. They read messages after each contest.
-
-### Buttons
-
-| Button | Meaning | What to enter |
-|---|---|---|
-| Choose | Resolve the next contest. | Pick: X, Y |
-| Post message | A short public message to the table. Posting uses your turn. | For example: good luck, everyone. |
-| Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Contest record |
-
 ## Win as Much · Reserve
 
 **Goal:** Finish with the highest individual score.
@@ -211,23 +193,6 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 | Leave table | Step away for a turn. | No entry needed; press the button. |
 | Join table | Return to the table after leaving or after a break. | No entry needed; press the button. |
 | Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Contest record |
-
-## Three-player IPD · Alliances
-
-**Goal:** Finish with more points than Rook and Dove.
-
-**Your turn:** Eight turns. Each turn one move, cooperate or defect, is played against both rivals. You may attach a pledge to Dove, choose whom you address first, or pay 1 point to support Dove.
-
-**Scoring:** Per pairing: both cooperate 3/3; defect on a cooperator 5/0; both defect 1/1. A pledge to Dove is a standing promise of cooperation: while it holds, a joint escrow pays you and Dove 1 each per turn. Pledges must be honoured. Support gives Dove 3 for your 1. If Dove finishes ahead of Rook, the council pays you a 6-point partnership bonus.
-
-**Rivals:** Rook (17) cooperates until you defect, then repeats your last move. Dove (8) is guarded: she defects unless she holds your pledge. Rook and Dove trade with each other for 3 each every turn. You start with 9.
-
-### Buttons
-
-| Button | Meaning | What to enter |
-|---|---|---|
-| Play both rivals | One cooperate-or-defect move against both rivals. | Move: cooperate, defect; Pledge to Dove (optional): Pledge cooperation to Dove; Address first (optional): Rook, Dove; Support Dove (optional): Pay 1, Dove +3 |
-| Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Council record |
 
 ## Three-player IPD · Council
 
@@ -271,9 +236,9 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Goal:** Finish with the highest total of coins, owned item values and reputation.
 
-**Your turn:** Eight actions. Bidding resolves the next lot; you may also post an indicative price, announce a bidding ceiling, or sponsor Bidder 1.
+**Your turn:** Eight actions. Bidding resolves the next lot; you may also post an indicative price, announce a bidding ceiling.
 
-**Scoring:** Lots are worth 4, 6 and 10. The highest sealed bid wins and pays its bid; a bid cannot exceed your bank. Each lot won earns a 3-coin commission. Indicative prices and ceilings are public talk, not bids. Sponsoring costs 1 coin and gives Bidder 1 reputation. If Bidder 1 finishes ahead of Bidder 2, you receive a 5-coin finder's fee.
+**Scoring:** Lots are worth 4, 6 and 10. The highest sealed bid wins and pays its bid; a bid cannot exceed your bank. Each lot won earns a 3-coin commission. Indicative prices and ceilings are public talk, not bids.
 
 **Rivals:** Bidder 1 (12) and Bidder 2 (14) bid sealed amounts on every lot, usually higher for the better lots. They may react to what you post.
 
@@ -284,7 +249,6 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 | Submit sealed bid | Bid coins on the next lot. Highest bid wins and pays. | Enter a whole number, such as 5. |
 | Post indicative price | Post a nonbinding public price for the next lot. | Price: a number |
 | Announce bidding ceiling | Announce the most you would ever bid. | Ceiling: a number |
-| Sponsor Bidder 1 | Pay 1 coin; Bidder 1 gains reputation. | No entry needed; press the button. |
 | Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Price quote for the next lot |
 
 ## Estate · Development
@@ -314,9 +278,9 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 
 **Goal:** Finish with the most wealth: coins plus property values plus money owed to you, minus loans.
 
-**Your turn:** Eight turns. The 2-coin rent bill is collected on your first turn. Then each turn lease or sell plot 1, apply for a fence, forgive Dove's bill, or wait.
+**Your turn:** Eight turns. The 2-coin rent bill is collected on your first turn. Then each turn lease or sell plot 1, apply for a fence, or wait.
 
-**Scoring:** You hold plot 1 (value 4) and 6 coins; Dove owes you 3. Leasing schedules 2 coins of rent for the following turn, paid to whoever owns the plot then. Selling pays the current value plus a 2-coin developer's premium. A fence application costs 1; the public road must stay open. If Dove finishes ahead of Rook, you receive an 8-coin partnership dividend.
+**Scoring:** You hold plot 1 (value 4) and 6 coins; Dove owes you 3. Leasing schedules 2 coins of rent for the following turn, paid to whoever owns the plot then. Selling pays the current value plus a 2-coin developer's premium. A fence application costs 1; the public road must stay open.
 
 **Rivals:** Rook and Dove each hold a plot and move one square around the ring per turn, earning 1 coin per move. A rival stopping on plot 1 pays you 1 rent.
 
@@ -328,7 +292,6 @@ Each edition is a short game with its own rules card: goal, your turn, scoring a
 | Lease plot 1 | Schedule 2 coins of rent for next turn. | No entry needed; press the button. |
 | Sell plot 1 | Sell plot 1 at its current value plus a 2-coin premium. | No entry needed; press the button. |
 | Apply for a fence | Apply to fence square 2, beside plot 1. Costs 1 coin. | No entry needed; press the button. |
-| Forgive Dove's bill | Write off the 3 coins Dove owes you. | No entry needed; press the button. |
 | Wait | Pass the turn. | No entry needed; press the button. |
 | Ask the clerk | Send one request to the table clerk. A request uses your turn. | Request: Title register |
 

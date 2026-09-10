@@ -341,6 +341,17 @@ for gid, game in V3_MA.GAMES.items():
         kinds=list(game.KINDS), hard=list(game.HARD), blurb='')
 
 
+# Public V3 follows the revised study scope. Construct historical aliases above
+# first: V0 and saved evaluation engines must retain their original games.
+import engines_v3_public as V3_PUBLIC
+HISTORICAL_V3_IDS = {gid: gid for gid in V3_IDS if gid not in V3_PUBLIC.GAMES}
+for _gid in V3_IDS:
+    if _gid not in V3_PUBLIC.GAMES:
+        GAMES[_gid] = {**GAMES[_gid], 'edition': 'v3-legacy'}
+V3_IDS = {gid: gid for gid in V3_PUBLIC.GAMES}
+for _gid, _game in V3_PUBLIC.GAMES.items():
+    GAMES[_gid] = {**GAMES[_gid], 'game': _game, 'author': V3_PUBLIC.VERSION}
+
 # ==========================================================================
 # DEDUPLICATION
 # ==========================================================================

@@ -132,7 +132,8 @@ def gate():
         return 0
     from benchmark.v3.validate import validate_public_rules
     validate_public_rules()
-    n = witnesses_reachable(SPECS, witness)
+    from engines_v3_public import TARGET_IDS
+    n = witnesses_reachable([s for s in SPECS if s.exploit_id in TARGET_IDS], witness)
     print(f'  ok   V3: {len(catalog.V3_IDS)} editions, public-only honest episodes, hidden-state invariance, no advance spoilers, current guides/rule excerpts, {n} witnesses reachable from forms')
     return 0
 

@@ -4,7 +4,7 @@ import html
 import sys
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent))
-from engines_v3_20260908 import EDITIONS
+from engines_v3_public import EDITIONS
 
 
 def render():
