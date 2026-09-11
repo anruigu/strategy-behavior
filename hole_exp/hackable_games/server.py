@@ -130,9 +130,9 @@ def _holefill_stats() -> dict | None:
 
 # ------------------------------------------------------------------ session --
 class Session:
-    def __init__(self, gid: str, seat: int, arm: str, seed: int, bot_mode: str, *, bot=None):
+    def __init__(self, gid: str, seat: int, arm: str, seed: int, bot_mode: str, *, bot=None, game=None):
         c = catalog.GAMES[gid]
-        self.gid, self.game = gid, c["game"]
+        self.gid, self.game = gid, game if game is not None else c["game"]
         self.seat, self.arm, self.seed, self.bot_mode = seat, arm, seed, bot_mode
         self.id = uuid.uuid4().hex[:12]
         self.inbox: "queue.Queue" = queue.Queue(maxsize=1)

@@ -10,7 +10,7 @@ import re
 
 def view(game_id, phase, prompt, aids=()):
     if phase != 'move': return None
-    head = re.search(r'\nRound (\d+)/(\d+)\. Scores: (\[[^\n]+\])\.\nLast resolution: (.*?)\n', prompt, re.S)
+    head = re.search(r'\nRound (\d+)/(\d+)\. Scores: (\[[^\n]+\])\.\nLast resolution: (.*?)\n(?=Table: )', prompt, re.S)
     if not head: return None
     body = prompt[head.end():]
     table = re.search(r'^Table: (.+)$', body, re.M); actions = re.search(r'^Actions: (.+)$', body, re.M); card = re.search(r'^Card: (.+)$', body, re.M)

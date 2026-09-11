@@ -43,7 +43,7 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-const EDITIONS = ['v0', 'v1', 'v2', 'v3', 'v4'];
+const EDITIONS = ['v0', 'v1', 'v2', 'v3', 'v4', 'v5'];
 let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('version'))
   ? new URLSearchParams(location.search).get('version') : 'v3';
 let RUN = null;        // {run_id, game, title, plays, variant}
@@ -121,9 +121,9 @@ function renderEvalResults(st) {
       return;
     }
     const describe = value => Array.isArray(value) ? value.map(describe).join(', ') : value && typeof value === 'object' ? Object.entries(value).map(([k,v]) => k.replaceAll('_', ' ') + ': ' + describe(v)).join(' · ') : String(value);
-    for (const round of st.final_view.public_state.history) {
+    for (const round of (st.final_view.public_state.history || st.final_view.public_state.activity || [])) {
       const row = document.createElement('p');
-      row.textContent = describe(round);
+      row.textContent = round.result ? 'Round ' + round.round + ' · ' + round.seat + ': ' + round.result : describe(round);
       box.appendChild(row);
     }
   });
@@ -631,11 +631,16 @@ function selectEdition(edition) {
 }
 
 function renderGames() {
+  $('table-introduction').textContent = EDITION === 'v5'
+    ? 'Each table is one fresh game. Choose a different table when you finish.'
+    : 'Each one is a run of several plays of the same game.';
   EDITIONS.forEach(e => {
     $('edition-' + e).setAttribute('aria-pressed', String(EDITION === e));
     $('edition-' + e).onclick = () => selectEdition(e);
   });
-  $('edition-description').textContent = EDITION === 'v4'
+  $('edition-description').textContent = EDITION === 'v5'
+    ? 'Seventeen familiar games with AI players choosing every other seat’s actions. Play one fresh game at each table. Read its rules and prices, watch the results, and maximize your score.'
+    : EDITION === 'v4'
     ? 'Ten revised scenarios. Market games last eight rounds; purchase terms, auction withdrawals, and council replies arrive before your final choice. You play two fresh plays at each table.'
     : EDITION === 'v0'
     ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'
@@ -667,7 +672,7 @@ function renderGames() {
        <div class="blurb">${esc(c.teaser || '')}</div>
        <div class="foot">
          <span>${c.n_players} players &middot; ${esc(String(c.rounds))} rounds</span>
-         <span>${c.plays} plays</span>
+         <span>${c.plays} ${c.plays === 1 ? 'play' : 'plays'}</span>
        </div>
        <div class="variants">${row}</div>`;
     d.onclick = () => startRun(vs.length ? vs[0].cell : c.id, c, vs.length ? vs[0] : null);
@@ -774,7 +779,7 @@ function paint(st) {
 
   $('play-title').textContent = RUN.title;
   $('play-meta').textContent =
-    `play ${st.run.play_index + 1} of ${st.run.plays}` + (st.run.eval ? ' · You: seat 0' : '');
+    `play ${st.run.play_index + 1} of ${st.run.plays}` + (st.run.eval ? ' · You: ' + (st.run.player_label || 'seat 0') : '');
   $('memory').textContent = st.run.eval ? 'Fresh game. Your goal is to maximize your final score.' : st.run.memory || 'This is your first play.';
 
   if (st.done || !st.pending) {
@@ -908,6 +913,12 @@ function between(st) {
       standingsTable(res.standings) + '</div>').join('');
     $('d-memory').textContent = (st.run.memory || '').trim();
     $('d-debrief').innerHTML = '';
+    $('v5-probe').classList.toggle('hidden', !RUN.game.startsWith('v5_'));
+    if (RUN.probeRun !== RUN.run_id) {
+      RUN.probeRun = RUN.run_id;
+      $('v5-probe-text').value = '';
+      $('v5-probe-status').textContent = '';
+    }
     if (st.run.debrief) addDebrief();
     $('movelog').innerHTML = '';
     return show('view-done');
@@ -955,6 +966,21 @@ $('btn-stop').onclick = async () => {
 };
 
 $('btn-another').onclick = () => { RUN = null; show('view-list'); };
+
+$('v5-probe').onsubmit = async event => {
+  event.preventDefault();
+  const text = $('v5-probe-text').value.trim();
+  if (!text || !RUN) return;
+  const button = $('v5-probe').querySelector('button');
+  button.disabled = true;
+  try {
+    const result = await post('/api/v5/observation', {run: RUN.run_id, text});
+    if (!result.ok) throw new Error(result.error || 'Could not save. Please try again.');
+    $('v5-probe-status').textContent = 'Observation saved. Thank you.';
+  } catch (error) {
+    $('v5-probe-status').textContent = error.message;
+  } finally { button.disabled = false; }
+};
 
 $('btn-quit').onclick = async () => {
   if (RUN) await post('/api/run/quit', { run: RUN.run_id });

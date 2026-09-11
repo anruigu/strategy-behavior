@@ -109,7 +109,7 @@ window.UI.benchmark_move = function (v, ctx) {
     const human = key => key.replaceAll('_',' ').replace(/^./, x=>x.toUpperCase());
     const show = value => value === null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? (value.length ? value.map(show).join(', ') : 'None') : typeof value === 'object' ? Object.entries(value).map(([k,val])=>human(k)+': '+show(val)).join(' · ') : String(value);
     const hidden = new Set(['sea', 'own_hull', 'shots', 'hits', 'charts', 'probed', 'mines', 'courier', 'rival_positions', 'fences', 'titles']);
-    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea' && key!=='public_messages' && key!=='last_actions').forEach(([key,value]) => {
+    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea' && key!=='public_messages' && key!=='last_actions' && key!=='activity').forEach(([key,value]) => {
       K.put(ledger, K.panel(human(key), K.note(show(value))));
     });
     K.put(box, ledger);
@@ -117,6 +117,13 @@ window.UI.benchmark_move = function (v, ctx) {
     K.put(box, K.panel('At the table', K.note('Scores: ' + v.scores), K.note(v.state)));
   }
   K.put(box, K.panel('Last resolution', K.note(v.feedback)));
+  if (v.public_state && v.public_state.activity && v.public_state.activity.length) {
+    const activity = K.el('div', 'table-activity');
+    v.public_state.activity.forEach(event => {
+      K.put(activity, K.note('Round ' + event.round + ' · ' + event.seat + ': ' + event.result));
+    });
+    K.put(box, K.panel('Table record', activity));
+  }
 
   const forms = K.el('div', 'benchmark-actions');
   v.actions.forEach(action => {

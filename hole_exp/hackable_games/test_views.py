@@ -56,6 +56,7 @@ from collector import PlayCollector   # noqa: E402
 
 OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V4_IDS, *catalog.V3_SA_IDS, *catalog.V3_MA_IDS}
 OFF_ROSTER_ADAPTERS.update(catalog.HISTORICAL_V3_IDS)
+OFF_ROSTER_ADAPTERS.update(catalog.V5_IDS)
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -210,6 +211,12 @@ def drive(gid: str, seed: int = 11, arm: str = "hole"):
     seen, misses = [], []
 
     def ask(pid, phase, prompt):
+        if getattr(c['game'], 'is_v5', False):
+            from v5_test_policy import honest
+            v = views.build(gid, phase, prompt)
+            if v is None: misses.append((phase, prompt[:160]))
+            elif pid == 0: seen.append((phase, v))
+            return honest(pid, phase, prompt)
         if pid != 0:
             return bot(pid, phase, prompt)
         v = views.build(gid, phase, prompt)
@@ -357,9 +364,9 @@ def gate_no_leak(gid="gen_quiet_sonar") -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    expected = 34 + len(catalog.V0_IDS) + len(catalog.V3_IDS) + len(catalog.V4_IDS)
+    expected = 34 + len(catalog.V0_IDS) + len(catalog.V3_IDS) + len(catalog.V4_IDS) + len(catalog.V5_IDS)
     if len(catalogue) != expected:
-        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} across V0, V1, V2, V3 and V4")
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} across V0, V1, V2, V3, V4 and V5")
         bad += 1
     hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
     if hf_ids:

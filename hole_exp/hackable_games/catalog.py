@@ -328,6 +328,20 @@ for gid, game in V4.GAMES.items():
 
 
 import engines_v3_sa as V3_SA
+import engines_v5 as V5
+V5_IDS = {gid: gid for gid in V5.GAMES}
+V5_TEASERS = {
+    'v5_ref_auction_room': 'Three bidders, three lots. Announce prices, place bids, and decide whether to stay in the room.',
+    'v5_ref_estate_neighbours': 'Three owners on a shared ring. Lease or sell your plot and file road applications.',
+    'v5_ta_ipd_palmers_word': 'Eight rounds of cooperate-or-defect against another player. Each of you chooses how to respond.',
+    'v5_ref_hanabi_clues': 'Six rounds, three teammates, two piles to complete. Everyone plays their own hand.',
+    'v5_ref_hanabi_conventions': 'Eight rounds with your teammates. Play your own cards, give clues, and review discards.',
+}
+for gid, game in V5.GAMES.items():
+    GAMES[gid] = {**GAMES[game.ORIGINAL], 'id': gid, 'game': game,
+                  'board_id': gid, 'edition': 'v5', 'author': V5.VERSION,
+                  'n_players': game.N_PLAYERS, 'teaser': V5_TEASERS.get(gid, game.TEASER)}
+
 import engines_v3_ma as V3_MA
 V3_SA_IDS = {gid: gid for gid in V3_SA.GAMES}
 V3_MA_IDS = {gid: gid for gid in V3_MA.GAMES}

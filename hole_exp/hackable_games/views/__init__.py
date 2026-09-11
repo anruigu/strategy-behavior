@@ -104,7 +104,8 @@ for _gid in _V3.GAMES:
 import engines_v3_sa as _V3_SA
 import engines_v3_ma as _V3_MA
 import engines_v4 as _V4
-for _gid in (*_V3_SA.GAMES, *_V3_MA.GAMES, *_V4.GAMES):
+import engines_v5 as _V5
+for _gid in (*_V3_SA.GAMES, *_V3_MA.GAMES, *_V4.GAMES, *_V5.GAMES):
     ADAPTERS[_gid] = partial(v3.view, _gid)
 
 # What the client is told a game supports before it starts, so the catalogue
