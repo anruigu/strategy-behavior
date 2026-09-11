@@ -174,7 +174,7 @@ class V4Tests(unittest.TestCase):
                 self.assertEqual(r['opponent']['model_key'],'glm')
                 self.assertEqual(r['schema'],6)
                 self.assertEqual(r['engine_version'], VERSION)
-                self.assertEqual(r['study']['protocol'], 'v4-human-playtest.2')
+                self.assertEqual(r['study']['protocol'], 'v4-human-playtest.3')
                 self.assertIn('engines_v4_revision.py', r['study']['source_hashes'])
                 self.assertIn('structural_features', r['engine_trace'])
                 self.assertEqual(len(r['engine_trace']['events']),8)

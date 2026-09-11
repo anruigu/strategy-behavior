@@ -897,6 +897,9 @@ function between(st) {
 
   if (complete) {
     const s = (st.run.summary) || {};
+    const opponent = s.opponent && s.opponent.label;
+    $('d-opponent').textContent = opponent ? `You played against ${opponent}.` : '';
+    $('d-opponent').classList.toggle('hidden', !opponent);
     $('d-score').textContent =
       `${(s.scores || []).length} plays  ·  scores ` +
       (s.scores || []).map(sc).join(', ');
@@ -941,7 +944,7 @@ function addDebrief() {
 
 $('btn-next').onclick = async () => {
   const st = await post('/api/run/next', { run: RUN.run_id });
-  if (st.complete) { $('d-memory').textContent = st.run.memory || ''; return show('view-done'); }
+  if (st.complete) return between({ run: { complete: true, summary: st.run, memory: st.run.memory } });
   show('view-play');
   paint(st);
 };

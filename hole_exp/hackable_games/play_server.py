@@ -403,12 +403,19 @@ class Run:
         return {"standings": table, "outcome": outcome}
 
     def summary(self) -> dict:
-        return {"run_id": self.id, "game": self.gid, "player": self.player,
+        summary = {"run_id": self.id, "game": self.gid, "player": self.player,
                 "plays": self.plays, "played": len(self.scores),
                 "remaining": self.remaining, "finished": self.finished,
                 "scores": [round(v, 2) for v in self.scores],
                 "results": self.results,
                 "memory": '' if self.study else self.memory.render().strip()}
+        # The same model plays the entire run. Reveal it only after every
+        # play completed successfully, never between plays or on abandonment.
+        if self.study and self.finished and len(self.scores) == self.plays:
+            from eval_opponents import LABELS
+            model = self.study['opponent']
+            summary['opponent'] = {'model_id': model, 'label': LABELS[model]}
+        return summary
 
     def kill(self):
         if self.session is not None and not self.session.done.is_set():

@@ -11,7 +11,9 @@ from engines_v4 import PROTOCOL
 from hosted_opponents import HostedConfig, HostedOpponent
 
 LABELS = {'qwen-3.8-27b': 'Qwen 3.8 27B', 'glm': 'GLM 5.3',
-          'claude-haiku-4.5': 'Claude Haiku 4.5', 'gpt-5-mini': 'GPT-5 mini'}
+          'claude-haiku-4.5': 'Claude Haiku 4.5', 'gpt-5-mini': 'GPT-5 mini',
+          'claude-opus-5': 'Claude Opus 5', 'gemini-3.1-pro': 'Gemini 3.1 Pro Preview',
+          'gpt-5.6-sol': 'GPT-5.6 Sol'}
 
 
 class EvalOpponent(HostedOpponent):
