@@ -1,0 +1,1505 @@
+{
+  "cfg-1a4408eb1ccb1623dfec": {
+    "schema": "native-mechanics-breadth-v3",
+    "family": "battleship",
+    "initialization_and_information": "Each side has a 6×6 board. Native reset sequentially places five ships of lengths 5,4,3,3,2 using random directions and rejection of overlaps; touching is allowed. Own ships and own shot history are visible, opposing ship locations hidden. P1 initially receives rules only, then its board before its first decision after P0 fires.",
+    "transitions_and_payoffs": "First bracketed letter-row/integer-column coordinate is used, case-insensitively. A fresh in-bounds coordinate hits an occupied cell or misses. Hits and misses and updated private views are delivered to both players. Repeated shots and out-of-bounds coordinates are invalid. Both players alternate. The two length-three ships have distinct native initials (S and D).",
+    "termination": "Sink all 17 opposing occupied cells to win, or native invalid-action forfeit. No native turn limit; external limits censor.",
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "Native state and environment handlers are authoritative. Invalid actions are retained as observed behavior; no intent is inferred."
+    },
+    "opponent": "Never repeat a shot. Prefer unknown cells adjacent to any observed hit, ordered by number of adjacent hits; then checkerboard parity; then a deterministic seeded tie-break. No opponent ship locations are accessed.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    },
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions."
+  },
+  "cfg-2a48c9cd496669a4bad5": {
+    "schema": "native-mechanics-breadth-v3",
+    "family": "blackjack",
+    "initialization_and_information": "Five hands against a native dealer. Each draw independently samples one of 13 ranks and four suits with replacement. Own two cards and dealer first card are shown; the dealer second card and future draws are hidden.",
+    "transitions_and_payoffs": "[Hit] draws a card; [Stand] makes the dealer draw until its total is at least 17. Hit takes precedence when both tokens occur. Face cards count ten; aces count eleven then reduce to one as needed. A bust loses immediately; otherwise a higher non-bust total wins and equal totals draw. No split, doubling or special natural-blackjack payout.",
+    "termination": "After five hands native reward is wins/5. Invalid termination uses (wins+0.5*draws)/5. The separate binary win target requires all five hands completed and strictly more wins than losses.",
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "Native state and environment handlers are authoritative. Invalid actions are retained as observed behavior; no intent is inferred."
+    },
+    "opponent": "Native dealer.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    },
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions."
+  },
+  "cfg-31e0fd4ff6d633a027c6": {
+    "schema": "native-mechanics-v2",
+    "family": "blind_auction",
+    "initialization_and_information": "Both players receive starting_capital. Each item has a latent common integer base value drawn uniformly from 50 through 500 (unless constructor-specified). Each player’s own item value is independently drawn uniformly from base ± floor(0.2×base), lower-bounded at 1. Thus values are correlated across players through the common latent base. An actor sees its own values, item names and capital; the other values and current bids are hidden.",
+    "transitions_and_payoffs": "After conversation, bid positive integer amounts on valid item IDs. Zero is invalid. A response without matching bid tokens submits no bids and uses the bidding slot. Valid bid amounts are summed for the budget check and charged even when they lose; duplicate item entries overwrite that item’s recorded bid but all amounts are charged. Some invalid-item/zero entries set a native invalid event while other valid entries in the same response can still be processed. A strictly higher recorded bid wins an item; equal bids leave it unallocated. Compare remaining capital plus own values of won items.",
+    "termination": "After both native bidding slots are done, final net worth determines strict winner or draw. Native invalid submissions can consume a bidding slot and mutate part of the state before terminal handling; the archived step implementation is authoritative.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Converse neutrally; bid 55–80% of own values, proportionally capped by own remaining capital.",
+    "implementation_notes": "All valid submitted bids, including losing bids, are deducted from capital. Tied bids award the item to nobody. Final net worth is remaining capital plus own value of won items. The bot bids a uniform .55–.80 fraction of its own item value, with proportional budget capping and integer truncation.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-59cad20ba341dbfff6af": {
+    "schema": "native-mechanics-v2",
+    "family": "blind_auction",
+    "initialization_and_information": "Both players receive starting_capital. Each item has a latent common integer base value drawn uniformly from 50 through 500 (unless constructor-specified). Each player’s own item value is independently drawn uniformly from base ± floor(0.2×base), lower-bounded at 1. Thus values are correlated across players through the common latent base. An actor sees its own values, item names and capital; the other values and current bids are hidden.",
+    "transitions_and_payoffs": "After conversation, bid positive integer amounts on valid item IDs. Zero is invalid. A response without matching bid tokens submits no bids and uses the bidding slot. Valid bid amounts are summed for the budget check and charged even when they lose; duplicate item entries overwrite that item’s recorded bid but all amounts are charged. Some invalid-item/zero entries set a native invalid event while other valid entries in the same response can still be processed. A strictly higher recorded bid wins an item; equal bids leave it unallocated. Compare remaining capital plus own values of won items.",
+    "termination": "After both native bidding slots are done, final net worth determines strict winner or draw. Native invalid submissions can consume a bidding slot and mutate part of the state before terminal handling; the archived step implementation is authoritative.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Converse neutrally; bid 55–80% of own values, proportionally capped by own remaining capital.",
+    "implementation_notes": "All valid submitted bids, including losing bids, are deducted from capital. Tied bids award the item to nobody. Final net worth is remaining capital plus own value of won items. The bot bids a uniform .55–.80 fraction of its own item value, with proportional budget capping and integer truncation.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-722b0ef0b35a135774f5": {
+    "schema": "native-mechanics-v2",
+    "family": "blind_auction",
+    "initialization_and_information": "Both players receive starting_capital. Each item has a latent common integer base value drawn uniformly from 50 through 500 (unless constructor-specified). Each player’s own item value is independently drawn uniformly from base ± floor(0.2×base), lower-bounded at 1. Thus values are correlated across players through the common latent base. An actor sees its own values, item names and capital; the other values and current bids are hidden.",
+    "transitions_and_payoffs": "After conversation, bid positive integer amounts on valid item IDs. Zero is invalid. A response without matching bid tokens submits no bids and uses the bidding slot. Valid bid amounts are summed for the budget check and charged even when they lose; duplicate item entries overwrite that item’s recorded bid but all amounts are charged. Some invalid-item/zero entries set a native invalid event while other valid entries in the same response can still be processed. A strictly higher recorded bid wins an item; equal bids leave it unallocated. Compare remaining capital plus own values of won items.",
+    "termination": "After both native bidding slots are done, final net worth determines strict winner or draw. Native invalid submissions can consume a bidding slot and mutate part of the state before terminal handling; the archived step implementation is authoritative.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Converse neutrally; bid 55–80% of own values, proportionally capped by own remaining capital.",
+    "implementation_notes": "All valid submitted bids, including losing bids, are deducted from capital. Tied bids award the item to nobody. Final net worth is remaining capital plus own value of won items. The bot bids a uniform .55–.80 fraction of its own item value, with proportional budget capping and integer truncation.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-d567fc0a983792fe8bf9": {
+    "schema": "native-mechanics-v2",
+    "family": "blind_auction",
+    "initialization_and_information": "Both players receive starting_capital. Each item has a latent common integer base value drawn uniformly from 50 through 500 (unless constructor-specified). Each player’s own item value is independently drawn uniformly from base ± floor(0.2×base), lower-bounded at 1. Thus values are correlated across players through the common latent base. An actor sees its own values, item names and capital; the other values and current bids are hidden.",
+    "transitions_and_payoffs": "After conversation, bid positive integer amounts on valid item IDs. Zero is invalid. A response without matching bid tokens submits no bids and uses the bidding slot. Valid bid amounts are summed for the budget check and charged even when they lose; duplicate item entries overwrite that item’s recorded bid but all amounts are charged. Some invalid-item/zero entries set a native invalid event while other valid entries in the same response can still be processed. A strictly higher recorded bid wins an item; equal bids leave it unallocated. Compare remaining capital plus own values of won items.",
+    "termination": "After both native bidding slots are done, final net worth determines strict winner or draw. Native invalid submissions can consume a bidding slot and mutate part of the state before terminal handling; the archived step implementation is authoritative.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Converse neutrally; bid 55–80% of own values, proportionally capped by own remaining capital.",
+    "implementation_notes": "All valid submitted bids, including losing bids, are deducted from capital. Tied bids award the item to nobody. Final net worth is remaining capital plus own value of won items. The bot bids a uniform .55–.80 fraction of its own item value, with proportional budget capping and integer truncation.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-dc7c4411fc0de892bd30": {
+    "schema": "native-mechanics-v2",
+    "family": "blind_auction",
+    "initialization_and_information": "Both players receive starting_capital. Each item has a latent common integer base value drawn uniformly from 50 through 500 (unless constructor-specified). Each player’s own item value is independently drawn uniformly from base ± floor(0.2×base), lower-bounded at 1. Thus values are correlated across players through the common latent base. An actor sees its own values, item names and capital; the other values and current bids are hidden.",
+    "transitions_and_payoffs": "After conversation, bid positive integer amounts on valid item IDs. Zero is invalid. A response without matching bid tokens submits no bids and uses the bidding slot. Valid bid amounts are summed for the budget check and charged even when they lose; duplicate item entries overwrite that item’s recorded bid but all amounts are charged. Some invalid-item/zero entries set a native invalid event while other valid entries in the same response can still be processed. A strictly higher recorded bid wins an item; equal bids leave it unallocated. Compare remaining capital plus own values of won items.",
+    "termination": "After both native bidding slots are done, final net worth determines strict winner or draw. Native invalid submissions can consume a bidding slot and mutate part of the state before terminal handling; the archived step implementation is authoritative.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Converse neutrally; bid 55–80% of own values, proportionally capped by own remaining capital.",
+    "implementation_notes": "All valid submitted bids, including losing bids, are deducted from capital. Tied bids award the item to nobody. Final net worth is remaining capital plus own value of won items. The bot bids a uniform .55–.80 fraction of its own item value, with proportional budget capping and integer truncation.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-09371f198fe6e12d7d86": {
+    "schema": "native-mechanics-v2",
+    "family": "colonel_blotto",
+    "initialization_and_information": "Both players have num_total_units each round and num_fields named A onward. Current allocations remain private until the round resolves.",
+    "transitions_and_payoffs": "Allocate nonnegative integers summing exactly to the budget. Each field goes to the strictly larger allocation; equal fields tie. More field wins wins the round; more round wins wins the match. Native parsing supports its documented allocation syntax.",
+    "termination": "Native best-of-num_rounds match termination, including early clinching, or invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Randomly distribute the full budget across a randomly chosen majority of fields.",
+    "implementation_notes": "Each round the scripted opponent chooses a uniformly random majority subset of fields, then distributes every one of its units independently and uniformly among those fields. Current allocations are private until resolution. A field is won by allocating strictly more units; equal allocations tie. Majority field wins determine the round, and round wins determine the match.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-60c852d3167d48262642": {
+    "schema": "native-mechanics-v2",
+    "family": "colonel_blotto",
+    "initialization_and_information": "Both players have num_total_units each round and num_fields named A onward. Current allocations remain private until the round resolves.",
+    "transitions_and_payoffs": "Allocate nonnegative integers summing exactly to the budget. Each field goes to the strictly larger allocation; equal fields tie. More field wins wins the round; more round wins wins the match. Native parsing supports its documented allocation syntax.",
+    "termination": "Native best-of-num_rounds match termination, including early clinching, or invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Randomly distribute the full budget across a randomly chosen majority of fields.",
+    "implementation_notes": "Each round the scripted opponent chooses a uniformly random majority subset of fields, then distributes every one of its units independently and uniformly among those fields. Current allocations are private until resolution. A field is won by allocating strictly more units; equal allocations tie. Majority field wins determine the round, and round wins determine the match.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-d43062a34d96f82c55c5": {
+    "schema": "native-mechanics-v2",
+    "family": "colonel_blotto",
+    "initialization_and_information": "Both players have num_total_units each round and num_fields named A onward. Current allocations remain private until the round resolves.",
+    "transitions_and_payoffs": "Allocate nonnegative integers summing exactly to the budget. Each field goes to the strictly larger allocation; equal fields tie. More field wins wins the round; more round wins wins the match. Native parsing supports its documented allocation syntax.",
+    "termination": "Native best-of-num_rounds match termination, including early clinching, or invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Randomly distribute the full budget across a randomly chosen majority of fields.",
+    "implementation_notes": "Each round the scripted opponent chooses a uniformly random majority subset of fields, then distributes every one of its units independently and uniformly among those fields. Current allocations are private until resolution. A field is won by allocating strictly more units; equal allocations tie. Majority field wins determine the round, and round wins determine the match.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-d7408fcbe3aa978a057b": {
+    "schema": "native-mechanics-v2",
+    "family": "colonel_blotto",
+    "initialization_and_information": "Both players have num_total_units each round and num_fields named A onward. Current allocations remain private until the round resolves.",
+    "transitions_and_payoffs": "Allocate nonnegative integers summing exactly to the budget. Each field goes to the strictly larger allocation; equal fields tie. More field wins wins the round; more round wins wins the match. Native parsing supports its documented allocation syntax.",
+    "termination": "Native best-of-num_rounds match termination, including early clinching, or invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Randomly distribute the full budget across a randomly chosen majority of fields.",
+    "implementation_notes": "Each round the scripted opponent chooses a uniformly random majority subset of fields, then distributes every one of its units independently and uniformly among those fields. Current allocations are private until resolution. A field is won by allocating strictly more units; equal allocations tie. Majority field wins determine the round, and round wins determine the match.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-336635396949f906d562": {
+    "schema": "native-mechanics-v2",
+    "family": "connect_four",
+    "initialization_and_information": "Empty rectangular public board. Players alternate dropping their own symbol into a nonfull column.",
+    "transitions_and_payoffs": "A drop occupies the lowest empty cell. Four contiguous own symbols horizontally, vertically or diagonally wins; full board without four draws.",
+    "termination": "Ends on a line, full board, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Win immediately if possible, block an immediate loss, otherwise prefer central legal columns.",
+    "implementation_notes": "The scripted opponent wins immediately if possible, otherwise blocks an immediate focal win, otherwise chooses a legal column nearest the center.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-96a94a1c77a87ef68622": {
+    "schema": "native-mechanics-v2",
+    "family": "connect_four",
+    "initialization_and_information": "Empty rectangular public board. Players alternate dropping their own symbol into a nonfull column.",
+    "transitions_and_payoffs": "A drop occupies the lowest empty cell. Four contiguous own symbols horizontally, vertically or diagonally wins; full board without four draws.",
+    "termination": "Ends on a line, full board, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Win immediately if possible, block an immediate loss, otherwise prefer central legal columns.",
+    "implementation_notes": "The scripted opponent wins immediately if possible, otherwise blocks an immediate focal win, otherwise chooses a legal column nearest the center.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-349a1a79b744978e2184": {
+    "schema": "native-mechanics-breadth-v3",
+    "family": "gops",
+    "initialization_and_information": "Both players start with cards 1–13; prizes are a uniformly shuffled 1–13 deck. Each player sees own hand and public prize, score and resolved bids; pending opposing bids and future prizes are hidden.",
+    "transitions_and_payoffs": "Exactly one A/2…10/J/Q/K token is accepted, case-insensitively. A valid card is removed even if it loses. Higher bid wins current prize plus carried ties. Equal bids carry the prize into the next pot. Starting bidder alternates each round; both bids are private until resolved.",
+    "termination": "After 13 rounds compare prize totals; ties draw. A final tied pot is unawarded. Native invalid-action allowance/forfeit applies.",
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "Native state and environment handlers are authoritative. Invalid actions are retained as observed behavior; no intent is inferred."
+    },
+    "opponent": "Bid the remaining card closest to the current prize plus carry-over, capped at 13; break equal distances toward the lower card. Uses own remaining hand and public prize only.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    },
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions."
+  },
+  "cfg-43cc5474ab2c7a48869d": {
+    "schema": "native-mechanics-v2",
+    "family": "kuhn_poker",
+    "initialization_and_information": "Fresh J/Q/K cards sampled without replacement each round; each player sees only its own card and the public action tree. Each antes one.",
+    "transitions_and_payoffs": "Check/bet/call/fold traverse the native legal-action tree. Fold yields the pot to the other player; a showdown yields it to the higher card. Native bets and calls do not add extra chips.",
+    "termination": "After max_rounds, compare net chips. Ties draw. Native extra terminal ante applies equally to both.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Card-aware stochastic betting and calling using only own card and public legal actions.",
+    "implementation_notes": "In this installed implementation, bet/call moves alter the legal-action tree but do not add their extra chips to the pot. Both players ante 1; the round winner receives the pot of 2. Starting player alternates, starting with player 1. Cards are sampled without replacement from J/Q/K. The scripted opponent bets/calls K; initially checks Q and calls with probability .5; initially bluffs J with probability .2 and otherwise checks, and folds J to a bet. Terminal comparison occurs after the prescribed rounds; an extra initialization subtracts one more ante from both, preserving rank.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-b642dc33489c6fe60be6": {
+    "schema": "native-mechanics-v2",
+    "family": "kuhn_poker",
+    "initialization_and_information": "Fresh J/Q/K cards sampled without replacement each round; each player sees only its own card and the public action tree. Each antes one.",
+    "transitions_and_payoffs": "Check/bet/call/fold traverse the native legal-action tree. Fold yields the pot to the other player; a showdown yields it to the higher card. Native bets and calls do not add extra chips.",
+    "termination": "After max_rounds, compare net chips. Ties draw. Native extra terminal ante applies equally to both.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Card-aware stochastic betting and calling using only own card and public legal actions.",
+    "implementation_notes": "In this installed implementation, bet/call moves alter the legal-action tree but do not add their extra chips to the pot. Both players ante 1; the round winner receives the pot of 2. Starting player alternates, starting with player 1. Cards are sampled without replacement from J/Q/K. The scripted opponent bets/calls K; initially checks Q and calls with probability .5; initially bluffs J with probability .2 and otherwise checks, and folds J to a bet. Terminal comparison occurs after the prescribed rounds; an extra initialization subtracts one more ante from both, preserving rank.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-2264bf68446e401e9fbf": {
+    "schema": "native-mechanics-v2",
+    "family": "liars_dice",
+    "initialization_and_information": "Each player starts with num_dice private fair d6 rolls. Counts remaining and resolved bids are public.",
+    "transitions_and_payoffs": "A bid raises quantity and/or face while neither decreases. [Call] is parsed before any bid token. A call counts exactly the named face across both players’ current dice; no face is wild. The incorrect challenger or failed bidder loses one die, and remaining dice reroll. Native invalid moves use the state’s retry allowance followed by elimination, rather than the ordinary one-die challenge penalty.",
+    "termination": "Last player with dice wins. Invalid actions follow the native die-loss handling rather than a generic label of cheating.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "FFAMultiPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Estimate public bids from own dice plus the expected unseen count; challenge implausible bids.",
+    "implementation_notes": "This installed bid-order rule requires both quantity and face to be at least the previous bid, with at least one strictly larger. The bot calls if the bid quantity exceeds its own matching dice plus expected unseen matches (unseen dice / 6) plus .5; otherwise it increments quantity by one at the same face. On a fresh round it bids quantity 1 on the most frequent own face, breaking ties toward higher faces.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-272c454d1bbfac2edadd": {
+    "schema": "native-mechanics-v2",
+    "family": "liars_dice",
+    "initialization_and_information": "Each player starts with num_dice private fair d6 rolls. Counts remaining and resolved bids are public.",
+    "transitions_and_payoffs": "A bid raises quantity and/or face while neither decreases. [Call] is parsed before any bid token. A call counts exactly the named face across both players’ current dice; no face is wild. The incorrect challenger or failed bidder loses one die, and remaining dice reroll. Native invalid moves use the state’s retry allowance followed by elimination, rather than the ordinary one-die challenge penalty.",
+    "termination": "Last player with dice wins. Invalid actions follow the native die-loss handling rather than a generic label of cheating.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "FFAMultiPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Estimate public bids from own dice plus the expected unseen count; challenge implausible bids.",
+    "implementation_notes": "This installed bid-order rule requires both quantity and face to be at least the previous bid, with at least one strictly larger. The bot calls if the bid quantity exceeds its own matching dice plus expected unseen matches (unseen dice / 6) plus .5; otherwise it increments quantity by one at the same face. On a fresh round it bids quantity 1 on the most frequent own face, breaking ties toward higher faces.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-6c77dacb1cd0dc987a7a": {
+    "schema": "native-mechanics-v2",
+    "family": "mastermind",
+    "initialization_and_information": "A private code is sampled from 1..num_numbers, with or without duplicates according to configuration.",
+    "transitions_and_payoffs": "Submit a code-length sequence. Black feedback counts correct positions; white counts remaining correct values with multiplicity. Past guesses and feedback are public to the solver.",
+    "termination": "Exact code yields reward 1; max_turns and invalid handling can terminate without a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Native validity, feedback, and terminal rewards follow TextArena 0.7.4. A full solution has all code positions correct; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-6fb58867f9431f353341": {
+    "schema": "native-mechanics-v2",
+    "family": "mastermind",
+    "initialization_and_information": "A private code is sampled from 1..num_numbers, with or without duplicates according to configuration.",
+    "transitions_and_payoffs": "Submit a code-length sequence. Black feedback counts correct positions; white counts remaining correct values with multiplicity. Past guesses and feedback are public to the solver.",
+    "termination": "Exact code yields reward 1; max_turns and invalid handling can terminate without a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Native validity, feedback, and terminal rewards follow TextArena 0.7.4. A full solution has all code positions correct; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-a7deeb441614f259fbdc": {
+    "schema": "native-mechanics-v2",
+    "family": "mastermind",
+    "initialization_and_information": "A private code is sampled from 1..num_numbers, with or without duplicates according to configuration.",
+    "transitions_and_payoffs": "Submit a code-length sequence. Black feedback counts correct positions; white counts remaining correct values with multiplicity. Past guesses and feedback are public to the solver.",
+    "termination": "Exact code yields reward 1; max_turns and invalid handling can terminate without a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Native validity, feedback, and terminal rewards follow TextArena 0.7.4. A full solution has all code positions correct; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-c833acbc05dc9afd016a": {
+    "schema": "native-mechanics-v2",
+    "family": "mastermind",
+    "initialization_and_information": "A private code is sampled from 1..num_numbers, with or without duplicates according to configuration.",
+    "transitions_and_payoffs": "Submit a code-length sequence. Black feedback counts correct positions; white counts remaining correct values with multiplicity. Past guesses and feedback are public to the solver.",
+    "termination": "Exact code yields reward 1; max_turns and invalid handling can terminate without a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Native validity, feedback, and terminal rewards follow TextArena 0.7.4. A full solution has all code positions correct; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-cc243c2541cd2a7f8f21": {
+    "schema": "native-mechanics-v2",
+    "family": "mastermind",
+    "initialization_and_information": "A private code is sampled from 1..num_numbers, with or without duplicates according to configuration.",
+    "transitions_and_payoffs": "Submit a code-length sequence. Black feedback counts correct positions; white counts remaining correct values with multiplicity. Past guesses and feedback are public to the solver.",
+    "termination": "Exact code yields reward 1; max_turns and invalid handling can terminate without a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Native validity, feedback, and terminal rewards follow TextArena 0.7.4. A full solution has all code positions correct; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-d6ab818277b7bc3915c8": {
+    "schema": "native-mechanics-v2",
+    "family": "negotiation",
+    "initialization_and_information": "Each actor independently receives 5–25 units of each of Wheat, Wood, Sheep, Brick and Ore, uniformly over integers. Private per-unit values are integer-uniform within ±floor(0.2×base), clipped to [5,40], with bases Wheat=5, Wood=10, Sheep=15, Brick=25, Ore=40. Own resources/values and public offers are visible; the other actor’s inventory and values are hidden.",
+    "transitions_and_payoffs": "Submit a resource exchange; an affordable acceptance transfers requested and offered resources. Existing offers are cleared when not accepted, and a valid counteroffer can be created. Final standing compares gains in own inventory value.",
+    "termination": "Native max_turns or invalid-action termination; inventory-value gain determines win/draw/loss.",
+    "parser_patterns": {
+      "accept_pattern": {
+        "pattern": "\\[Accept\\]",
+        "flags": 34
+      },
+      "deny_pattern": {
+        "pattern": "\\[Deny\\]",
+        "flags": 34
+      },
+      "offer_pattern": {
+        "pattern": "\\[Offer:?\\s*(?:I\\s+(?:give|offer)\\s+)?([^\\[\\]]+?)\\s*\\.*\\]",
+        "flags": 50
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Accept affordable nonnegative-value offers; otherwise propose an affordable exchange with positive own value.",
+    "implementation_notes": "The bot accepts affordable offers with nonnegative change under its own private values. Otherwise it offers one unit of its cheapest available resource for one unit of its highest-valued resource. Final ranking compares inventory-value gains.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-f7f3202591fdfed62af4": {
+    "schema": "native-mechanics-v2",
+    "family": "negotiation",
+    "initialization_and_information": "Each actor independently receives 5–25 units of each of Wheat, Wood, Sheep, Brick and Ore, uniformly over integers. Private per-unit values are integer-uniform within ±floor(0.2×base), clipped to [5,40], with bases Wheat=5, Wood=10, Sheep=15, Brick=25, Ore=40. Own resources/values and public offers are visible; the other actor’s inventory and values are hidden.",
+    "transitions_and_payoffs": "Submit a resource exchange; an affordable acceptance transfers requested and offered resources. Existing offers are cleared when not accepted, and a valid counteroffer can be created. Final standing compares gains in own inventory value.",
+    "termination": "Native max_turns or invalid-action termination; inventory-value gain determines win/draw/loss.",
+    "parser_patterns": {
+      "accept_pattern": {
+        "pattern": "\\[Accept\\]",
+        "flags": 34
+      },
+      "deny_pattern": {
+        "pattern": "\\[Deny\\]",
+        "flags": 34
+      },
+      "offer_pattern": {
+        "pattern": "\\[Offer:?\\s*(?:I\\s+(?:give|offer)\\s+)?([^\\[\\]]+?)\\s*\\.*\\]",
+        "flags": 50
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Accept affordable nonnegative-value offers; otherwise propose an affordable exchange with positive own value.",
+    "implementation_notes": "The bot accepts affordable offers with nonnegative change under its own private values. Otherwise it offers one unit of its cheapest available resource for one unit of its highest-valued resource. Final ranking compares inventory-value gains.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-6cac82460deff03c19a5": {
+    "schema": "native-mechanics-v2",
+    "family": "nim",
+    "initialization_and_information": "Public configured pile sizes; player 0 starts.",
+    "transitions_and_payoffs": "Remove a positive quantity from one nonempty pile, no more than its contents. Taking the final object wins.",
+    "termination": "Ends when all piles are empty or on native forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Use a zero-nim-sum move when available; otherwise remove one from a nonempty pile.",
+    "implementation_notes": "The scripted opponent makes a zero-nim-sum move whenever possible; otherwise it removes one object from the first nonempty pile.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-7ec07928575cff17d738": {
+    "schema": "native-mechanics-v2",
+    "family": "nim",
+    "initialization_and_information": "Public configured pile sizes; player 0 starts.",
+    "transitions_and_payoffs": "Remove a positive quantity from one nonempty pile, no more than its contents. Taking the final object wins.",
+    "termination": "Ends when all piles are empty or on native forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Use a zero-nim-sum move when available; otherwise remove one from a nonempty pile.",
+    "implementation_notes": "The scripted opponent makes a zero-nim-sum move whenever possible; otherwise it removes one object from the first nonempty pile.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-7c9c671e1f162f3384ba": {
+    "schema": "native-mechanics-breadth-v3",
+    "family": "othello",
+    "initialization_and_information": "Public 4×4 board with four central discs; black/player 0 begins. All legal moves are shown (show_valid true). No chance after reset.",
+    "transitions_and_payoffs": "Place a disc on an empty cell to flank a contiguous run of opposing discs between the new disc and another own disc in any of eight directions. All such runs flip. With no legal move the native environment passes without requiring a coordinate.",
+    "termination": "Ends when neither player can move (including a full board); more discs wins and equal counts draw. Native invalid-action allowance/forfeit applies.",
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "Native state and environment handlers are authoritative. Invalid actions are retained as observed behavior; no intent is inferred."
+    },
+    "opponent": "Choose a legal corner if available; otherwise maximize immediately flipped discs. Break ties in row-column order. Pass when no move is legal.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    },
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions."
+  },
+  "cfg-6d55017545d1e3f1d887": {
+    "schema": "native-mechanics-v2",
+    "family": "pig_dice",
+    "initialization_and_information": "Both banked scores and current unbanked turn total are public. Native die draws are uniform integers 1–6.",
+    "transitions_and_payoffs": "Roll 2–6 adds to the turn total; roll 1 loses that unbanked total and passes the turn. Hold banks the total and passes. Reaching winning_score by banking wins.",
+    "termination": "Every valid submitted roll/hold advances state.turn. A hold or bust calls the native rotation function, which checks state.turn >= max_turns before the current submission’s increment, then checks the winning score; ongoing rolls do not immediately enforce the horizon. Horizon termination compares banked scores and draws on equality. External 128-total/64-focal action limits remain censoring.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Hold at eight unbanked points or when banking reaches the winning score; otherwise roll.",
+    "implementation_notes": "The scripted opponent holds when unbanked points are at least 8, or when banking would reach the winning target. Otherwise it rolls. Each native roll uses a fair integer die from 1 to 6. The episode follows the installed native turn limit as well as the winning score.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-7c75f19fdbf94daa355b": {
+    "schema": "native-mechanics-v2",
+    "family": "pig_dice",
+    "initialization_and_information": "Both banked scores and current unbanked turn total are public. Native die draws are uniform integers 1–6.",
+    "transitions_and_payoffs": "Roll 2–6 adds to the turn total; roll 1 loses that unbanked total and passes the turn. Hold banks the total and passes. Reaching winning_score by banking wins.",
+    "termination": "Every valid submitted roll/hold advances state.turn. A hold or bust calls the native rotation function, which checks state.turn >= max_turns before the current submission’s increment, then checks the winning score; ongoing rolls do not immediately enforce the horizon. Horizon termination compares banked scores and draws on equality. External 128-total/64-focal action limits remain censoring.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Hold at eight unbanked points or when banking reaches the winning score; otherwise roll.",
+    "implementation_notes": "The scripted opponent holds when unbanked points are at least 8, or when banking would reach the winning target. Otherwise it rolls. Each native roll uses a fair integer die from 1 to 6. The episode follows the installed native turn limit as well as the winning score.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-e97f5e88100f1d6002e5": {
+    "schema": "native-mechanics-v2",
+    "family": "pig_dice",
+    "initialization_and_information": "Both banked scores and current unbanked turn total are public. Native die draws are uniform integers 1–6.",
+    "transitions_and_payoffs": "Roll 2–6 adds to the turn total; roll 1 loses that unbanked total and passes the turn. Hold banks the total and passes. Reaching winning_score by banking wins.",
+    "termination": "Every valid submitted roll/hold advances state.turn. A hold or bust calls the native rotation function, which checks state.turn >= max_turns before the current submission’s increment, then checks the winning score; ongoing rolls do not immediately enforce the horizon. Horizon termination compares banked scores and draws on equality. External 128-total/64-focal action limits remain censoring.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Hold at eight unbanked points or when banking reaches the winning score; otherwise roll.",
+    "implementation_notes": "The scripted opponent holds when unbanked points are at least 8, or when banking would reach the winning target. Otherwise it rolls. Each native roll uses a fair integer die from 1 to 6. The episode follows the installed native turn limit as well as the winning score.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-19d33de008e75d179f81": {
+    "schema": "native-mechanics-v2",
+    "family": "prisoners_dilemma",
+    "initialization_and_information": "Player 0 starts; each round has the configured conversation exchanges followed by private current decisions. Resolved decisions and scores become public.",
+    "transitions_and_payoffs": "Cooperate/cooperate yields cooperate_reward each; defect/cooperate gives defect_reward to the defector and sucker_reward to the cooperator; mutual defection gives mutual_defect_reward each. Any decision submission without [Defect] executes cooperation.",
+    "termination": "After num_rounds, strictly higher cumulative score wins; equal scores draw.",
+    "parser_patterns": {
+      "cooperate_pattern": {
+        "pattern": "\\[Cooperate\\]",
+        "flags": 34
+      },
+      "defect_pattern": {
+        "pattern": "\\[Defect\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Tit-for-tat from the last publicly resolved round, initially cooperative; neutral conversation.",
+    "implementation_notes": "In a decision phase any response without [Defect] executes cooperation, even without a cooperation token. The bot initially cooperates, then copies the focal player’s last publicly resolved decision. Conversation does not affect the bot. Terminal score ties are draws.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-2576ce8ec326aa1f152a": {
+    "schema": "native-mechanics-v2",
+    "family": "prisoners_dilemma",
+    "initialization_and_information": "Player 0 starts; each round has the configured conversation exchanges followed by private current decisions. Resolved decisions and scores become public.",
+    "transitions_and_payoffs": "Cooperate/cooperate yields cooperate_reward each; defect/cooperate gives defect_reward to the defector and sucker_reward to the cooperator; mutual defection gives mutual_defect_reward each. Any decision submission without [Defect] executes cooperation.",
+    "termination": "After num_rounds, strictly higher cumulative score wins; equal scores draw.",
+    "parser_patterns": {
+      "cooperate_pattern": {
+        "pattern": "\\[Cooperate\\]",
+        "flags": 34
+      },
+      "defect_pattern": {
+        "pattern": "\\[Defect\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Tit-for-tat from the last publicly resolved round, initially cooperative; neutral conversation.",
+    "implementation_notes": "In a decision phase any response without [Defect] executes cooperation, even without a cooperation token. The bot initially cooperates, then copies the focal player’s last publicly resolved decision. Conversation does not affect the bot. Terminal score ties are draws.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-5c0619997ec877f30543": {
+    "schema": "native-mechanics-v2",
+    "family": "prisoners_dilemma",
+    "initialization_and_information": "Player 0 starts; each round has the configured conversation exchanges followed by private current decisions. Resolved decisions and scores become public.",
+    "transitions_and_payoffs": "Cooperate/cooperate yields cooperate_reward each; defect/cooperate gives defect_reward to the defector and sucker_reward to the cooperator; mutual defection gives mutual_defect_reward each. Any decision submission without [Defect] executes cooperation.",
+    "termination": "After num_rounds, strictly higher cumulative score wins; equal scores draw.",
+    "parser_patterns": {
+      "cooperate_pattern": {
+        "pattern": "\\[Cooperate\\]",
+        "flags": 34
+      },
+      "defect_pattern": {
+        "pattern": "\\[Defect\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Tit-for-tat from the last publicly resolved round, initially cooperative; neutral conversation.",
+    "implementation_notes": "In a decision phase any response without [Defect] executes cooperation, even without a cooperation token. The bot initially cooperates, then copies the focal player’s last publicly resolved decision. Conversation does not affect the bot. Terminal score ties are draws.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-ede3ee1424d7e9c150ba": {
+    "schema": "native-mechanics-v2",
+    "family": "prisoners_dilemma",
+    "initialization_and_information": "Player 0 starts; each round has the configured conversation exchanges followed by private current decisions. Resolved decisions and scores become public.",
+    "transitions_and_payoffs": "Cooperate/cooperate yields cooperate_reward each; defect/cooperate gives defect_reward to the defector and sucker_reward to the cooperator; mutual defection gives mutual_defect_reward each. Any decision submission without [Defect] executes cooperation.",
+    "termination": "After num_rounds, strictly higher cumulative score wins; equal scores draw.",
+    "parser_patterns": {
+      "cooperate_pattern": {
+        "pattern": "\\[Cooperate\\]",
+        "flags": 34
+      },
+      "defect_pattern": {
+        "pattern": "\\[Defect\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Tit-for-tat from the last publicly resolved round, initially cooperative; neutral conversation.",
+    "implementation_notes": "In a decision phase any response without [Defect] executes cooperation, even without a cooperation token. The bot initially cooperates, then copies the focal player’s last publicly resolved decision. Conversation does not affect the bot. Terminal score ties are draws.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-f0305069c352e8b33d5c": {
+    "schema": "native-mechanics-v2",
+    "family": "prisoners_dilemma",
+    "initialization_and_information": "Player 0 starts; each round has the configured conversation exchanges followed by private current decisions. Resolved decisions and scores become public.",
+    "transitions_and_payoffs": "Cooperate/cooperate yields cooperate_reward each; defect/cooperate gives defect_reward to the defector and sucker_reward to the cooperator; mutual defection gives mutual_defect_reward each. Any decision submission without [Defect] executes cooperation.",
+    "termination": "After num_rounds, strictly higher cumulative score wins; equal scores draw.",
+    "parser_patterns": {
+      "cooperate_pattern": {
+        "pattern": "\\[Cooperate\\]",
+        "flags": 34
+      },
+      "defect_pattern": {
+        "pattern": "\\[Defect\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Tit-for-tat from the last publicly resolved round, initially cooperative; neutral conversation.",
+    "implementation_notes": "In a decision phase any response without [Defect] executes cooperation, even without a cooperation token. The bot initially cooperates, then copies the focal player’s last publicly resolved decision. Conversation does not affect the bot. Terminal score ties are draws.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-b64208f7a15721c3d133": {
+    "schema": "native-mechanics-breadth-v3",
+    "family": "sokoban",
+    "initialization_and_information": "A native generated 6×6 room with two boxes and goal positions is displayed. Native generator reverse-searches layouts with seed-based retry up to 50 attempts. Public board glyphs describe walls, player, boxes and goals. There is no opponent.",
+    "transitions_and_payoffs": "First bracketed direction up/down/left/right or w/s/a/d is used. Moving into a box pushes it if the next cell is empty floor or goal. Boxes cannot be pulled or pushed through walls/other boxes. Invalid directions and collisions invoke native invalid handling. The full native room arrays are evaluator-only; actor receives the displayed board/history.",
+    "termination": "All boxes on goals gives 1. After a successful move, native code checks the PRE-increment turn counter against max_turns=30; thus a still-unsolved valid trajectory can take 31 moves. The state itself does not enforce max_turns. Two consecutive native-invalid submissions terminate with the current goal fraction. Native arrays define actual box positions; game_state.board remains the opening string while delivered GAME_BOARD messages update.",
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "Native state and environment handlers are authoritative. Invalid actions are retained as observed behavior; no intent is inferred."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    },
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions."
+  },
+  "cfg-2c36119f00cd717f5e76": {
+    "schema": "native-mechanics-breadth-v3",
+    "family": "stag_hunt",
+    "initialization_and_information": "Public fixed payoff constructor values, three rounds and one conversation exchange per round. Player 0 starts. Current opposing decisions are private; resolved decisions/payoffs are public.",
+    "transitions_and_payoffs": "Both Stag: mutual_stag_reward each. Both Hare: mutual_hare_reward each. Mixed: Hare receives single_hare_reward, Stag receives single_stag_reward. ANY decision containing [Stag] executes Stag; otherwise it executes Hare. This includes defaults and both-token submissions. randomize_payoff is false in this study.",
+    "termination": "After num_rounds, compare total payoff; strict leader wins, equal totals draw.",
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "Native state and environment handlers are authoritative. Invalid actions are retained as observed behavior; no intent is inferred."
+    },
+    "opponent": "Propose hunting Stag in conversation. Initially choose Stag; then copy the focal player’s last publicly resolved choice.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    },
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions."
+  },
+  "cfg-2f33f517128681e77a02": {
+    "schema": "native-mechanics-v2",
+    "family": "tower_of_hanoi",
+    "initialization_and_information": "Ordered configured stack begins on A; all towers public.",
+    "transitions_and_payoffs": "Move a top disk to a tower whose top disk is larger, or empty. The native parser may execute multiple bracketed moves in one response.",
+    "termination": "Complete ordered stack on C yields reward 1. Native max_turns/invalid handling may produce partial progress reward, which is not a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "This installed parser can execute several bracketed moves in a single submitted response. Native invalid-action handling can allow a retry, then terminate with a partial-progress reward. Full solution requires the entire ordered stack on tower C.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-619a806ef702026785ca": {
+    "schema": "native-mechanics-v2",
+    "family": "tower_of_hanoi",
+    "initialization_and_information": "Ordered configured stack begins on A; all towers public.",
+    "transitions_and_payoffs": "Move a top disk to a tower whose top disk is larger, or empty. The native parser may execute multiple bracketed moves in one response.",
+    "termination": "Complete ordered stack on C yields reward 1. Native max_turns/invalid handling may produce partial progress reward, which is not a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "This installed parser can execute several bracketed moves in a single submitted response. Native invalid-action handling can allow a retry, then terminate with a partial-progress reward. Full solution requires the entire ordered stack on tower C.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-aa759e85c0cb23cf5a6e": {
+    "schema": "native-mechanics-v2",
+    "family": "tower_of_hanoi",
+    "initialization_and_information": "Ordered configured stack begins on A; all towers public.",
+    "transitions_and_payoffs": "Move a top disk to a tower whose top disk is larger, or empty. The native parser may execute multiple bracketed moves in one response.",
+    "termination": "Complete ordered stack on C yields reward 1. Native max_turns/invalid handling may produce partial progress reward, which is not a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "This installed parser can execute several bracketed moves in a single submitted response. Native invalid-action handling can allow a retry, then terminate with a partial-progress reward. Full solution requires the entire ordered stack on tower C.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-3a37eee6503d4ee8283d": {
+    "schema": "native-mechanics-v2",
+    "family": "wordle",
+    "initialization_and_information": "A hidden five-letter target is sampled from the installed noun-filtered en-basic lexicon; dictionaries and lexicon are fingerprinted.",
+    "transitions_and_payoffs": "Guess a valid word. Green matches positions; yellow matches unused remaining target letters, so duplicate counts are bounded. Native dictionary/repeated-guess checks apply.",
+    "termination": "All green gives reward 1. Guess limit and native invalid handling may yield partial credit; partial credit is not solved.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Targets are five-letter nouns from the installed NLTK en-basic list filtered by its tagger. Invalid/repeated guesses can trigger native penalties. A full solution requires all five letters green; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-bcb7ee33ccbcc5931353": {
+    "schema": "native-mechanics-v2",
+    "family": "wordle",
+    "initialization_and_information": "A hidden five-letter target is sampled from the installed noun-filtered en-basic lexicon; dictionaries and lexicon are fingerprinted.",
+    "transitions_and_payoffs": "Guess a valid word. Green matches positions; yellow matches unused remaining target letters, so duplicate counts are bounded. Native dictionary/repeated-guess checks apply.",
+    "termination": "All green gives reward 1. Guess limit and native invalid handling may yield partial credit; partial credit is not solved.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Targets are five-letter nouns from the installed NLTK en-basic list filtered by its tagger. Invalid/repeated guesses can trigger native penalties. A full solution requires all five letters green; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-dc9e6273ab4ce96562fc": {
+    "schema": "native-mechanics-v2",
+    "family": "blind_auction",
+    "initialization_and_information": "Both players receive starting_capital. Each item has a latent common integer base value drawn uniformly from 50 through 500 (unless constructor-specified). Each player’s own item value is independently drawn uniformly from base ± floor(0.2×base), lower-bounded at 1. Thus values are correlated across players through the common latent base. An actor sees its own values, item names and capital; the other values and current bids are hidden.",
+    "transitions_and_payoffs": "After conversation, bid positive integer amounts on valid item IDs. Zero is invalid. A response without matching bid tokens submits no bids and uses the bidding slot. Valid bid amounts are summed for the budget check and charged even when they lose; duplicate item entries overwrite that item’s recorded bid but all amounts are charged. Some invalid-item/zero entries set a native invalid event while other valid entries in the same response can still be processed. A strictly higher recorded bid wins an item; equal bids leave it unallocated. Compare remaining capital plus own values of won items.",
+    "termination": "After both native bidding slots are done, final net worth determines strict winner or draw. Native invalid submissions can consume a bidding slot and mutate part of the state before terminal handling; the archived step implementation is authoritative.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Converse neutrally; bid 55–80% of own values, proportionally capped by own remaining capital.",
+    "implementation_notes": "All valid submitted bids, including losing bids, are deducted from capital. Tied bids award the item to nobody. Final net worth is remaining capital plus own value of won items. The bot bids a uniform .55–.80 fraction of its own item value, with proportional budget capping and integer truncation.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-f1a09ac9df790719e376": {
+    "schema": "native-mechanics-v2",
+    "family": "colonel_blotto",
+    "initialization_and_information": "Both players have num_total_units each round and num_fields named A onward. Current allocations remain private until the round resolves.",
+    "transitions_and_payoffs": "Allocate nonnegative integers summing exactly to the budget. Each field goes to the strictly larger allocation; equal fields tie. More field wins wins the round; more round wins wins the match. Native parsing supports its documented allocation syntax.",
+    "termination": "Native best-of-num_rounds match termination, including early clinching, or invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Randomly distribute the full budget across a randomly chosen majority of fields.",
+    "implementation_notes": "Each round the scripted opponent chooses a uniformly random majority subset of fields, then distributes every one of its units independently and uniformly among those fields. Current allocations are private until resolution. A field is won by allocating strictly more units; equal allocations tie. Majority field wins determine the round, and round wins determine the match.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-ef3f62a25f526fbbc8b9": {
+    "schema": "native-mechanics-v2",
+    "family": "connect_four",
+    "initialization_and_information": "Empty rectangular public board. Players alternate dropping their own symbol into a nonfull column.",
+    "transitions_and_payoffs": "A drop occupies the lowest empty cell. Four contiguous own symbols horizontally, vertically or diagonally wins; full board without four draws.",
+    "termination": "Ends on a line, full board, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Win immediately if possible, block an immediate loss, otherwise prefer central legal columns.",
+    "implementation_notes": "The scripted opponent wins immediately if possible, otherwise blocks an immediate focal win, otherwise chooses a legal column nearest the center.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-8b40f387647e0c5e1ff8": {
+    "schema": "native-mechanics-v2",
+    "family": "kuhn_poker",
+    "initialization_and_information": "Fresh J/Q/K cards sampled without replacement each round; each player sees only its own card and the public action tree. Each antes one.",
+    "transitions_and_payoffs": "Check/bet/call/fold traverse the native legal-action tree. Fold yields the pot to the other player; a showdown yields it to the higher card. Native bets and calls do not add extra chips.",
+    "termination": "After max_rounds, compare net chips. Ties draw. Native extra terminal ante applies equally to both.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Card-aware stochastic betting and calling using only own card and public legal actions.",
+    "implementation_notes": "In this installed implementation, bet/call moves alter the legal-action tree but do not add their extra chips to the pot. Both players ante 1; the round winner receives the pot of 2. Starting player alternates, starting with player 1. Cards are sampled without replacement from J/Q/K. The scripted opponent bets/calls K; initially checks Q and calls with probability .5; initially bluffs J with probability .2 and otherwise checks, and folds J to a bet. Terminal comparison occurs after the prescribed rounds; an extra initialization subtracts one more ante from both, preserving rank.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-0695d11057dc226efde5": {
+    "schema": "native-mechanics-v2",
+    "family": "liars_dice",
+    "initialization_and_information": "Each player starts with num_dice private fair d6 rolls. Counts remaining and resolved bids are public.",
+    "transitions_and_payoffs": "A bid raises quantity and/or face while neither decreases. [Call] is parsed before any bid token. A call counts exactly the named face across both players’ current dice; no face is wild. The incorrect challenger or failed bidder loses one die, and remaining dice reroll. Native invalid moves use the state’s retry allowance followed by elimination, rather than the ordinary one-die challenge penalty.",
+    "termination": "Last player with dice wins. Invalid actions follow the native die-loss handling rather than a generic label of cheating.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "FFAMultiPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Estimate public bids from own dice plus the expected unseen count; challenge implausible bids.",
+    "implementation_notes": "This installed bid-order rule requires both quantity and face to be at least the previous bid, with at least one strictly larger. The bot calls if the bid quantity exceeds its own matching dice plus expected unseen matches (unseen dice / 6) plus .5; otherwise it increments quantity by one at the same face. On a fresh round it bids quantity 1 on the most frequent own face, breaking ties toward higher faces.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-31e65dc6f823d2b6689d": {
+    "schema": "native-mechanics-v2",
+    "family": "mastermind",
+    "initialization_and_information": "A private code is sampled from 1..num_numbers, with or without duplicates according to configuration.",
+    "transitions_and_payoffs": "Submit a code-length sequence. Black feedback counts correct positions; white counts remaining correct values with multiplicity. Past guesses and feedback are public to the solver.",
+    "termination": "Exact code yields reward 1; max_turns and invalid handling can terminate without a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Native validity, feedback, and terminal rewards follow TextArena 0.7.4. A full solution has all code positions correct; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-15d18d5874772d40c8cb": {
+    "schema": "native-mechanics-v2",
+    "family": "memory",
+    "initialization_and_information": "An even square board is a uniformly shuffled multiset containing two of every symbol. All unmatched identities are hidden until revealed.",
+    "transitions_and_payoffs": "Select two distinct unmatched positions. A matching pair scores one and remains visible; the same player moves again. A mismatch reveals both identities publicly, then hides them and rotates player. All reveal messages remain in history.",
+    "termination": "All pairs matched or native max_turns comparison ends the game. Higher pair count wins, equal counts draw, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Take a known unmatched pair if one exists; otherwise reveal unknown positions first, using only public reveal messages and matched cards.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-d0c0be133fc7267c1178": {
+    "schema": "native-mechanics-v2",
+    "family": "memory",
+    "initialization_and_information": "An even square board is a uniformly shuffled multiset containing two of every symbol. All unmatched identities are hidden until revealed.",
+    "transitions_and_payoffs": "Select two distinct unmatched positions. A matching pair scores one and remains visible; the same player moves again. A mismatch reveals both identities publicly, then hides them and rotates player. All reveal messages remain in history.",
+    "termination": "All pairs matched or native max_turns comparison ends the game. Higher pair count wins, equal counts draw, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Take a known unmatched pair if one exists; otherwise reveal unknown positions first, using only public reveal messages and matched cards.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-477820895d9002166ecb": {
+    "schema": "native-mechanics-v2",
+    "family": "negotiation",
+    "initialization_and_information": "Each actor independently receives 5–25 units of each of Wheat, Wood, Sheep, Brick and Ore, uniformly over integers. Private per-unit values are integer-uniform within ±floor(0.2×base), clipped to [5,40], with bases Wheat=5, Wood=10, Sheep=15, Brick=25, Ore=40. Own resources/values and public offers are visible; the other actor’s inventory and values are hidden.",
+    "transitions_and_payoffs": "Submit a resource exchange; an affordable acceptance transfers requested and offered resources. Existing offers are cleared when not accepted, and a valid counteroffer can be created. Final standing compares gains in own inventory value.",
+    "termination": "Native max_turns or invalid-action termination; inventory-value gain determines win/draw/loss.",
+    "parser_patterns": {
+      "accept_pattern": {
+        "pattern": "\\[Accept\\]",
+        "flags": 34
+      },
+      "deny_pattern": {
+        "pattern": "\\[Deny\\]",
+        "flags": 34
+      },
+      "offer_pattern": {
+        "pattern": "\\[Offer:?\\s*(?:I\\s+(?:give|offer)\\s+)?([^\\[\\]]+?)\\s*\\.*\\]",
+        "flags": 50
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Accept affordable nonnegative-value offers; otherwise propose an affordable exchange with positive own value.",
+    "implementation_notes": "The bot accepts affordable offers with nonnegative change under its own private values. Otherwise it offers one unit of its cheapest available resource for one unit of its highest-valued resource. Final ranking compares inventory-value gains.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-4f71a83ae7e3b84ed64e": {
+    "schema": "native-mechanics-v2",
+    "family": "nim",
+    "initialization_and_information": "Public configured pile sizes; player 0 starts.",
+    "transitions_and_payoffs": "Remove a positive quantity from one nonempty pile, no more than its contents. Taking the final object wins.",
+    "termination": "Ends when all piles are empty or on native forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Use a zero-nim-sum move when available; otherwise remove one from a nonempty pile.",
+    "implementation_notes": "The scripted opponent makes a zero-nim-sum move whenever possible; otherwise it removes one object from the first nonempty pile.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-170376e2f00a2cde17b7": {
+    "schema": "native-mechanics-v2",
+    "family": "pig_dice",
+    "initialization_and_information": "Both banked scores and current unbanked turn total are public. Native die draws are uniform integers 1–6.",
+    "transitions_and_payoffs": "Roll 2–6 adds to the turn total; roll 1 loses that unbanked total and passes the turn. Hold banks the total and passes. Reaching winning_score by banking wins.",
+    "termination": "Every valid submitted roll/hold advances state.turn. A hold or bust calls the native rotation function, which checks state.turn >= max_turns before the current submission’s increment, then checks the winning score; ongoing rolls do not immediately enforce the horizon. Horizon termination compares banked scores and draws on equality. External 128-total/64-focal action limits remain censoring.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Hold at eight unbanked points or when banking reaches the winning score; otherwise roll.",
+    "implementation_notes": "The scripted opponent holds when unbanked points are at least 8, or when banking would reach the winning target. Otherwise it rolls. Each native roll uses a fair integer die from 1 to 6. The episode follows the installed native turn limit as well as the winning score.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-1f1b3b6a9d1de8b7d39d": {
+    "schema": "native-mechanics-v2",
+    "family": "prisoners_dilemma",
+    "initialization_and_information": "Player 0 starts; each round has the configured conversation exchanges followed by private current decisions. Resolved decisions and scores become public.",
+    "transitions_and_payoffs": "Cooperate/cooperate yields cooperate_reward each; defect/cooperate gives defect_reward to the defector and sucker_reward to the cooperator; mutual defection gives mutual_defect_reward each. Any decision submission without [Defect] executes cooperation.",
+    "termination": "After num_rounds, strictly higher cumulative score wins; equal scores draw.",
+    "parser_patterns": {
+      "cooperate_pattern": {
+        "pattern": "\\[Cooperate\\]",
+        "flags": 34
+      },
+      "defect_pattern": {
+        "pattern": "\\[Defect\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Tit-for-tat from the last publicly resolved round, initially cooperative; neutral conversation.",
+    "implementation_notes": "In a decision phase any response without [Defect] executes cooperation, even without a cooperation token. The bot initially cooperates, then copies the focal player’s last publicly resolved decision. Conversation does not affect the bot. Terminal score ties are draws.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-e25dc648cf589b4e2dbc": {
+    "schema": "native-mechanics-v2",
+    "family": "secretary",
+    "initialization_and_information": "N independent U[0,1) values are generated. Only the current value, rounded to four decimal places, and the already observed prefix are shown; future values are hidden.",
+    "transitions_and_payoffs": "Exactly [accept] chooses the current value; exactly [continue] discards it. Continuing on the final value forces its selection. There is no recall. Native success uses underlying full-precision values.",
+    "termination": "Reward 1 iff the selected value is the maximum of all N; otherwise 0. Invalid-action forfeits are retained.",
+    "parser_patterns": {
+      "action_space": {
+        "pattern": "\\[(accept|continue)\\]",
+        "flags": 32
+      }
+    },
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-fc257e5fb2fd44a20b1b": {
+    "schema": "native-mechanics-v2",
+    "family": "secretary",
+    "initialization_and_information": "N independent U[0,1) values are generated. Only the current value, rounded to four decimal places, and the already observed prefix are shown; future values are hidden.",
+    "transitions_and_payoffs": "Exactly [accept] chooses the current value; exactly [continue] discards it. Continuing on the final value forces its selection. There is no recall. Native success uses underlying full-precision values.",
+    "termination": "Reward 1 iff the selected value is the maximum of all N; otherwise 0. Invalid-action forfeits are retained.",
+    "parser_patterns": {
+      "action_space": {
+        "pattern": "\\[(accept|continue)\\]",
+        "flags": 32
+      }
+    },
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-708a52d62ce7a9dbef81": {
+    "schema": "native-mechanics-v2",
+    "family": "tower_of_hanoi",
+    "initialization_and_information": "Ordered configured stack begins on A; all towers public.",
+    "transitions_and_payoffs": "Move a top disk to a tower whose top disk is larger, or empty. The native parser may execute multiple bracketed moves in one response.",
+    "termination": "Complete ordered stack on C yields reward 1. Native max_turns/invalid handling may produce partial progress reward, which is not a full solution.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "This installed parser can execute several bracketed moves in a single submitted response. Native invalid-action handling can allow a retry, then terminate with a partial-progress reward. Full solution requires the entire ordered stack on tower C.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-1d75129ce054343714b3": {
+    "schema": "native-mechanics-v2",
+    "family": "two_thirds",
+    "initialization_and_information": "Each round both players privately submit a guess in [min_guess,max_guess]; resolved history is public.",
+    "transitions_and_payoffs": "Target is two thirds of the arithmetic mean of both guesses. The strictly closer guess wins one point; equal distances give no point. The numeric parser accepts nonnegative decimal tokens.",
+    "termination": "After num_rounds compare points; equal totals draw, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Initially guess one third of the upper bound; subsequently guess half the other player’s last resolved guess, clipped to the bounds.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-c48429b5dabb30df3362": {
+    "schema": "native-mechanics-v2",
+    "family": "two_thirds",
+    "initialization_and_information": "Each round both players privately submit a guess in [min_guess,max_guess]; resolved history is public.",
+    "transitions_and_payoffs": "Target is two thirds of the arithmetic mean of both guesses. The strictly closer guess wins one point; equal distances give no point. The numeric parser accepts nonnegative decimal tokens.",
+    "termination": "After num_rounds compare points; equal totals draw, or native invalid-action forfeit.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Initially guess one third of the upper bound; subsequently guess half the other player’s last resolved guess, clipped to the bounds.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-4cdbe2fabc78ca120d0d": {
+    "schema": "native-mechanics-v2",
+    "family": "ultimatum",
+    "initialization_and_information": "Public pool and zero accumulated totals. Player 0 proposes first. Roles stay fixed unless alternate_roles is true.",
+    "transitions_and_payoffs": "An integer offer in [0,pool] gives the responder that amount and the proposer the remainder if accepted; rejection gives both zero. [Accept] takes precedence if accept and reject both occur. alternate_roles swaps proposer after each resolved round.",
+    "termination": "max_turns/2 resolved rounds; higher accumulated money wins, equal totals draw, or native invalid-action forfeit.",
+    "parser_patterns": {
+      "offer_pattern": {
+        "pattern": "\\[Offer:\\s*\\$?(\\d+)\\]",
+        "flags": 34
+      },
+      "accept_pattern": {
+        "pattern": "\\[Accept\\]",
+        "flags": 34
+      },
+      "reject_pattern": {
+        "pattern": "\\[Reject\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Offer floor(0.4 × pool); accept offers of at least ceil(0.2 × pool), otherwise reject.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-f5f69e7d107808288e65": {
+    "schema": "native-mechanics-v2",
+    "family": "ultimatum",
+    "initialization_and_information": "Public pool and zero accumulated totals. Player 0 proposes first. Roles stay fixed unless alternate_roles is true.",
+    "transitions_and_payoffs": "An integer offer in [0,pool] gives the responder that amount and the proposer the remainder if accepted; rejection gives both zero. [Accept] takes precedence if accept and reject both occur. alternate_roles swaps proposer after each resolved round.",
+    "termination": "max_turns/2 resolved rounds; higher accumulated money wins, equal totals draw, or native invalid-action forfeit.",
+    "parser_patterns": {
+      "offer_pattern": {
+        "pattern": "\\[Offer:\\s*\\$?(\\d+)\\]",
+        "flags": 34
+      },
+      "accept_pattern": {
+        "pattern": "\\[Accept\\]",
+        "flags": 34
+      },
+      "reject_pattern": {
+        "pattern": "\\[Reject\\]",
+        "flags": 34
+      }
+    },
+    "invalid_handling": {
+      "state_class": "TwoPlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "Offer floor(0.4 × pool); accept offers of at least ceil(0.2 × pool), otherwise reject.",
+    "implementation_notes": "See transitions, termination and exact parser patterns above.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  },
+  "cfg-108ece9001b43f55db4a": {
+    "schema": "native-mechanics-v2",
+    "family": "wordle",
+    "initialization_and_information": "A hidden five-letter target is sampled from the installed noun-filtered en-basic lexicon; dictionaries and lexicon are fingerprinted.",
+    "transitions_and_payoffs": "Guess a valid word. Green matches positions; yellow matches unused remaining target letters, so duplicate counts are bounded. Native dictionary/repeated-guess checks apply.",
+    "termination": "All green gives reward 1. Guess limit and native invalid handling may yield partial credit; partial credit is not solved.",
+    "parser_patterns": {},
+    "invalid_handling": {
+      "state_class": "SinglePlayerState",
+      "consecutive_error_allowance": 1,
+      "contract": "A valid move resets the consecutive-error counter. A first invalid submission normally permits a retry; exhausting the native allowance terminates or applies the environment-specific penalty. Native environment overrides take precedence."
+    },
+    "opponent": "No opponent; single-player solver.",
+    "implementation_notes": "Targets are five-letter nouns from the installed NLTK en-basic list filtered by its tagger. Invalid/repeated guesses can trigger native penalties. A full solution requires all five letters green; partial feedback credit is not a solved task.",
+    "player_protocol": "Qwen or GLM, temperature .7, low reasoning, no LLM seed, full own native history, 16384 output-token cap. Original normal system prompt plus a uniform native-action-format reminder; exact opening messages are provided separately. Extra predictor mechanics/opponent policy are not actor instructions.",
+    "external_limits": {
+      "total_actions": 256,
+      "focal_actions": 128,
+      "request_bytes": 160000,
+      "limit_outcome": "censored; not a fabricated loss"
+    }
+  }
+}

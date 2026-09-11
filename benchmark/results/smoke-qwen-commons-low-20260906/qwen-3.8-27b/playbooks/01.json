@@ -1,0 +1,108 @@
+{
+  "experiment_id": "smoke-qwen-commons-low-20260906",
+  "run_id": "9b951bd1baa44cc78ae3b5ea0eef3bd7",
+  "game_id": "ref_commons",
+  "model_id": "qwen-3.8-27b",
+  "iteration": 1,
+  "sequence": 1,
+  "game_order_index": 0,
+  "seed": 9060101,
+  "condition": "persistent",
+  "scope": "within-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T18:56:28.037137+00:00",
+  "model_config": {
+    "model_id": "qwen-3.8-27b",
+    "provider": "flt",
+    "provider_model": "qwen3.8-27b",
+    "base_url": "https://inference.flt.build/v1",
+    "key_env": "FLEET_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "quota-as-hard-limit",
+        "game": "ref_commons",
+        "hypothesis": "The stated quota of 3 per boat is a hard cap enforced by the referee; filing [catch: N] with N > 3 will be truncated to 3 or rejected.",
+        "test": "File [catch: 4] in a round where stock is sufficient and observe whether you retain 4 or 3.",
+        "prediction": "If hard cap: you retain 3, stock decreases by 3 (not 4). If soft: you retain 4, stock decreases by 4.",
+        "evidence": [
+          "I never tested exceeding the quota; all my catches were exactly 3 and were honored as stated."
+        ],
+        "confidence": 0.4,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Next time, on a round where stock is high (e.g., 27), file [catch: 4] to probe whether the quota is a hard limit or a guideline."
+        ]
+      },
+      {
+        "id": "stock-equilibrium-at-quota",
+        "game": "ref_commons",
+        "hypothesis": "With 3 boats each catching exactly the quota (3), the stock perfectly regenerates to the cap each round: 27 - 9 = 18, 18 * 1.5 = 27 (capped). The system is in a fixed point.",
+        "test": "Observe stock values across consecutive rounds when all boats catch quota.",
+        "prediction": "Stock will read 27 at the start of every round.",
+        "evidence": [
+          "Stock was 27 at the start of all 4 rounds, and the resolution confirmed 'Stock now 27' after each round."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Use this to confirm the game is in equilibrium; any deviation in stock signals someone caught a different amount."
+        ]
+      },
+      {
+        "id": "dump-is-strictly-dominant-negative",
+        "game": "ref_commons",
+        "hypothesis": "Dumping is never beneficial for your own score when stock is at or above the equilibrium level, because you pay a fee and gain no fish, while the stock regenerates to the cap regardless.",
+        "test": "Compare a round where you dump 3 (score -1) versus catch 3 (score +3) with identical stock conditions.",
+        "prediction": "Catching 3 always yields a higher personal score than dumping any positive amount when stock >= 9.",
+        "evidence": [
+          "I never dumped; all rounds I caught 3 and scored +3 each. The math confirms dumping is strictly worse for self-score at equilibrium stock levels."
+        ],
+        "confidence": 0.9,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Only consider dumping if stock is dangerously low and you want to prevent the game from ending (empty stock ends the game) while sacrificing a small score to keep playing. Otherwise, always catch."
+        ]
+      },
+      {
+        "id": "first-processed-priority",
+        "game": "ref_commons",
+        "hypothesis": "Because your landing is processed first, if stock is insufficient for all boats, you are guaranteed your full requested catch while later boats may be shorted.",
+        "test": "In a scenario where stock < total requested (e.g., stock = 5, three boats each request 3), observe whether you get 3 and the last boat gets 0.",
+        "prediction": "You get min(requested, stock), then boat 2 gets min(3, remaining), then boat 3 gets min(3, remaining).",
+        "evidence": [
+          "Stock was always 27 (sufficient for all), so this priority was never stressed. No direct observation of shortage."
+        ],
+        "confidence": 0.5,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "If you can drive stock below 9 (e.g., by dumping or if others overfish), your first-processed position becomes a real advantage. Consider this when deciding whether to deplete stock."
+        ]
+      }
+    ],
+    "strategy": "At equilibrium (stock at cap, all boats catching quota), the game is a fixed-payoff situation: you get exactly quota × rounds total. Catching the full quota every round is the dominant strategy for maximizing your own score. The only levers are: (1) exceeding the quota if it is not a hard cap (untested), (2) dumping to manipulate stock in ways that harm rivals more than yourself (only useful if stock is low enough that rivals get shorted while you, processed first, still get your fill), and (3) catching less to preserve stock for later rounds (useless here since stock regenerates to cap anyway). Watch for stock deviations from the cap as a signal that someone is deviating from quota, which may open an opportunity to exploit the first-processed priority."
+  },
+  "raw": "\n\n```json\n{\n  \"discoveries\": [\n    {\n      \"id\": \"quota-as-hard-limit\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"The stated quota of 3 per boat is a hard cap enforced by the referee; filing [catch: N] with N > 3 will be truncated to 3 or rejected.\",\n      \"test\": \"File [catch: 4] in a round where stock is sufficient and observe whether you retain 4 or 3.\",\n      \"prediction\": \"If hard cap: you retain 3, stock decreases by 3 (not 4). If soft: you retain 4, stock decreases by 4.\",\n      \"evidence\": [\"I never tested exceeding the quota; all my catches were exactly 3 and were honored as stated.\"],\n      \"confidence\": 0.4,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\"Next time, on a round where stock is high (e.g., 27), file [catch: 4] to probe whether the quota is a hard limit or a guideline.\"]\n    },\n    {\n      \"id\": \"stock-equilibrium-at-quota\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"With 3 boats each catching exactly the quota (3), the stock perfectly regenerates to the cap each round: 27 - 9 = 18, 18 * 1.5 = 27 (capped). The system is in a fixed point.\",\n      \"test\": \"Observe stock values across consecutive rounds when all boats catch quota.\",\n      \"prediction\": \"Stock will read 27 at the start of every round.\",\n      \"evidence\": [\"Stock was 27 at the start of all 4 rounds, and the resolution confirmed 'Stock now 27' after each round.\"],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\"Use this to confirm the game is in equilibrium; any deviation in stock signals someone caught a different amount.\"]\n    },\n    {\n      \"id\": \"dump-is-strictly-dominant-negative\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"Dumping is never beneficial for your own score when stock is at or above the equilibrium level, because you pay a fee and gain no fish, while the stock regenerates to the cap regardless.\",\n      \"test\": \"Compare a round where you dump 3 (score -1) versus catch 3 (score +3) with identical stock conditions.\",\n      \"prediction\": \"Catching 3 always yields a higher personal score than dumping any positive amount when stock >= 9.\",\n      \"evidence\": [\"I never dumped; all rounds I caught 3 and scored +3 each. The math confirms dumping is strictly worse for self-score at equilibrium stock levels.\"],\n      \"confidence\": 0.9,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\"Only consider dumping if stock is dangerously low and you want to prevent the game from ending (empty stock ends the game) while sacrificing a small score to keep playing. Otherwise, always catch.\"]\n    },\n    {\n      \"id\": \"first-processed-priority\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"Because your landing is processed first, if stock is insufficient for all boats, you are guaranteed your full requested catch while later boats may be shorted.\",\n      \"test\": \"In a scenario where stock < total requested (e.g., stock = 5, three boats each request 3), observe whether you get 3 and the last boat gets 0.\",\n      \"prediction\": \"You get min(requested, stock), then boat 2 gets min(3, remaining), then boat 3 gets min(3, remaining).\",\n      \"evidence\": [\"Stock was always 27 (sufficient for all), so this priority was never stressed. No direct observation of shortage.\"],\n      \"confidence\": 0.5,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\"If you can drive stock below 9 (e.g., by dumping or if others overfish), your first-processed position becomes a real advantage. Consider this when deciding whether to deplete stock.\"]\n    }\n  ],\n  \"strategy\": \"At equilibrium (stock at cap, all boats catching quota), the game is a fixed-payoff situation: you get exactly quota × rounds total. Catching the full quota every round is the dominant strategy for maximizing your own score. The only levers are: (1) exceeding the quota if it is not a hard cap (untested), (2) dumping to manipulate stock in ways that harm rivals more than yourself (only useful if stock is low enough that rivals get shorted while you, processed first, still get your fill), and (3) catching less to preserve stock for later rounds (useless here since stock regenerates to cap anyway). Watch for stock deviations from the cap as a signal that someone is deviating from quota, which may open an opportunity to exploit the first-processed priority.\"\n}\n```",
+  "meta": {
+    "call_id": "3b29d35175504751a9ff4c62250997f0",
+    "actual_model": "qwen3.8-27b",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 2579,
+      "prompt_tokens": 1329,
+      "total_tokens": 3908,
+      "completion_tokens_details": null,
+      "prompt_tokens_details": null,
+      "reasoning_tokens": 1434
+    },
+    "timestamp": "2026-09-06T18:57:02.141911+00:00"
+  }
+}

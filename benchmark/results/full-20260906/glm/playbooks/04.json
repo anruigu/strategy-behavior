@@ -1,0 +1,179 @@
+{
+  "experiment_id": "full-20260906",
+  "run_id": "4acb38eda4ee419199cd40fe7d2e9527",
+  "game_id": "ref_hanabi",
+  "model_id": "glm",
+  "iteration": 4,
+  "sequence": 4,
+  "game_order_index": 0,
+  "seed": 9060204,
+  "condition": "persistent",
+  "scope": "cross-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T19:06:55.499656+00:00",
+  "model_config": {
+    "model_id": "glm",
+    "provider": "flt",
+    "provider_model": "glm-5.3",
+    "base_url": "https://inference.flt.build/v1",
+    "key_env": "FLEET_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "rank_clues_beyond_one",
+        "game": "ref_hanabi",
+        "hypothesis": "The referee accepts any rank actually present in the recipient's hand (e.g., rank 2), not just the 'R' and '1' shown in the rules examples.",
+        "test": "Give [clue: player P, 2] when the target hand contains a rank-2 card.",
+        "prediction": "The clue is forwarded and all rank-2 slots are marked; no rule violation.",
+        "evidence": [
+          "This episode round 3: [clue: player 1, 2] accepted; player 1 played R2 and built it.",
+          "Prior episode: [clue: player 2, 2] accepted and forwarded; no rule violation."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Use rank clues for any rank present in the hand to point at the next playable card."
+        ]
+      },
+      {
+        "id": "clue_forces_play_even_when_unplayable",
+        "game": "ref_hanabi",
+        "hypothesis": "After receiving a clue, the recipient always plays a card from their marks, even if that card is not playable; an unplayable marked card is discarded (no build, no score).",
+        "test": "Clue a card whose rank is not the next needed on its stack and observe the resolution.",
+        "prediction": "The recipient plays the marked card and it is discarded, wasting the card and the clue token.",
+        "evidence": [
+          "Prior episode: clue 'R' marking R2 with R stack at 2; player 2 played R2 and it was discarded.",
+          "This episode: every clue round ended with the recipient playing a card immediately."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Before cluing, verify the marked card is the exact next rank needed on its stack (stack at N means N+1 is playable, not N).",
+          "Never clue a card that duplicates the top of a stack — it forces a discard."
+        ]
+      },
+      {
+        "id": "ambiguous_marks_cause_misplays",
+        "game": "ref_hanabi",
+        "hypothesis": "If a clue marks multiple cards, the recipient may play the wrong one; single-card marks are reliably played as intended.",
+        "test": "Compare clues that mark exactly one card with clues marking several.",
+        "prediction": "Single-card marks yield the intended play; multi-card marks risk discards/misplays.",
+        "evidence": [
+          "Prior episode: clue 'R' marking both R2 and R1 led to playing R2, which was discarded.",
+          "This episode: every single-card clue (B to player 1, 1 to player 1, 2 to player 1) produced the intended build."
+        ],
+        "confidence": 0.85,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Prefer clues that isolate exactly one playable card; avoid colour clues that also mark unplayable cards of the same colour."
+        ]
+      },
+      {
+        "id": "reclue_disambiguation_works",
+        "game": "ref_hanabi",
+        "hypothesis": "Re-cluing a rank to a player whose intended card is still in hand makes the play unambiguous and succeeds.",
+        "test": "After a misplay leaves the intended card available, repeat the rank clue.",
+        "prediction": "Recipient plays the single remaining marked card correctly.",
+        "evidence": [
+          "Prior episode: round 3 re-clue '1' to player 1; they played R1 and built it."
+        ],
+        "confidence": 0.8,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "After a misplay, if the intended card is still in hand, a repeat clue is a safe recovery."
+        ]
+      },
+      {
+        "id": "stack_offset_check",
+        "game": "ref_hanabi",
+        "hypothesis": "Playability is strictly next-rank: a stack showing N needs N+1; reading stack value N as 'N is playable' wastes clues and cards.",
+        "test": "Each turn, explicitly compute next-needed rank per colour as stack value + 1 before choosing a clue or play.",
+        "prediction": "Clues only to cards matching stack+1 produce builds; cluing or playing stack-value cards produces discards.",
+        "evidence": [
+          "Prior episode final round: R stack at 2, clued R2 believing it playable; discarded.",
+          "This episode: all three clues matched stack+1 (B1 on empty B, R1 on empty R, R2 on R at 1) and all built.",
+          "This episode final round: my blind play of R2 with R stack at 2 was correctly discarded — R needed 3."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Always compute needed rank as current stack height + 1; double-check before spending a clue token or playing a card, especially on the last round when there is no recovery."
+        ]
+      },
+      {
+        "id": "blind_play_of_own_cards",
+        "game": "ref_hanabi",
+        "hypothesis": "Playing my own card without any clue information is a legal move but a gamble: my hand is unknown to me, and an unplayable card is simply discarded with no other penalty or gain.",
+        "test": "When no useful clue exists, [play: N] a slot and observe the resolution.",
+        "prediction": "The card is built if it happens to match stack+1, otherwise discarded; no score penalty beyond the lost card.",
+        "evidence": [
+          "This episode final round: [play: 1] with R at 2 and B at 1; my card was R2 (unplayable, R needed 3) and was discarded; game ended at 3 points with no additional penalty."
+        ],
+        "confidence": 0.8,
+        "tested": true,
+        "successful": false,
+        "instructions": [
+          "Treat blind plays as a last resort when no clue can produce a build; a failed blind play costs nothing extra but gains nothing.",
+          "If a future hand ever gets marked via a clue to me, prefer playing marked cards over blind plays."
+        ]
+      },
+      {
+        "id": "clue_tokens_do_not_refresh",
+        "game": "ref_hanabi",
+        "hypothesis": "Clue tokens only decrease (4 to 3 to 2 to 1 across rounds); nothing observed refreshes them, and builds do not return tokens.",
+        "test": "Track token count after each successful build.",
+        "prediction": "Tokens decrease by exactly one per clue and never increase.",
+        "evidence": [
+          "This episode: tokens 4, 3, 2, 1 across four rounds despite three successful builds."
+        ],
+        "confidence": 0.9,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Budget clue tokens across all rounds; with few rounds left and no playable clue targets, a blind play may be equal to a wasted clue."
+        ]
+      },
+      {
+        "id": "empty_hands_cannot_be_clued",
+        "game": "ref_hanabi",
+        "hypothesis": "A clue must reference a colour or rank actually in the recipient's hand, so a player with an empty hand cannot receive any clue; their turns (if any) must be plays or reviews.",
+        "test": "Attempt to clue a player whose hand is empty, or observe rounds where a hand is empty.",
+        "prediction": "No legal clue exists for an empty hand; the acting player must play or review instead.",
+        "evidence": [
+          "This episode round 4: player 1's hand was empty after three successful clue-driven builds; only player 2 remained as a clue target, and their cards were all unplayable."
+        ],
+        "confidence": 0.7,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Track how many cards remain in each opponent's hand; exhausting a hand removes them as a clue target and can strand the endgame with no scoring moves."
+        ]
+      }
+    ],
+    "strategy": "When a clue is put to me, I mark exactly one card and verify it is the exact next rank needed (stack height + 1) on its colour — this episode all three such clues built successfully. Rank clues work for any rank present in the hand, not just 1. Recipients always play immediately after a clue, playable or not, so a bad clue directly causes a discard. Avoid colour clues that sweep in extra cards. After a misplay, a repeat clue on the still-held intended card recovers. Tokens never refresh, so budget them. When no clue can produce a build (all visible cards unplayable), a blind play of my own card is legal and costs nothing beyond the card — this episode's blind R2 was discarded, so blind plays are low-value gambles, not free wins. Watch hand sizes: cluing a player's last card empties their hand and removes them as a future clue target, which can strand the final round. I have not tested [review: 0]; it remains an unexplored option for learning my own hand, and might be worth spending a round on when no clue can build. With one token and one round left, there is no recovery from a mistake, so verify playability twice before the final action."
+  },
+  "raw": "```json\n{\n  \"discoveries\": [\n    {\n      \"id\": \"rank_clues_beyond_one\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"The referee accepts any rank actually present in the recipient's hand (e.g., rank 2), not just the 'R' and '1' shown in the rules examples.\",\n      \"test\": \"Give [clue: player P, 2] when the target hand contains a rank-2 card.\",\n      \"prediction\": \"The clue is forwarded and all rank-2 slots are marked; no rule violation.\",\n      \"evidence\": [\n        \"This episode round 3: [clue: player 1, 2] accepted; player 1 played R2 and built it.\",\n        \"Prior episode: [clue: player 2, 2] accepted and forwarded; no rule violation.\"\n      ],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Use rank clues for any rank present in the hand to point at the next playable card.\"\n      ]\n    },\n    {\n      \"id\": \"clue_forces_play_even_when_unplayable\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"After receiving a clue, the recipient always plays a card from their marks, even if that card is not playable; an unplayable marked card is discarded (no build, no score).\",\n      \"test\": \"Clue a card whose rank is not the next needed on its stack and observe the resolution.\",\n      \"prediction\": \"The recipient plays the marked card and it is discarded, wasting the card and the clue token.\",\n      \"evidence\": [\n        \"Prior episode: clue 'R' marking R2 with R stack at 2; player 2 played R2 and it was discarded.\",\n        \"This episode: every clue round ended with the recipient playing a card immediately.\"\n      ],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Before cluing, verify the marked card is the exact next rank needed on its stack (stack at N means N+1 is playable, not N).\",\n        \"Never clue a card that duplicates the top of a stack — it forces a discard.\"\n      ]\n    },\n    {\n      \"id\": \"ambiguous_marks_cause_misplays\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"If a clue marks multiple cards, the recipient may play the wrong one; single-card marks are reliably played as intended.\",\n      \"test\": \"Compare clues that mark exactly one card with clues marking several.\",\n      \"prediction\": \"Single-card marks yield the intended play; multi-card marks risk discards/misplays.\",\n      \"evidence\": [\n        \"Prior episode: clue 'R' marking both R2 and R1 led to playing R2, which was discarded.\",\n        \"This episode: every single-card clue (B to player 1, 1 to player 1, 2 to player 1) produced the intended build.\"\n      ],\n      \"confidence\": 0.85,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Prefer clues that isolate exactly one playable card; avoid colour clues that also mark unplayable cards of the same colour.\"\n      ]\n    },\n    {\n      \"id\": \"reclue_disambiguation_works\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Re-cluing a rank to a player whose intended card is still in hand makes the play unambiguous and succeeds.\",\n      \"test\": \"After a misplay leaves the intended card available, repeat the rank clue.\",\n      \"prediction\": \"Recipient plays the single remaining marked card correctly.\",\n      \"evidence\": [\n        \"Prior episode: round 3 re-clue '1' to player 1; they played R1 and built it.\"\n      ],\n      \"confidence\": 0.8,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"After a misplay, if the intended card is still in hand, a repeat clue is a safe recovery.\"\n      ]\n    },\n    {\n      \"id\": \"stack_offset_check\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Playability is strictly next-rank: a stack showing N needs N+1; reading stack value N as 'N is playable' wastes clues and cards.\",\n      \"test\": \"Each turn, explicitly compute next-needed rank per colour as stack value + 1 before choosing a clue or play.\",\n      \"prediction\": \"Clues only to cards matching stack+1 produce builds; cluing or playing stack-value cards produces discards.\",\n      \"evidence\": [\n        \"Prior episode final round: R stack at 2, clued R2 believing it playable; discarded.\",\n        \"This episode: all three clues matched stack+1 (B1 on empty B, R1 on empty R, R2 on R at 1) and all built.\",\n        \"This episode final round: my blind play of R2 with R stack at 2 was correctly discarded — R needed 3.\"\n      ],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Always compute needed rank as current stack height + 1; double-check before spending a clue token or playing a card, especially on the last round when there is no recovery.\"\n      ]\n    },\n    {\n      \"id\": \"blind_play_of_own_cards\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Playing my own card without any clue information is a legal move but a gamble: my hand is unknown to me, and an unplayable card is simply discarded with no other penalty or gain.\",\n      \"test\": \"When no useful clue exists, [play: N] a slot and observe the resolution.\",\n      \"prediction\": \"The card is built if it happens to match stack+1, otherwise discarded; no score penalty beyond the lost card.\",\n      \"evidence\": [\n        \"This episode final round: [play: 1] with R at 2 and B at 1; my card was R2 (unplayable, R needed 3) and was discarded; game ended at 3 points with no additional penalty.\"\n      ],\n      \"confidence\": 0.8,\n      \"tested\": true,\n      \"successful\": false,\n      \"instructions\": [\n        \"Treat blind plays as a last resort when no clue can produce a build; a failed blind play costs nothing extra but gains nothing.\",\n        \"If a future hand ever gets marked via a clue to me, prefer playing marked cards over blind plays.\"\n      ]\n    },\n    {\n      \"id\": \"clue_tokens_do_not_refresh\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"Clue tokens only decrease (4 to 3 to 2 to 1 across rounds); nothing observed refreshes them, and builds do not return tokens.\",\n      \"test\": \"Track token count after each successful build.\",\n      \"prediction\": \"Tokens decrease by exactly one per clue and never increase.\",\n      \"evidence\": [\n        \"This episode: tokens 4, 3, 2, 1 across four rounds despite three successful builds.\"\n      ],\n      \"confidence\": 0.9,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Budget clue tokens across all rounds; with few rounds left and no playable clue targets, a blind play may be equal to a wasted clue.\"\n      ]\n    },\n    {\n      \"id\": \"empty_hands_cannot_be_clued\",\n      \"game\": \"ref_hanabi\",\n      \"hypothesis\": \"A clue must reference a colour or rank actually in the recipient's hand, so a player with an empty hand cannot receive any clue; their turns (if any) must be plays or reviews.\",\n      \"test\": \"Attempt to clue a player whose hand is empty, or observe rounds where a hand is empty.\",\n      \"prediction\": \"No legal clue exists for an empty hand; the acting player must play or review instead.\",\n      \"evidence\": [\n        \"This episode round 4: player 1's hand was empty after three successful clue-driven builds; only player 2 remained as a clue target, and their cards were all unplayable.\"\n      ],\n      \"confidence\": 0.7,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Track how many cards remain in each opponent's hand; exhausting a hand removes them as a clue target and can strand the endgame with no scoring moves.\"\n      ]\n    }\n  ],\n  \"strategy\": \"When a clue is put to me, I mark exactly one card and verify it is the exact next rank needed (stack height + 1) on its colour — this episode all three such clues built successfully. Rank clues work for any rank present in the hand, not just 1. Recipients always play immediately after a clue, playable or not, so a bad clue directly causes a discard. Avoid colour clues that sweep in extra cards. After a misplay, a repeat clue on the still-held intended card recovers. Tokens never refresh, so budget them. When no clue can produce a build (all visible cards unplayable), a blind play of my own card is legal and costs nothing beyond the card — this episode's blind R2 was discarded, so blind plays are low-value gambles, not free wins. Watch hand sizes: cluing a player's last card empties their hand and removes them as a future clue target, which can strand the final round. I have not tested [review: 0]; it remains an unexplored option for learning my own hand, and might be worth spending a round on when no clue can build. With one token and one round left, there is no recovery from a mistake, so verify playability twice before the final action.\"\n}\n```",
+  "meta": {
+    "call_id": "2fb4127b6af0431da5a714053d7001ed",
+    "actual_model": "glm-5.3",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 2241,
+      "prompt_tokens": 3619,
+      "total_tokens": 5860,
+      "completion_tokens_details": null,
+      "prompt_tokens_details": null,
+      "reasoning_tokens": 109
+    },
+    "timestamp": "2026-09-06T19:07:02.366074+00:00"
+  }
+}

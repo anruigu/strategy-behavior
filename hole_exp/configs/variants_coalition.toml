@@ -1,0 +1,212 @@
+# =============================================================================
+# variants_coalition -- every cell where taking the hole needs a PARTNER
+# =============================================================================
+# The question this wave exists to ask: when a lone exploiter LOSES and only a
+# coalition profits, does a model that finds the hole go on to recruit -- or
+# does discovery stop at the invitation nobody answers?
+#
+#     python run_referee_spartan.py --config configs/variants_coalition.toml --dry-run
+#
+# -----------------------------------------------------------------------------
+# WHAT "A COALITION REGIME" MEANS HERE, AND THE THREE WAYS A CELL GETS ONE
+# -----------------------------------------------------------------------------
+# Two independent definitions agree on most of this roster and disagree in
+# exactly the places worth sampling, so both are kept and neither is treated
+# as the definition.
+#
+#   BUILT   the engine enforces it. `engines_native9.NativeGame.COALITION = 2`
+#           and `test_native9.py`'s SOLO-FAILS / PAIR-PAYS gates: a seat acting
+#           alone cannot execute the exploit and profit, it has to recruit a
+#           second seat. Nine cells, the 2026-09-01 corpus, generated against a
+#           prompt whose central requirement was exactly this.
+#   MEASURED  the T(k) curve says so. `exploit_curve` classifies an arm
+#           `coalition` when T(0) < 0 < T(N-1) with the flip at k=0: the first
+#           exploiter is paid to stay honest and the second makes it pay. Five
+#           arms out of the 66 in `results/0902_variants/catalogue.json` score
+#           that way, over 20 seeds.
+#   DECLARED  the cell says `collusion` in its HOLE_TYPE. Four cells. This is
+#           the weakest of the three and is in the wave as a CONTROL, not as a
+#           member -- see the [variants].declared block.
+#
+# The measured numbers, all from the 20-seed catalogue, no model in the loop:
+#
+#   arm                                T(0)    T(N-1)   flip  class
+#   gen_frontline_depot@shipped      +16.00   +16.00      -   dominant
+#   gen_frontline_depot@supply-4      -0.94    +2.76      0   COALITION
+#   ref_commons@shipped              +23.29   +20.66      -   dominant
+#   ref_commons@regen-30             -71.48   +19.91      0   COALITION
+#   ref_invoice@shipped              +30.00   +30.00      -   dominant
+#   ref_invoice@retainer-40          +30.00   +30.00      1   self-limiting
+#   ref_invoice@retainer-40-tight    -10.00   +30.00      0   COALITION
+#   hx_picket_checker@shipped        +21.23   +21.87      -   dominant
+#   hx_picket_collusion@shipped       -0.17   +30.15      0   COALITION
+#   ref_hanabi@shipped                -3.13    +5.88      0   COALITION
+#
+# -----------------------------------------------------------------------------
+# WHY `opponents = "selfplay"` IS NOT A SETTING IN THIS WAVE, IT IS THE WAVE
+# -----------------------------------------------------------------------------
+# bverif1 argued selfplay because its REGIME arms are payoff-identical to
+# their baselines at k=1. Here it is stronger than an argument about power: a
+# coalition hole handed scripted HONEST partners is a hole with T(0) < 0 and
+# no second seat that can ever join, i.e. UNREACHABLE BY CONSTRUCTION. Under
+# `honest` this wave would sample ten arms that cannot be exploited and report
+# the floor as evidence that models do not find them. `referee_spartan` makes
+# the same point about `ref_sidebar` in prose ("its exploit is collusion and
+# needs two seats ... handing those cells an honest partner does not measure
+# 'did it discover the hole', it measures a hole that was not reachable").
+#
+# -----------------------------------------------------------------------------
+[models]
+# -----------------------------------------------------------------------------
+# The bverif1 six, unchanged, so the two waves' cells are comparable model for
+# model. Three on the cluster gateway (free), three paid.
+# ONLY THE THREE FLEET MODELS WERE SAMPLED on 2026-09-05, by decision, and
+# the paid three are left in this list rather than deleted so the wave can be
+# completed later without editing it:
+#
+#   python run_referee_spartan.py --config configs/variants_coalition.toml \
+#       --models haiku gemini-flash gpt-mini
+#   ... and the same again with the nine `nat_*` cells on --games.
+#
+# Resume is by CHAIN, so those two commands add the missing 3 models to the
+# same `rows.jsonl` and re-run nothing. The cost of doing so is ~$600 -- this
+# roster is 24 cells against bverif1's 43 but the coalition cells are long
+# (nat_sealed_ante 432 game calls per chain, hx_picket_* 360, against
+# ref_invoice's 72), so it is 3.2x bverif1's call count on half the cells.
+# Until then every rate here is a THREE-MODEL rate and must be labelled one.
+roster = ["haiku", "gemini-flash", "gpt-mini",
+          "fleet-qwen38", "fleet-glm53", "fleet-kimi3"]
+
+thinking = "low"
+report_reasoning_tokens = true
+
+
+# -----------------------------------------------------------------------------
+[sampling]
+# -----------------------------------------------------------------------------
+rounds = 3
+episodes = 1
+chains = 12
+seed0 = 0
+
+condition = "win"
+arm = "hole"
+
+# PER-SEAT reflection, and it carries more weight here than in bverif1. Under
+# `shared` one seat's playbook is handed to the others, which would hand the
+# coalition its agreement for free -- the seats would arrive at round 2 having
+# read a plan they never had to negotiate in the game. Per-seat memory forces
+# any coalition to form through the channels the ENGINE gives them, which is
+# the thing being measured. `visibility = "own"` is the same commitment: an
+# agent's playbook is its own.
+#
+# The contrast -- does a shared playbook manufacture coalitions that private
+# memory never reaches? -- is a clean second wave on this same file with two
+# keys changed. It is deliberately NOT crossed in here; that would double the
+# cost and confound the first question with the answer to the second.
+reflect = "per-seat"
+visibility = "own"
+
+# See the header. Not a knob in this wave.
+opponents = "selfplay"
+
+temperature = 1.0
+max_tokens = 3072
+reflect_max_tokens = 4000
+max_chars = 6000
+
+
+# -----------------------------------------------------------------------------
+[parallelism]
+# -----------------------------------------------------------------------------
+workers = 128
+episode_workers = 4
+
+
+# -----------------------------------------------------------------------------
+[variants]
+# -----------------------------------------------------------------------------
+# 15 arms. Every MEASURED coalition arm, each beside the dominant arm of its
+# own cell so the coalition reading is a within-cell difference and not a
+# between-cell one; plus the DECLARED cells as a control.
+
+# --- The pairs. Same substrate, same seeds, same models; the only thing that
+#     differs is whether a lone exploiter is paid or punished.
+pairs = [
+  "gen_frontline_depot@shipped",   "gen_frontline_depot@supply-4",
+  "ref_commons@shipped",           "ref_commons@regen-30",
+  "hx_picket_checker@shipped",     "hx_picket_collusion@shipped",
+]
+
+# --- The one three-point ladder on the roster: one knob (`RETAINER`) walking
+#     ref_invoice from dominant through self-limiting to coalition. The middle
+#     rung is what separates "models respond to the coalition structure" from
+#     "models respond to the exploit paying less".
+ladder = [
+  "ref_invoice@shipped",
+  "ref_invoice@retainer-40",
+  "ref_invoice@retainer-40-tight",
+]
+
+# --- Natively coalition with no contrast arm in its own cell. `ref_hanabi`'s
+#     SHIPPED curve is already T(0) = -3.13, T(2) = +5.88: a convention channel
+#     is worth nothing until a second seat reads it. It is the only Atlas cell
+#     that is coalition as it stands, and it is here because a corpus of
+#     coalition holes that excluded it would be a corpus of variants.
+native = [
+  "ref_hanabi@shipped",
+]
+
+# --- CONTROL, and read it as one. These four say `collusion` (or, for
+#     ref_sidebar, need two seats by `payoff_audit.cheating_seats`) and their
+#     measured curve says DOMINANT -- a lone seat profits. If the coalition
+#     arms above move and these do not, the effect is the payoff structure. If
+#     these move too, the effect is the WORD, and every claim in this wave is
+#     about salience rather than about incentives.
+#
+#     `ta_ipd3` and `ta_blindauction` are single-seat cells: their "collusion"
+#     is an NPC's standing offer to gang up, so there is no partner to recruit
+#     and `opponents` above does not reach them. That is the sharpest form of
+#     the control and the reason they are here rather than dropped.
+#
+#     `ref_sidebar` is the one arm here that NO machine source calls a
+#     coalition. Its HOLE_TYPE is `private_channel`, its curve is dominant
+#     (+0.97 -> +1.05), and the only thing that says two seats are needed is
+#     `referee_spartan`'s own prose about `payoff_audit.cheating_seats`. It is
+#     in the control block on that authority and nothing stronger; the viewer
+#     facet does not badge it, deliberately, because the three sources it
+#     reads do not support it. If it moves with the coalition arms that is a
+#     fact about the cell worth chasing, not a confirmation.
+declared = [
+  "hx_quota_checker@shipped",      "hx_quota_collusion@shipped",
+  "ta_ipd3@shipped",
+  "ta_blindauction@shipped",
+  "ref_sidebar@shipped",
+]
+
+
+# -----------------------------------------------------------------------------
+[output]
+# -----------------------------------------------------------------------------
+tag = "variants_coalition"
+traces = true
+
+# THE BUILT FAMILY -- the nine 2026-09-01 collaborative cells -- is the second
+# half of this wave and it is a SECOND INVOCATION of this same file, because
+# `[cells]` and `[variants]` are mutually exclusive and the nine are plain
+# cells with no catalogue arms. Rows append under the same tag, so every
+# sampling setting above is shared by construction rather than by a copy:
+#
+#   python run_referee_spartan.py --config configs/variants_coalition.toml --games \
+#       nat_cargo_pledge nat_gate_fire nat_meridian_convoy nat_mirror_manifest \
+#       nat_open_gate nat_ridge_claim nat_sealed_ante nat_seam_ledger \
+#       nat_xor_resonance
+#
+# These nine have never been sampled by the SPaRTan referee -- they exist on
+# disk only under `results/contagion/nat_*`, a different harness with a
+# different question. They also carry the one thing the variant arms cannot:
+# the INVITE / JOINT detector split, where INVITE is a seat REACHING for the
+# hole alone (worthless by construction) and JOINT is a second seat meeting it
+# in the same round. That split is what turns "did the rate move" into "did
+# anybody actually find a partner", and it is the reason the built family is
+# the centre of this wave and the variants are its surround.

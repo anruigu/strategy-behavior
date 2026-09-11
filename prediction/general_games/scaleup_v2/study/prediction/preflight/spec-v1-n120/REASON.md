@@ -1,0 +1,1 @@
+Completed preflight forecasts using the first compact mechanics specification. Excluded from final learning curves after correcting auction bid validity and adding explicit initialization distributions. No fresh test-player calls existed, and no test outcomes or predictor scores were used to make this amendment. All calls remain in the original budget ledgers.

@@ -8,6 +8,35 @@ window.UI.benchmark_move = function (v, ctx) {
   const box = K.board();
   K.put(box, K.head({ step: 'Round ' + v.round + ' / ' + v.rounds,
     title: v.title || 'V2 · September 6', scores: [] }));
+  if (v.card) {
+    // V3: the rules card is the whole rulebook. Four labelled lines, always visible.
+    const c = v.card;
+    const card = K.el('div', 'v3-card');
+    [['Goal', c.goal], ['Your turn', c.turn], ['Scoring', c.scoring], ['Rivals', c.rivals]].forEach(([k, text]) => {
+      const row = K.el('div', 'v3-card-row');
+      K.put(row, K.el('strong', '', k), K.note(text));
+      K.put(card, row);
+    });
+    K.put(box, K.panel('Rules card · ' + c.title, card));
+  }
+  if (v.notice) {
+    const banner = K.note(v.notice, 'v3-notice');
+    banner.setAttribute('role', 'status');
+    K.put(box, banner);
+  }
+  if (v.guide) {
+    const g = v.guide;
+    const help = K.panel('How to play ' + g.title, K.note(g.goal), K.note(g.turn));
+    K.put(help, K.note('Getting started: ' + g.start));
+    const terms = K.el('details', 'scaleup-help-terms');
+    K.put(terms, K.el('summary', '', 'What do the terms mean?'));
+    Object.entries(g.terms).forEach(([term, meaning]) => {
+      K.put(terms, K.el('strong', '', term), K.note(meaning));
+    });
+    const link = K.el('a', 'scaleup-guide-link', 'Open the full game guide ↗');
+    link.href = g.url; link.target = '_blank'; link.rel = 'noopener';
+    K.put(help, terms, link); K.put(box, help);
+  }
   if (v.table) {
     const t = v.table;
     K.put(box, K.note('One team · ' + t.score + ' / ' + (t.max_score || 6) + ' points · ' + t.tokens + ' clue tokens'));
@@ -18,7 +47,7 @@ window.UI.benchmark_move = function (v, ctx) {
         K.note(n ? 'Built: ' + Array.from({length: n}, (_, i) => i + 1).join(' → ') : 'Empty'),
         K.note(n === 3 ? 'Complete' : 'Next needed: ' + (n + 1))));
     });
-    K.put(box, piles, K.note('Goal: build both colours 1 → 2 → 3 in ' + (t.turn_limit || 8) + ' turns. No replacement draws.'));
+    K.put(box, piles, K.note(t.round_structure ? t.round_structure + '. No replacement draws.' : 'Goal: build both colours 1 → 2 → 3 in ' + (t.turn_limit || 8) + ' turns. No replacement draws.'));
     if (t.completion_bonus) K.put(box, K.note('Each built card: +1 point. Complete BOTH piles: +' + t.completion_bonus + ' bonus (' + t.max_score + ' total). Discards and reviews use a turn too.'));
     function hand(title, cards, mine) {
       const row = K.el('div', 'human-hanabi-hand');
@@ -38,6 +67,52 @@ window.UI.benchmark_move = function (v, ctx) {
     t.others.forEach(p => K.put(others, hand('Player ' + p.player + ' · visible hand', p.cards, false)));
     K.put(box, others, K.note('Choose one action below. Give a clue to make a teammate play, or play a card from your own hand.'));
     if (t.discarded.length) K.put(box, K.note('Discarded: ' + t.discarded.map(c => c.join('')).join(', ')));
+  } else if (v.public_state) {
+    const state = v.public_state;
+    const seats = (v.guide && v.guide.seats) || (v.card && v.card.seats);
+    K.put(box, K.note('Scores · ' + (seats ? JSON.parse(v.scores).map((score, i) => seats[i] + ': ' + score).join(' · ') : v.scores)));
+    if (state.own_hull) {
+      const sea = K.el('div', 'scaleup-sea');
+      ['A','B','C','D'].forEach(row => [1,2,3,4].forEach(col => {
+        const cell = row + col;
+        const marks = [];
+        if (state.own_hull.includes(cell)) marks.push('Your hull');
+        if (state.hits && state.hits.includes(cell)) marks.push('Hit');
+        else if (state.shots.includes(cell)) marks.push('Fired');
+        if (state.probed && state.probed.includes(cell)) marks.push('Obstruction');
+        if (state.warning === cell) marks.push('Radar warning');
+        if (state.charts.includes(cell)) marks.push('Charted');
+        if (state.mines.includes(cell)) marks.push('Mine');
+        if (state.courier === cell) marks.push('Courier');
+        const tile = K.el('div', 'scaleup-cell' + (state.own_hull.includes(cell) ? ' occupied' : ''));
+        K.put(tile, K.el('strong', '', cell), K.el('span', '', marks.join(' · ') || 'Unknown water'));
+        K.put(sea, tile);
+      }));
+      K.put(box, K.panel('Patrol map', sea, K.note('Enemy hull positions are hidden. Fired marks do not imply a hit.')));
+    }
+    if (state.rival_positions) {
+      const road = K.el('div', 'scaleup-road');
+      for (let n=0;n<6;n++) {
+        const labels = [];
+        if (String(n) in state.titles) labels.push('Your title');
+        if (n===1 && ('1a' in state.titles)) labels.push('Your partitioned titles');
+        if (n===3 && (!state.seat_accounts || Object.keys(state.seat_accounts[1].titles).length)) labels.push('Rook property');
+        if (n===5 && (!state.seat_accounts || Object.keys(state.seat_accounts[2].titles).length)) labels.push('Dove property');
+        if (n===1 && !(String(n) in state.titles) && !('1a' in state.titles)) labels.push('Plot 1 (sold)');
+        state.rival_positions.forEach((pos,i) => { if(pos===n) labels.push(i ? 'Dove here' : 'Rook here'); });
+        if (state.fences.includes(n)) labels.push('Fence');
+        K.put(road, K.panel('Square '+n, K.note(labels.join(' · ') || 'Public road')));
+      }
+      K.put(box, K.panel('Estate ring · 0 → 1 → 2 → 3 → 4 → 5 → 0', road));
+    }
+    const ledger = K.el('div', 'scaleup-ledger');
+    const human = key => key.replaceAll('_',' ').replace(/^./, x=>x.toUpperCase());
+    const show = value => value === null ? '—' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : Array.isArray(value) ? (value.length ? value.map(show).join(', ') : 'None') : typeof value === 'object' ? Object.entries(value).map(([k,val])=>human(k)+': '+show(val)).join(' · ') : String(value);
+    const hidden = new Set(['sea', 'own_hull', 'shots', 'hits', 'charts', 'probed', 'mines', 'courier', 'rival_positions', 'fences', 'titles']);
+    Object.entries(state).filter(([key])=>!(v.card && hidden.has(key))).filter(([key])=>key!=='sea' && key!=='public_messages' && key!=='last_actions').forEach(([key,value]) => {
+      K.put(ledger, K.panel(human(key), K.note(show(value))));
+    });
+    K.put(box, ledger);
   } else {
     K.put(box, K.panel('At the table', K.note('Scores: ' + v.scores), K.note(v.state)));
   }
@@ -47,6 +122,7 @@ window.UI.benchmark_move = function (v, ctx) {
   v.actions.forEach(action => {
     const panel = K.panel(action.label);
     if (action.help) K.put(panel, K.note(action.help));
+    if (action.example) K.put(panel, K.note(action.example, 'scaleup-input-example'));
     const readers = {};
     action.fields.forEach(f => {
       const label = K.el('label', 'benchmark-field');
@@ -58,7 +134,7 @@ window.UI.benchmark_move = function (v, ctx) {
         empty.value = '';
         K.put(input, empty);
         f.options.forEach(value => {
-          const option = K.el('option', '', value);
+          const option = K.el('option', '', (f.option_labels && f.option_labels[value]) || value);
           option.value = value;
           K.put(input, option);
         });
@@ -66,6 +142,7 @@ window.UI.benchmark_move = function (v, ctx) {
         input = K.el('input');
         input.type = f.text ? 'text' : 'number';
         input.autocomplete = 'off';
+        if (f.text && v.public_state && (v.public_state.game || '').startsWith('v3ma_')) input.maxLength = 300;
         if (!f.text) {
           input.step = '1';
           if (f.minimum !== null) input.min = f.minimum;
@@ -76,6 +153,7 @@ window.UI.benchmark_move = function (v, ctx) {
       input.dataset.field = f.name;
       readers[f.name] = input;
       K.put(label, input);
+      if (f.help) K.put(label, K.note(f.help));
       K.put(panel, label);
       if (f.quick_options) {
         const shortcuts = K.el('div', 'human-clue-shortcuts');
@@ -122,5 +200,9 @@ window.UI.benchmark_move = function (v, ctx) {
 };
 
 window.UI.hanabi_human = function (v, ctx) {
+  return window.UI.benchmark_move(v, ctx);
+};
+
+window.UI.v3_move = function (v, ctx) {
   return window.UI.benchmark_move(v, ctx);
 };

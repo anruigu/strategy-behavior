@@ -43,16 +43,147 @@ const post = (path, body) => api(path, {
 
 let PLAYER = '';
 let GAMES = [];
-let EDITION = new URLSearchParams(location.search).get('version') === 'v1' ? 'v1' : 'v2';
+const EDITIONS = ['v0', 'v1', 'v2', 'v3', 'v4'];
+let EDITION = EDITIONS.includes(new URLSearchParams(location.search).get('version'))
+  ? new URLSearchParams(location.search).get('version') : 'v3';
 let RUN = null;        // {run_id, game, title, plays, variant}
 let PENDING = null;    // last pending decision
 let sending = false;
+let feedbackRun = null;
+let feedbackSending = false;
+document.querySelectorAll('[data-feedback]').forEach(button => {
+  button.onclick = () => {
+    const general = button.dataset.feedback === 'general';
+    if (!general && !RUN) return;
+    const run = general ? null : RUN.run_id;
+    if (feedbackRun !== run) $('feedback-text').value = '';
+    feedbackRun = run;
+    $('feedback-title').textContent = general ? 'Submit General Feedback' : 'Submit Feedback';
+    $('feedback-submit').textContent = general ? 'Submit General Feedback' : 'Submit Feedback';
+    $('feedback-game').textContent = general ? 'Feedback about the overall experience.' : RUN.title;
+    $('feedback-name-row').classList.toggle('hidden', !general);
+    $('feedback-name').required = general;
+    if (general) $('feedback-name').value = PLAYER || $('player').value.trim();
+    $('feedback-context').textContent = general
+      ? 'Saved with your player name, without a specific game. You can submit feedback as often as you like.'
+      : 'Saved with your player name and this game. You can submit feedback as often as you like.';
+    $('feedback-status').textContent = '';
+    $('feedback-dialog').showModal();
+    $('feedback-text').focus();
+  };
+});
+$('feedback-close').onclick = () => $('feedback-dialog').close();
+$('feedback-dialog').addEventListener('cancel', event => {
+  if (feedbackSending) event.preventDefault();
+});
+$('feedback-form').onsubmit = async event => {
+  event.preventDefault();
+  if (feedbackSending) return;
+  const text = $('feedback-text').value.trim();
+  if (!text) { $('feedback-status').textContent = 'Please enter your feedback.'; return; }
+  feedbackSending = true;
+  $('feedback-submit').disabled = $('feedback-close').disabled = true;
+  $('feedback-text').readOnly = true;
+  $('feedback-status').textContent = 'Saving…';
+  try {
+    const body = feedbackRun ? {run: feedbackRun, text}
+      : {scope: 'general', player: $('feedback-name').value.trim(), text};
+    const result = await post('/api/feedback', body);
+    if (!result.ok) throw new Error(result.error || 'Feedback could not be saved. Please try again.');
+    $('feedback-text').value = '';
+    $('feedback-status').textContent = 'Feedback submitted. Thank you! You can send another or close this window.';
+  } catch (err) {
+    $('feedback-status').textContent = err.message || 'Could not connect. Please try again.';
+  } finally {
+    feedbackSending = false;
+    $('feedback-submit').disabled = $('feedback-close').disabled = false;
+    $('feedback-text').readOnly = false;
+  }
+};
 // Bumped every time the board is redrawn. A renderer captures the value it
 // was built under and its context refuses to send once the value has moved
 // on, so a stale board -- one still on screen for the instant between a click
 // and the redraw, or one a renderer kept a reference to -- cannot post a move
 // against a decision that is already answered. See `send`.
 let epoch = 0;
+
+function renderEvalResults(st) {
+  document.querySelectorAll('.eval-results').forEach(box => {
+    box.replaceChildren();
+    box.classList.toggle('hidden', !st.final_view);
+    if (!st.final_view) return;
+    const title = document.createElement('h3');
+    title.textContent = 'Completed rounds';
+    box.appendChild(title);
+    const describe = value => Array.isArray(value) ? value.map(describe).join(', ') : value && typeof value === 'object' ? Object.entries(value).map(([k,v]) => k.replaceAll('_', ' ') + ': ' + describe(v)).join(' · ') : String(value);
+    for (const round of st.final_view.public_state.history) {
+      const row = document.createElement('p');
+      row.textContent = describe(round);
+      box.appendChild(row);
+    }
+  });
+}
+
+function renderSeatActions(st) {
+  if (RUN.actionsPlay !== st.run.play_index) {
+    RUN.actionsPlay = st.run.play_index;
+    RUN.lastActions = [];
+  }
+  if (Object.prototype.hasOwnProperty.call(st, 'last_actions')) RUN.lastActions = st.last_actions;
+  document.querySelectorAll('.seat-actions').forEach(box => {
+    box.replaceChildren();
+    box.classList.toggle('hidden', !st.symmetric_seats);
+    if (!st.symmetric_seats) return;
+    const title = document.createElement('h3');
+    title.textContent = 'Actions at the table';
+    box.appendChild(title);
+    const actions = RUN.lastActions || [];
+    if (!actions.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'Every seat chooses from the same action menu. Results appear after the round.';
+      box.appendChild(empty);
+    }
+    actions.forEach(action => {
+      const row = document.createElement('p');
+      const seat = document.createElement('strong');
+      seat.textContent = action.seat + ': ';
+      row.append(seat, document.createTextNode(action.result));
+      box.appendChild(row);
+    });
+  });
+}
+
+function renderPublicMessages(st) {
+  if (Object.prototype.hasOwnProperty.call(st, 'public_messages')) {
+    RUN.publicMessages = st.public_messages;
+  }
+  // Each play has its own conversation, including the last turn on the end card.
+  if (RUN.chatPlay !== st.run.play_index) {
+    RUN.chatPlay = st.run.play_index;
+    RUN.publicMessages = st.public_messages || [];
+  }
+  document.querySelectorAll('.public-chat').forEach(box => {
+    box.classList.toggle('hidden', !st.public_chat);
+    box.replaceChildren();
+    if (!st.public_chat) return;
+    const title = document.createElement('h3');
+    title.textContent = 'Public messages';
+    box.appendChild(title);
+    const messages = RUN.publicMessages || [];
+    if (!messages.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'Everyone can post a message alongside their pick.';
+      box.appendChild(empty);
+    }
+    messages.forEach(message => {
+      const item = document.createElement('p');
+      const speaker = document.createElement('strong');
+      speaker.textContent = `Turn ${message.round} · ${message.seat}: `;
+      item.append(speaker, document.createTextNode(message.text));
+      box.appendChild(item);
+    });
+  });
+}
 
 function show(view) {
   ['view-name', 'view-list', 'view-play', 'view-between', 'view-done']
@@ -495,25 +626,35 @@ function selectEdition(edition) {
 }
 
 function renderGames() {
-  $('edition-v1').setAttribute('aria-pressed', String(EDITION === 'v1'));
-  $('edition-v2').setAttribute('aria-pressed', String(EDITION === 'v2'));
-  $('edition-v1').onclick = () => selectEdition('v1');
-  $('edition-v2').onclick = () => selectEdition('v2');
-  $('edition-description').textContent = EDITION === 'v2'
-    ? 'Ten V2 games, including Auction, Estate and Battleship. Mini Hanabi uses the six-turn challenge.'
+  EDITIONS.forEach(e => {
+    $('edition-' + e).setAttribute('aria-pressed', String(EDITION === e));
+    $('edition-' + e).onclick = () => selectEdition(e);
+  });
+  $('edition-description').textContent = EDITION === 'v4'
+    ? 'Ten revised scenarios. Market games last eight rounds; purchase terms, auction withdrawals, and council replies arrive before your final choice. You play two fresh plays at each table.'
+    : EDITION === 'v0'
+    ? 'The former V4: nineteen games with Qwen playing the other seats and the same action access for everyone. Three plays per game.'
+    : EDITION === 'v3'
+    ? 'Seventeen short editions, each with its own rules card and a few actions. Three plays per edition; read the rules for each game.'
+    : EDITION === 'v2'
+    ? 'Ten short games with resources, alliances, hidden information and shared boards. Each play starts fresh.'
     : 'The original games and their existing versions.';
+  $('guide-link').href = EDITION === 'v3' ? '/guide-v3' : '/guide';
+  $('guide-link').textContent = EDITION === 'v3' ? 'How to play: guide to the V3 editions ↗' : 'How to play: guide to the ten V2 games ↗';
+  $('guide-link').parentElement.classList.toggle('hidden', !['v2', 'v3'].includes(EDITION));
   const g = $('grid');
   g.innerHTML = '';
   GAMES.filter(c => (c.edition || 'v1') === EDITION).forEach(c => {
     const d = document.createElement('div');
     d.className = 'card';
+    d.dataset.game = c.id;
     const vs = variantsOf(c);
     const row = vs.length
       ? vs.map((v, i) =>
           `<button class="variant ${v.source === 'filled' ? 'filled' : 'built'}" ` +
           `data-variant="${i}">${esc(v.label)}</button>`
         ).join('')
-      : (EDITION === 'v2' ? '<span class="novariant">play this game</span>'
+      : (EDITION !== 'v1' ? '<span class="novariant">play this game</span>'
                          : '<span class="novariant">no other version</span>');
     d.innerHTML =
       `<h3>${esc(c.title)}</h3>
@@ -536,13 +677,19 @@ function renderGames() {
 }
 
 // ── run loop ────────────────────────────────────────────────────────
+let startingRun = false;
 async function startRun(gid, card, variantOrNull) {
-  const st = await post('/api/run/start', { player: PLAYER, game: gid });
+  if (startingRun) return;
+  startingRun = true;
+  try {
+  const setup = {};
+
+  const st = await post('/api/run/start', { player: PLAYER, game: gid, ...setup });
   if (st.error) { alert(st.error); return; }
   RUN = {
     run_id: st.run.run_id, game: gid,
     title: (variantOrNull && variantOrNull.title) || card.title,
-    plays: st.run.plays, variant: variantOrNull || null
+    plays: st.run.plays, variant: variantOrNull || null,
   };
   $('play-title').textContent = RUN.title;
   const vt = $('play-variant');
@@ -553,11 +700,46 @@ async function startRun(gid, card, variantOrNull) {
     : 'vtag hidden';
   show('view-play');
   paint(st);
+  } catch (err) {
+    show('view-play');
+    boardUnavailable('Could not open the table.', 'Check your connection and choose a game again.');
+    const back = document.createElement('button');
+    back.textContent = 'Choose a game';
+    back.onclick = () => { RUN = null; show('view-list'); };
+    $('board').appendChild(back);
+  } finally {
+    startingRun = false;
+  }
 }
 
+let pollTimer = null;
+function expiredRun() {
+  const previous = RUN;
+  RUN = null;
+  PENDING = null;
+  sending = false;
+  $('prompt').textContent = '';
+  boardUnavailable('This game session has ended.',
+    'The site may have updated, the session expired, or another game was opened under your name. Start a fresh game to continue.');
+  if (previous) {
+    const restart = document.createElement('button');
+    restart.textContent = 'Start this game again';
+    restart.onclick = () => {
+      $('movelog').replaceChildren();
+      startRun(previous.game, { title: previous.title }, previous.variant);
+    };
+    $('board').appendChild(restart);
+  }
+  const back = document.createElement('button');
+  back.textContent = 'Choose another game';
+  back.onclick = () => show('view-list');
+  $('board').appendChild(back);
+}
 function paint(st) {
+  clearTimeout(pollTimer);
   // Every redraw retires the contexts the previous one handed out.
   epoch++;
+  if (st && st.error === 'no such run' && !st.run) return expiredRun();
 
   // Two different things arrive under `error` and they are not shown the same
   // way. Without a `run` key it is the API refusing the request outright --
@@ -576,14 +758,29 @@ function paint(st) {
       'leave and pick another one.');
   }
   RUN.plays = st.run.plays;
+  renderPublicMessages(st);
+  renderSeatActions(st);
+  renderEvalResults(st);
+  $('table-notice').textContent = st.table_notice || '';
+  $('table-notice').classList.toggle('hidden', !st.table_notice);
 
   $('play-title').textContent = RUN.title;
   $('play-meta').textContent =
-    `play ${st.run.play_index + 1} of ${st.run.plays}`;
-  $('memory').textContent = st.run.memory || 'This is your first play.';
+    `play ${st.run.play_index + 1} of ${st.run.plays}` + (st.run.eval ? ' · You: seat 0' : '');
+  $('memory').textContent = st.run.eval ? 'Fresh game. Your goal is to maximize your final score.' : st.run.memory || 'This is your first play.';
 
   if (st.done || !st.pending) {
     if (st.done) return between(st);
+    const runId = RUN.run_id;
+    pollTimer = setTimeout(async () => {
+      if (!RUN || RUN.run_id !== runId) return;
+      try {
+        const next = await api('/api/state?run=' + encodeURIComponent(runId));
+        if (RUN && RUN.run_id === runId) paint(next);
+      } catch (err) {
+        boardUnavailable('Could not reach the table.', 'Check your connection.');
+      }
+    }, 700);
     return boardNote('waiting for the other seats…');
   }
 
@@ -593,7 +790,8 @@ function paint(st) {
   // must not become, a place to type a move -- nor a place to learn that
   // moves can be typed, which is why it goes through `displayRules` and the
   // raw prompt is never written to the page.
-  $('prompt').textContent = displayRules(st.pending.prompt);
+  $('prompt').textContent = displayRules(st.pending.view && (st.pending.view.guide || st.pending.view.card)
+    ? st.pending.prompt.split('\nTable:')[0] : st.pending.prompt);
 
   const view = st.pending.view;
   if (!view || !view.kind) {
@@ -630,6 +828,7 @@ function paint(st) {
     }
     if (window.console) console.error('renderer failed for ' + view.kind, err);
   }
+  if (st.submission_error) boardWarn(st.submission_error);
 }
 
 async function send(text) {
@@ -667,6 +866,22 @@ async function send(text) {
 }
 
 // ── between plays ───────────────────────────────────────────────────
+function verdictText(outcome) {
+  return outcome === 'won' ? 'You won.' : outcome === 'lost' ? 'You lost.'
+    : outcome === 'tied' ? 'You tied for first.' : outcome === 'team' ? 'Team result.' : '';
+}
+
+// Final standings, highest first. Every seat's score was already on the board
+// each turn in these editions; this only lines them up.
+function standingsTable(rows) {
+  if (!rows || !rows.length) return '';
+  const sorted = rows.map((r, i) => ({ ...r, me: i === 0 }))
+    .sort((a, b) => b.score - a.score);
+  return '<table class="standings">' + sorted.map((r, i) =>
+    `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}.</td><td>${esc(r.seat)}</td>` +
+    `<td class="num">${Number(r.score).toFixed(1)}</td></tr>`).join('') + '</table>';
+}
+
 function between(st) {
   const r = st.play_result || {};
   const complete = st.run && st.run.complete;
@@ -677,6 +892,9 @@ function between(st) {
     $('d-score').textContent =
       `${(s.scores || []).length} plays  ·  scores ` +
       (s.scores || []).map(sc).join(', ');
+    $('d-standings').innerHTML = (s.results || []).map((res, i) =>
+      `<div class="standings-play"><strong>Play ${i + 1}: ${esc(verdictText(res.outcome))}</strong>` +
+      standingsTable(res.standings) + '</div>').join('');
     $('d-memory').textContent = (st.run.memory || '').trim();
     $('d-debrief').innerHTML = '';
     if (st.run.debrief) addDebrief();
@@ -684,7 +902,8 @@ function between(st) {
     return show('view-done');
   }
 
-  $('b-verdict').textContent = 'Play over.';
+  $('b-verdict').textContent = r.outcome ? 'Play over. ' + verdictText(r.outcome) : 'Play over.';
+  $('b-standings').innerHTML = r.standings ? standingsTable(r.standings) : '';
   let line = `your score ${sc(r.score || 0)}`;
   if (r.audited && r.caught) {
     line += `  ·  the referee's review after the play charged you ` +
@@ -732,6 +951,7 @@ $('btn-quit').onclick = async () => {
 };
 
 $('home-link').onclick = () => { if (!RUN) show(PLAYER ? 'view-list' : 'view-name'); };
+
 
 // ── boot ────────────────────────────────────────────────────────────
 (async () => {

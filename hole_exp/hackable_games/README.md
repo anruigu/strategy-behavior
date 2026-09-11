@@ -11,7 +11,8 @@ python server.py --host 0.0.0.0     # if you need it off-box
 ```
 
 Runs on the `tinker-ipd` venv; no network, no API keys, no build step, no node.
-Opponents are scripted, so a session costs nothing.
+V1–V3 use scripted opponents. [V4 · Play against AI](V4.md) uses hosted
+Qwen for the other seats in the same 19 V3 editions.
 
 ## What's in it — 29 cells, 24 on the menu
 

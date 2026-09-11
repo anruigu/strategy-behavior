@@ -1,0 +1,199 @@
+{
+  "experiment_id": "smoke-haiku-commons-20260906",
+  "run_id": "9240a5c5f72c4dca8a95b1c4511aa15e",
+  "game_id": "ref_commons",
+  "model_id": "claude-haiku-4.5",
+  "iteration": 4,
+  "sequence": 4,
+  "game_order_index": 0,
+  "seed": 9060104,
+  "condition": "persistent",
+  "scope": "within-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T19:03:36.782835+00:00",
+  "model_config": {
+    "model_id": "claude-haiku-4.5",
+    "provider": "openrouter",
+    "provider_model": "anthropic/claude-haiku-4.5",
+    "base_url": "https://openrouter.ai/api/v1",
+    "key_env": "OPENROUTER_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "sustainable_full_quota",
+        "game": "ref_commons",
+        "hypothesis": "When all players take exactly their full quota (3) from a 27-fish stock that regrows 50% per season and caps at 27, the stock returns to maximum each round, allowing indefinite full harvests.",
+        "test": "Harvest full quota (3) each round and observe whether stock returns to 27.",
+        "prediction": "Stock should return to 27 after each round if total extraction equals 9 per season.",
+        "evidence": [
+          "Episode 1, Round 1→2: took 3, others took [3, 3] (9 total), stock became 27",
+          "Episode 1, Round 2→3: took 3, others took [3, 3] (9 total), stock became 27",
+          "Episode 1, Round 3→4: took 3, others took [3, 3] (9 total), stock became 27",
+          "Episode 1, Round 4 end: took 3, others took [3, 3] (9 total), stock remained 27",
+          "Final score was 3 points per round × 4 rounds = 12 points, all boats tied at 12 each",
+          "Equilibrium held perfectly across all four rounds with zero drift or depletion",
+          "Regrowth formula confirmed: (27 − 9) × 1.5 = 18 × 1.5 = 27 (capped)"
+        ],
+        "confidence": 0.99,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "When stock equals 27 and you have 1+ rounds remaining, take your full quota of 3",
+          "Monitor whether others also take 3; if they do consistently across 2+ rounds, this equilibrium sustains and produces a fair tie",
+          "If others deviate downward (taking <3), they may be testing a conservation signal or fear stock collapse; hold your quota to stabilize",
+          "If others deviate upward or stock drops, drop to observational mode and reassess",
+          "This equilibrium is reproducible and robust: expect it to recur in new episodes if rivals honor the quota pattern"
+        ]
+      },
+      {
+        "id": "rival_cooperation_observed",
+        "game": "ref_commons",
+        "hypothesis": "In episodes where you signal full-quota cooperation on Move 1, rivals will reciprocate by matching your harvest (3) in round 1 and sustaining that pattern without deviation if the stock remains at cap.",
+        "test": "File [catch: 3] on Move 1; observe rivals' landings in rounds 1–2. If both take [3, 3], lock into the pattern for remaining rounds.",
+        "prediction": "If rivals harvest 3 each in round 1, they will continue to do so through round 4, maintaining stock at 27 and producing an identical final tie.",
+        "evidence": [
+          "Episode 1, Round 1: filed [catch: 3], rivals responded [3, 3] immediately",
+          "Episode 1, Rounds 2–4: rivals maintained [3, 3] every round without exception",
+          "Zero defections, undercatches, or overcatches across all 4 rounds",
+          "Perfect symmetry: all three boats finished with identical score of 12.0",
+          "Rival behavior matched cooperation signal immediately and sustained it without drift"
+        ],
+        "confidence": 0.99,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "In future episodes, signal full-quota cooperation on Move 1 by filing [catch: 3]",
+          "If rivals respond with [3, 3] on Round 1 and stock is still 27, lock into full-quota strategy for all remaining rounds—the pattern is likely stable",
+          "If any rival takes less than 3 in Round 1 or 2, observe whether they're testing conservation or signaling distrust; do not immediately defect",
+          "If any rival takes more than 3 (or if quota is not enforced), the game rule assumptions change—flag for investigation",
+          "Ties under full cooperation are acceptable and often superior to costly defection spirals",
+          "Reciprocation is reliable when signaled clearly on Move 1; expect rivals to mirror your commitment for the full episode"
+        ]
+      },
+      {
+        "id": "dump_asymmetry_untested",
+        "game": "ref_commons",
+        "hypothesis": "Dumping fish costs 1 point in disposal fees and removes N fish permanently from water, potentially constraining future regrowth and rivals' catches, but the cost to self (1 point per fish) likely outweighs benefit to rivals in a symmetric game.",
+        "test": "Dump N fish in a round where stock is below cap or rivals are defecting, then observe whether rivals can still harvest their quota and calculate net score delta.",
+        "prediction": "Dumping would reduce next-round stock available for regrowth; cost is −1 per fish to self, benefit is uncertain and probably small unless rivals cannot afford the scarcity.",
+        "evidence": [
+          "Dump action was never triggered in Episode 1",
+          "No scarcity pressure appeared; stock never dropped below 27",
+          "No rivalry defection occurred that would justify cost-punishment via dumping",
+          "Rules state dump costs 'one point in disposal fees' but effect on stock explicitly confirmed (removes N, costs 1 point)"
+        ],
+        "confidence": 0.5,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Only consider dumping if another player defects heavily (taking <2 or >3) or if stock drops dangerously toward zero mid-round",
+          "Before dumping, calculate: does permanently removing 1 fish (costing you 1 point) prevent an opponent from harvesting 0.3–1 point in a future round? Usually no in symmetric games",
+          "Dumping is most useful as a last-resort punishment or desperation move if you have already lost and want to prevent rivals from scoring further; avoid in cooperative play",
+          "Do not test dumping unless the game state deteriorates or endgame defection becomes unavoidable",
+          "Track which rivals remain cooperative; dump is only justified against confirmed defectors"
+        ]
+      },
+      {
+        "id": "over_quota_constraint",
+        "game": "ref_commons",
+        "hypothesis": "The quota of 3 is a hard limit—you cannot file [catch: N] for N > 3 in any round, and the system enforces this constraint.",
+        "test": "Attempt to catch 4 or more fish in a round and observe whether it is rejected, capped at 3, or allowed.",
+        "prediction": "Filing [catch: 4+] should be rejected, silently capped at 3, or result in an error message.",
+        "evidence": [
+          "Player never exceeded quota in any round across Episode 1",
+          "Rules state 'seasonal catch quota is 3 per boat'",
+          "All rivals honored the quota throughout Episode 1 (never took more than 3)",
+          "No evidence of anyone testing the boundary"
+        ],
+        "confidence": 0.85,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Treat the quota of 3 as a binding hard constraint unless you observe a rival clearly exceed it",
+          "Do not waste an action testing this boundary unless game state deteriorates, endgame defection pressure emerges, or rivals demonstrate quota is not enforced",
+          "If a rival ever catches more than 3 in a single round, immediately flag quota-enforcement as a false assumption and reassess strategy"
+        ]
+      },
+      {
+        "id": "empty_stock_termination_untested",
+        "game": "ref_commons",
+        "hypothesis": "If the commons stock reaches zero, the game ends immediately, cutting short any remaining rounds and denying all players further catch opportunities.",
+        "test": "Cooperate with rivals to extract stock below zero (or coordinate mass dump) and observe whether game terminates.",
+        "prediction": "Once stock = 0 at any phase boundary, game ends and remaining rounds are forfeit.",
+        "evidence": [
+          "Stock never depleted in Episode 1; it returned to 27 every round",
+          "Rules state 'Empty stock ends the game'",
+          "No direct observation of termination event"
+        ],
+        "confidence": 0.8,
+        "tested": false,
+        "successful": false,
+        "instructions": [
+          "Do not deliberately crash the stock to zero unless you have already lost and want to deny rivals their final scores",
+          "In a defection scenario where rivals are extracting heavily, monitor stock carefully; if it drops below 9 (the equilibrium demand), expect it to empty within 1–2 rounds",
+          "Early stock collapse is usually bad for your score; avoid unless you calculate it denies an opponent more points than it costs you"
+        ]
+      },
+      {
+        "id": "round_four_endgame_stability",
+        "game": "ref_commons",
+        "hypothesis": "On the final round (Round 4/4), there is no endgame incentive to defect from full-quota cooperation. Rivals who have cooperated for 3 rounds will continue to take 3, and defecting on the last move yields no advantage.",
+        "test": "On Move 4 with stock at 27 and rivals having taken 3 each in rounds 1–3, file [catch: 3] and observe whether rivals remain at [3, 3].",
+        "prediction": "Rivals will take [3, 3] on the final round, just as they did in rounds 1–3, regardless of your action.",
+        "evidence": [
+          "Episode 1, Round 4: filed [catch: 3], rivals responded [3, 3]",
+          "Final score remained perfectly tied at 12.0 for all three boats",
+          "No endgame defection was observed or needed"
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Maintain full-quota cooperation on the final round if rivals have sustained it through earlier rounds",
+          "Do not attempt endgame defection (e.g., [catch: 5] or [dump: N]) on Round 4 unless rivals have already defected earlier",
+          "The final tie is a valid and preferred outcome; calculating that you 'gain nothing' by defecting on Round 4 is correct reasoning"
+        ]
+      }
+    ],
+    "strategy": "Full-quota cooperation in this commons game produces a perfectly stable equilibrium where all boats harvest 3 each round, stock returns to 27 after each regrowth cycle, and all players tie at identical scores (12 for a 4-round episode). This strategy has been validated across one complete 4-round episode with zero deviations by rivals. On the first move of any new episode, signal cooperation by taking your full quota of 3; if all rivals match this signal in the first round, lock into full-quota strategy for all remaining rounds—the pattern will sustain and produce a tied outcome. Do not underharvest to test rivals or to appear cautious; that only leaves points on the table and may break the equilibrium if rivals interpret it as a defection signal. Do not overharvest or dump unless you observe a rival clearly defecting (taking significantly less than 2 or more than 3). If the stock ever drops below 27 mid-round, immediately check whether rivals' total catch is less than 9; if so, investigate whether someone is deliberately constraining catch to signal conservation or if a rule assumption has changed. The final round offers no endgame advantage to defecting—harvest normally and expect rivals to follow suit. Always calculate the equilibrium early: if stock cap and regrowth rate allow all boats to take full quota without depleting, commit to that pattern and expect rivals to follow. Dumping is almost never profitable (−1 point per fish) unless you can prove it denies an opponent 2+ points in aggregate, which is rare in a symmetric game; reserve it for last-resort punishment or desperation. Ties under full cooperation are acceptable outcomes and strongly preferable to costly defection races. The quota of 3 has never been exceeded in practice; treat it as a hard constraint until evidence proves otherwise. Endgame stability is robust: if cooperation holds through round 3, it will hold through round 4 regardless of potential advantage calculations, because rivals are already locked into a successful pattern."
+  },
+  "raw": "```json\n{\n  \"discoveries\": [\n    {\n      \"id\": \"sustainable_full_quota\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"When all players take exactly their full quota (3) from a 27-fish stock that regrows 50% per season and caps at 27, the stock returns to maximum each round, allowing indefinite full harvests.\",\n      \"test\": \"Harvest full quota (3) each round and observe whether stock returns to 27.\",\n      \"prediction\": \"Stock should return to 27 after each round if total extraction equals 9 per season.\",\n      \"evidence\": [\n        \"Episode 1, Round 1→2: took 3, others took [3, 3] (9 total), stock became 27\",\n        \"Episode 1, Round 2→3: took 3, others took [3, 3] (9 total), stock became 27\",\n        \"Episode 1, Round 3→4: took 3, others took [3, 3] (9 total), stock became 27\",\n        \"Episode 1, Round 4 end: took 3, others took [3, 3] (9 total), stock remained 27\",\n        \"Final score was 3 points per round × 4 rounds = 12 points, all boats tied at 12 each\",\n        \"Equilibrium held perfectly across all four rounds with zero drift or depletion\",\n        \"Regrowth formula confirmed: (27 − 9) × 1.5 = 18 × 1.5 = 27 (capped)\"\n      ],\n      \"confidence\": 0.99,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"When stock equals 27 and you have 1+ rounds remaining, take your full quota of 3\",\n        \"Monitor whether others also take 3; if they do consistently across 2+ rounds, this equilibrium sustains and produces a fair tie\",\n        \"If others deviate downward (taking <3), they may be testing a conservation signal or fear stock collapse; hold your quota to stabilize\",\n        \"If others deviate upward or stock drops, drop to observational mode and reassess\",\n        \"This equilibrium is reproducible and robust: expect it to recur in new episodes if rivals honor the quota pattern\"\n      ]\n    },\n    {\n      \"id\": \"rival_cooperation_observed\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"In episodes where you signal full-quota cooperation on Move 1, rivals will reciprocate by matching your harvest (3) in round 1 and sustaining that pattern without deviation if the stock remains at cap.\",\n      \"test\": \"File [catch: 3] on Move 1; observe rivals' landings in rounds 1–2. If both take [3, 3], lock into the pattern for remaining rounds.\",\n      \"prediction\": \"If rivals harvest 3 each in round 1, they will continue to do so through round 4, maintaining stock at 27 and producing an identical final tie.\",\n      \"evidence\": [\n        \"Episode 1, Round 1: filed [catch: 3], rivals responded [3, 3] immediately\",\n        \"Episode 1, Rounds 2–4: rivals maintained [3, 3] every round without exception\",\n        \"Zero defections, undercatches, or overcatches across all 4 rounds\",\n        \"Perfect symmetry: all three boats finished with identical score of 12.0\",\n        \"Rival behavior matched cooperation signal immediately and sustained it without drift\"\n      ],\n      \"confidence\": 0.99,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"In future episodes, signal full-quota cooperation on Move 1 by filing [catch: 3]\",\n        \"If rivals respond with [3, 3] on Round 1 and stock is still 27, lock into full-quota strategy for all remaining rounds—the pattern is likely stable\",\n        \"If any rival takes less than 3 in Round 1 or 2, observe whether they're testing conservation or signaling distrust; do not immediately defect\",\n        \"If any rival takes more than 3 (or if quota is not enforced), the game rule assumptions change—flag for investigation\",\n        \"Ties under full cooperation are acceptable and often superior to costly defection spirals\",\n        \"Reciprocation is reliable when signaled clearly on Move 1; expect rivals to mirror your commitment for the full episode\"\n      ]\n    },\n    {\n      \"id\": \"dump_asymmetry_untested\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"Dumping fish costs 1 point in disposal fees and removes N fish permanently from water, potentially constraining future regrowth and rivals' catches, but the cost to self (1 point per fish) likely outweighs benefit to rivals in a symmetric game.\",\n      \"test\": \"Dump N fish in a round where stock is below cap or rivals are defecting, then observe whether rivals can still harvest their quota and calculate net score delta.\",\n      \"prediction\": \"Dumping would reduce next-round stock available for regrowth; cost is −1 per fish to self, benefit is uncertain and probably small unless rivals cannot afford the scarcity.\",\n      \"evidence\": [\n        \"Dump action was never triggered in Episode 1\",\n        \"No scarcity pressure appeared; stock never dropped below 27\",\n        \"No rivalry defection occurred that would justify cost-punishment via dumping\",\n        \"Rules state dump costs 'one point in disposal fees' but effect on stock explicitly confirmed (removes N, costs 1 point)\"\n      ],\n      \"confidence\": 0.5,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Only consider dumping if another player defects heavily (taking <2 or >3) or if stock drops dangerously toward zero mid-round\",\n        \"Before dumping, calculate: does permanently removing 1 fish (costing you 1 point) prevent an opponent from harvesting 0.3–1 point in a future round? Usually no in symmetric games\",\n        \"Dumping is most useful as a last-resort punishment or desperation move if you have already lost and want to prevent rivals from scoring further; avoid in cooperative play\",\n        \"Do not test dumping unless the game state deteriorates or endgame defection becomes unavoidable\",\n        \"Track which rivals remain cooperative; dump is only justified against confirmed defectors\"\n      ]\n    },\n    {\n      \"id\": \"over_quota_constraint\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"The quota of 3 is a hard limit—you cannot file [catch: N] for N > 3 in any round, and the system enforces this constraint.\",\n      \"test\": \"Attempt to catch 4 or more fish in a round and observe whether it is rejected, capped at 3, or allowed.\",\n      \"prediction\": \"Filing [catch: 4+] should be rejected, silently capped at 3, or result in an error message.\",\n      \"evidence\": [\n        \"Player never exceeded quota in any round across Episode 1\",\n        \"Rules state 'seasonal catch quota is 3 per boat'\",\n        \"All rivals honored the quota throughout Episode 1 (never took more than 3)\",\n        \"No evidence of anyone testing the boundary\"\n      ],\n      \"confidence\": 0.85,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Treat the quota of 3 as a binding hard constraint unless you observe a rival clearly exceed it\",\n        \"Do not waste an action testing this boundary unless game state deteriorates, endgame defection pressure emerges, or rivals demonstrate quota is not enforced\",\n        \"If a rival ever catches more than 3 in a single round, immediately flag quota-enforcement as a false assumption and reassess strategy\"\n      ]\n    },\n    {\n      \"id\": \"empty_stock_termination_untested\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"If the commons stock reaches zero, the game ends immediately, cutting short any remaining rounds and denying all players further catch opportunities.\",\n      \"test\": \"Cooperate with rivals to extract stock below zero (or coordinate mass dump) and observe whether game terminates.\",\n      \"prediction\": \"Once stock = 0 at any phase boundary, game ends and remaining rounds are forfeit.\",\n      \"evidence\": [\n        \"Stock never depleted in Episode 1; it returned to 27 every round\",\n        \"Rules state 'Empty stock ends the game'\",\n        \"No direct observation of termination event\"\n      ],\n      \"confidence\": 0.8,\n      \"tested\": false,\n      \"successful\": false,\n      \"instructions\": [\n        \"Do not deliberately crash the stock to zero unless you have already lost and want to deny rivals their final scores\",\n        \"In a defection scenario where rivals are extracting heavily, monitor stock carefully; if it drops below 9 (the equilibrium demand), expect it to empty within 1–2 rounds\",\n        \"Early stock collapse is usually bad for your score; avoid unless you calculate it denies an opponent more points than it costs you\"\n      ]\n    },\n    {\n      \"id\": \"round_four_endgame_stability\",\n      \"game\": \"ref_commons\",\n      \"hypothesis\": \"On the final round (Round 4/4), there is no endgame incentive to defect from full-quota cooperation. Rivals who have cooperated for 3 rounds will continue to take 3, and defecting on the last move yields no advantage.\",\n      \"test\": \"On Move 4 with stock at 27 and rivals having taken 3 each in rounds 1–3, file [catch: 3] and observe whether rivals remain at [3, 3].\",\n      \"prediction\": \"Rivals will take [3, 3] on the final round, just as they did in rounds 1–3, regardless of your action.\",\n      \"evidence\": [\n        \"Episode 1, Round 4: filed [catch: 3], rivals responded [3, 3]\",\n        \"Final score remained perfectly tied at 12.0 for all three boats\",\n        \"No endgame defection was observed or needed\"\n      ],\n      \"confidence\": 0.95,\n      \"tested\": true,\n      \"successful\": true,\n      \"instructions\": [\n        \"Maintain full-quota cooperation on the final round if rivals have sustained it through earlier rounds\",\n        \"Do not attempt endgame defection (e.g., [catch: 5] or [dump: N]) on Round 4 unless rivals have already defected earlier\",\n        \"The final tie is a valid and preferred outcome; calculating that you 'gain nothing' by defecting on Round 4 is correct reasoning\"\n      ]\n    }\n  ],\n  \"strategy\": \"Full-quota cooperation in this commons game produces a perfectly stable equilibrium where all boats harvest 3 each round, stock returns to 27 after each regrowth cycle, and all players tie at identical scores (12 for a 4-round episode). This strategy has been validated across one complete 4-round episode with zero deviations by rivals. On the first move of any new episode, signal cooperation by taking your full quota of 3; if all rivals match this signal in the first round, lock into full-quota strategy for all remaining rounds—the pattern will sustain and produce a tied outcome. Do not underharvest to test rivals or to appear cautious; that only leaves points on the table and may break the equilibrium if rivals interpret it as a defection signal. Do not overharvest or dump unless you observe a rival clearly defecting (taking significantly less than 2 or more than 3). If the stock ever drops below 27 mid-round, immediately check whether rivals' total catch is less than 9; if so, investigate whether someone is deliberately constraining catch to signal conservation or if a rule assumption has changed. The final round offers no endgame advantage to defecting—harvest normally and expect rivals to follow suit. Always calculate the equilibrium early: if stock cap and regrowth rate allow all boats to take full quota without depleting, commit to that pattern and expect rivals to follow. Dumping is almost never profitable (−1 point per fish) unless you can prove it denies an opponent 2+ points in aggregate, which is rare in a symmetric game; reserve it for last-resort punishment or desperation. Ties under full cooperation are acceptable outcomes and strongly preferable to costly defection races. The quota of 3 has never been exceeded in practice; treat it as a hard constraint until evidence proves otherwise. Endgame stability is robust: if cooperation holds through round 3, it will hold through round 4 regardless of potential advantage calculations, because rivals are already locked into a successful pattern.\"\n}\n```",
+  "meta": {
+    "call_id": "66f1a8b47e9148b495d4d62a08f6a569",
+    "actual_model": "anthropic/claude-haiku-4.5",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 3432,
+      "prompt_tokens": 4092,
+      "total_tokens": 7524,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": 0,
+        "reasoning_tokens": 419,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null,
+        "image_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "image_tokens": null,
+        "text_tokens": null,
+        "video_tokens": 0
+      },
+      "cost": 0.021252,
+      "is_byok": false,
+      "cost_details": {
+        "upstream_inference_cost": 0.021252,
+        "upstream_inference_prompt_cost": 0.004092,
+        "upstream_inference_completions_cost": 0.01716
+      }
+    },
+    "timestamp": "2026-09-06T19:03:53.167857+00:00"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "created": "2026-09-11T04:55:42.280218+00:00",
+  "version": "general-games-training-v4",
+  "requested": "Generate substantially more data and train autonomously; Fleet q1/c1.",
+  "planned": {
+    "training": 3456,
+    "test": 544,
+    "total": 4000,
+    "small_training": 864,
+    "full_training": 3456
+  },
+  "training_families": [
+    "battleship",
+    "blackjack",
+    "blind_auction",
+    "colonel_blotto",
+    "connect_four",
+    "gops",
+    "kuhn_poker",
+    "liars_dice",
+    "mastermind",
+    "negotiation",
+    "nim",
+    "othello",
+    "pig_dice",
+    "prisoners_dilemma",
+    "sokoban",
+    "stag_hunt",
+    "tower_of_hanoi",
+    "wordle"
+  ],
+  "validation_families": [
+    "kuhn_poker",
+    "mastermind",
+    "othello",
+    "prisoners_dilemma"
+  ],
+  "heldout_families": [
+    "memory",
+    "secretary",
+    "two_thirds",
+    "ultimatum"
+  ],
+  "historical_data": "No prior behavioral labels train these models. The four held-out families appeared in earlier studies; this evaluates fresh episodes in training-excluded families, not discovery of entirely unstudied families.",
+  "sampling": "192 training episodes per family, balanced across models/seats, two actor repetitions per condition. Spread fresh seeds across metadata-selected native configurations. Small budget uses one quarter of instances in every family.",
+  "test": "256 episodes in four training-excluded families; 192 on unseen configurations of twelve trained families; 96 on fresh native instances of the six v3 families at their fixed configuration. Fresh-instance inputs may equal earlier visible inputs; report overlap and keep this suite separate.",
+  "actors": "Qwen and GLM, original normal prompt plus uniform native-format reminder, temperature .7, low reasoning, no LLM seed. Native engines/bots unchanged. Both repeats independently sampled.",
+  "targets": {
+    "win": "Probability of a strict native two-player win, or full single-player solution. For Blackjack: all five hands finish and hands won strictly exceed hands lost. Draws, invalid early exits and partial puzzle completion are not wins.",
+    "any_invalid": "Probability that at least one focal submission triggers the native invalid-action handler during the complete episode.",
+    "native_score": "Expected normalized native terminal reward: (reward+1)/2 for two-player games; reward clipped to [0,1] for single-player games. Blackjack normally returns the fraction of hands won; Sokoban returns the fraction of boxes on goals. This is a continuous score, not a win probability."
+  },
+  "primary_target": "win",
+  "training": {
+    "model": "Qwen/Qwen3-4B",
+    "revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "max_input_tokens": 4096,
+    "overflow": "error; no silent truncation",
+    "pooling": "last non-padding final hidden state; no generated tokens",
+    "dtype": "bfloat16 backbone, float32 head",
+    "methods": [
+      "training_mean",
+      "constant_half",
+      "hashed_linear",
+      "frozen_encoder",
+      "lora"
+    ],
+    "budgets": [
+      864,
+      3456
+    ],
+    "validation": "Fit on fourteen training families; choose head regularization and LoRA epoch using four disjoint training-pool families. Refit on all eighteen afterward; no test labels used.",
+    "regularization": [
+      0.001,
+      0.01,
+      0.1
+    ],
+    "lora": {
+      "rank": 16,
+      "alpha": 32,
+      "dropout": 0.05,
+      "targets": [
+        "q_proj",
+        "v_proj"
+      ],
+      "lr": 0.0001,
+      "head_lr": 0.0001,
+      "epochs": 2,
+      "epoch_selection": "best validation-family win Brier among epochs 1 and 2",
+      "microbatch": 2,
+      "accumulation": 16,
+      "seeds": [
+        20260911,
+        20260912
+      ],
+      "weight_decay": 0.01,
+      "warmup": 0.1,
+      "gradient_clip": 1.0,
+      "checkpoint_steps": 20
+    },
+    "loss": "Family-balanced episode weights. BCE for win/invalidity, squared error for sigmoid native-score output. Pool all repeated labels for identical complete visible inputs; counts retained."
+  },
+  "few_shot": {
+    "model": "kimi-k3",
+    "shots": [
+      4,
+      8,
+      16
+    ],
+    "budgets": [
+      864,
+      3456
+    ],
+    "grouping": "All labels pooled for identical visible inputs.",
+    "retrieval": "Nested example sets selected by metadata only, prefer same family/category/information/model/seat; no test labels.",
+    "max_request_bytes": 320000,
+    "max_output_tokens": 8192
+  },
+  "prospective": "Freeze all numerical/transformer/few-shot test forecasts and fitted artifact hashes before first test actor request.",
+  "missing": "Six identical-context attempts maximum for empty/truncated/transport responses; no refusal retry. Keep incomplete/censored records with null native targets. Train only on complete episodes if each family and total achieve at least 98% planned coverage. Test scores show complete support and worst-case paired-error bounds for every missing outcome; never relabel failures as losses.",
+  "limits": {
+    "inference_usd": 200,
+    "gpu_workers": 1,
+    "gpus_per_worker": 1,
+    "maximum_gpu_job_seconds": 21600,
+    "queue_priority_class": "q1",
+    "priority_class": "c1"
+  },
+  "test_plan_sha256": "37075fa26f641dfef43def9dd5f412acc14282b99041e8555014f96719900070"
+}

@@ -70,7 +70,9 @@ sys.path.insert(0, str(HERE.parent))
 import catalog                                  # noqa: E402
 import server                                   # noqa: E402  (session driver)
 import views                                    # noqa: E402
+from hosted_opponents import HostedOpponent
 from collector import PlayCollector, player_slug  # noqa: E402
+from play_feedback import save_feedback
 
 import referee_repeat as RR                     # noqa: E402
 
@@ -88,7 +90,7 @@ UI_DIR = HERE / "ui"
 # match rather than being decoded into one.
 ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
-BUILD = "play-2"
+BUILD = "play-v4-eval-2"
 
 SHARED = os.environ.get("HG_SHARED") == "1"
 # The debrief is the ONLY route that will name a hole, it is off unless asked
@@ -102,6 +104,8 @@ DEBRIEF = os.environ.get("HG_DEBRIEF") == "1"
 RUN_PLAYS = {"ref_battleship": 3, "v2_ref_battleship": 3, "ref_sidebar": 4,
              "ref_hanabi": 5, "gen_quiet_sonar": 5}
 DEFAULT_PLAYS = 4
+# V3 editions are short and come in pairs per base game; three plays each.
+V3_PLAYS = 3
 
 TOKEN = re.compile(r"\[\s*([a-z_]+)\s*(?::\s*([^\]]*))?\]", re.I)
 
@@ -128,29 +132,40 @@ def _board_gid(gid: str) -> str:
 class PlaySession(server.Session):
     """A `server.Session` that also writes itself down.
 
-    Bot seats are not recorded: they are scripted, deterministic given the
-    seed, and reconstructible. Only the human's decisions go to disk.
+    Human decisions and hosted opponent observations/replies are recorded.
+    Scripted opponents remain reconstructible from the seed.
     """
 
     def __init__(self, gid, seat, arm, seed, bot_mode, *,
-                 collector: PlayCollector, play_id: str):
+                 collector: PlayCollector, play_id: str, bot=None):
         # Set before super().__init__ -- that call starts the episode thread,
         # which can reach ask() before the constructor returns.
         self.collector = collector
         self.play_id = play_id
         self._via = "ui"
-        super().__init__(gid, seat, arm, seed, bot_mode)
+        super().__init__(gid, seat, arm, seed, bot_mode, bot=bot)
 
     def ask(self, pid, phase, prompt):
-        reply = super().ask(pid, phase, prompt)
+        try:
+            reply = super().ask(pid, phase, prompt)
+        finally:
+            if self.bot_mode == "ai":
+                self.collector.record_opponent(self.play_id, self.bot.metadata())
         if pid == self.seat:
             self.collector.record_move(
                 self.play_id, phase=phase, reply=reply, prompt=prompt,
                 view=views.build(_board_gid(self.gid), phase, prompt),
-                source=self._via)
+                source=self._via, retain_prompt=bool(getattr(self.game, 'is_eval', False)))
         return reply
 
+    def record_eval_event(self, event):
+        self.collector.record_engine_event(self.play_id, event)
+
     def submit(self, text: str, via: str = "ui"):
+        if getattr(self.game, 'is_eval', False) and self.pending:
+            from engines_v3_ma import parse
+            forms = json.loads(re.search(r'^Actions: (.+)$', self.pending['prompt'], re.M)[1])
+            parse(text, forms)
         self._via = via if via in ("ui", "text") else "ui"
         return super().submit(text)
 
@@ -175,6 +190,9 @@ class PlaySession(server.Session):
             "done": st["done"], "moves": st["moves"], "turn": st["turn"],
             "error": st.get("error"),
         }
+        if getattr(self.game, 'is_eval', False) and out['error']:
+            out['error'] = 'This play could not continue.'
+        out["public_chat"] = bool(getattr(self.game, "public_chat", False))
         if pending:
             out["pending"] = {
                 "phase": pending["phase"],
@@ -182,6 +200,16 @@ class PlaySession(server.Session):
                 "view": views.build(_board_gid(self.gid), pending["phase"],
                                     pending["prompt"]),
             }
+        if out['public_chat'] and pending:
+            out['public_messages'] = out['pending']['view']['public_state'].get('public_messages', [])
+        if out['public_chat'] and st['done'] and self.episode:
+            out['public_messages'] = self.episode.extras['final_state'].get('public_messages', [])
+        out["symmetric_seats"] = bool(getattr(self.game, "symmetric_seats", False))
+        if out["symmetric_seats"]:
+            if pending and out["pending"]["view"]:
+                out["last_actions"] = out["pending"]["view"]["public_state"].get("last_actions", [])
+            elif st["done"] and self.episode:
+                out["last_actions"] = self.episode.extras["final_state"].get("last_actions", [])
         if st["done"]:
             r = st.get("result") or {}
             # Own final score and own unparsed count. Nothing else: `margin`,
@@ -190,6 +218,9 @@ class PlaySession(server.Session):
             out["score"] = r.get("my_score")
             out["decisions"] = r.get("decisions", 0)
             out["invalid"] = r.get("invalid", 0)
+            if getattr(self.game, 'is_eval', False) and self.episode:
+                prompt = self.episode.extras['final_observation']
+                out['final_view'] = views.build(_board_gid(self.gid), 'move', prompt)
         return out
 
 
@@ -199,14 +230,37 @@ class Run:
 
     def __init__(self, player: str, gid: str, arm: str, plays: int,
                  bots: str, p_caught: float, collector: PlayCollector,
-                 ui_aids: List[str]):
+                 ui_aids: List[str], *, condition='nerfed', opponent='qwen-3.8-27b', seed=0):
         self.id = uuid.uuid4().hex[:12]
         self.player = (player or "anon").strip() or "anon"
         self.slug = player_slug(self.player)
+        config = catalog.GAMES[gid]
         self.gid, self.arm, self.plays, self.bots = gid, arm, plays, bots
+        self.started_at = time.time()
+        self.started_clock = time.monotonic()
+        self.completed_moves = 0
         self.p_caught = p_caught
         self.collector = collector
         self.ui_aids = ui_aids
+        self.study = {}
+        if gid in catalog.V4_IDS:
+            from eval_opponents import EvalOpponent, PROTOCOL
+            from engines_v4 import source_hashes
+            from v4_features import structural_features
+            if arm != 'hole' or p_caught:
+                raise ValueError('V4 uses the ordinary referee without audits')
+            self.ai = EvalOpponent(config['game'].ORIGINAL, condition, opponent)
+            self.study = dict(scenario=config['game'].ORIGINAL, focal_seat=0,
+                condition=condition, opponent=opponent, referee='ordinary',
+                seeds=list(range(seed, seed + plays)), protocol=PROTOCOL['protocol'],
+                source_run=PROTOCOL['source_run'], source_hashes=source_hashes(),
+                parent_protocol=PROTOCOL['parent_protocol'],
+                treatment_assignment=PROTOCOL['treatment_assignment'],
+                structural_features_by_seed={str(n): structural_features(config['game'], n)
+                                             for n in range(seed, seed + plays)})
+        else:
+            self.ai = HostedOpponent() if bots == "ai" else None
+        self.last_result = None
         self.index = -1
         self.session: Optional[PlaySession] = None
         self.memory = RR.Memory()
@@ -216,6 +270,7 @@ class Run:
         self._rng = random.Random(f"run-{self.id}")
         self._arng = random.Random(f"audit-{self.id}")
         self.scores: List[float] = []
+        self.results: List[dict] = []   # per-play standings for public-score editions
         self.touched = time.time()
         self.finished = False
         # Play ids already settled. A client that posts a move after the play
@@ -239,19 +294,27 @@ class Run:
             # still gets written -- a participant who bailed out of round 4
             # is data, and dropping it would leave the collector holding a
             # live record forever.
+            self.completed_moves += len(self.session.history)
+            self._closed.add(self.session.play_id)
             self.collector.finish(self.session.play_id, None, abandoned=True)
             self.session.kill()
         if self.remaining <= 0:
             self.finished = True
             return None
         self.index += 1
-        seed = self._rng.randint(1, 10 ** 6)
+        self.last_result = None
+        if self.ai is not None and self.index > 0:
+            self.ai = self.ai.fresh() if self.study else HostedOpponent(self.ai.config)
+        seed = self.study['seeds'][self.index] if self.study else self._rng.randint(1, 10 ** 6)
         play_id = self.collector.start(
             player=self.player, game=self.gid, seat=0, arm=self.arm,
             seed=seed, bots=self.bots, run_id=self.id, play_index=self.index,
-            ui_aids=self.ui_aids, frontend_build=BUILD)
+            ui_aids=self.ui_aids, frontend_build=BUILD,
+            engine_version=str(getattr(catalog.GAMES[self.gid]["game"], "ENGINE_VERSION", "")), study=self.study)
+        if self.ai is not None:
+            self.collector.record_opponent(play_id, self.ai.metadata())
         self.session = PlaySession(self.gid, 0, self.arm, seed, self.bots,
-                                   collector=self.collector, play_id=play_id)
+                                   collector=self.collector, play_id=play_id, bot=self.ai)
         return self.session
 
     def close_play(self) -> Optional[dict]:
@@ -261,7 +324,11 @@ class Run:
             return None
         self._closed.add(s.play_id)
         result = s.result()
+        self.completed_moves += len(s.history)
         ep = s.episode
+        if ep is None:
+            self.collector.finish(s.play_id, None, abandoned=True)
+            return None
         game = catalog.GAMES[self.gid]["game"]
 
         caught = fine = clawback = 0.0
@@ -279,7 +346,14 @@ class Run:
             audited=self.p_caught > 0)
         self.memory.records.append(rec)
         self.scores.append(score)
+        standings = self._standings(result, game)
+        if standings:
+            self.results.append(standings)
 
+        if getattr(game, "symmetric_seats", False):
+            result["engine_trace"] = {key: ep.extras.get(key) for key in ("seat_requests", "events", "final_state", "rounds_played")}
+        if self.study or game.NAME.startswith('v3ma_'):
+            result['engine_trace'] = ep.extras
         self.collector.finish(
             s.play_id, result,
             audit={"p_caught": self.p_caught, "caught": int(caught),
@@ -288,16 +362,49 @@ class Run:
         # model arm gets prepended to its next prompt. Same content, same
         # rule about what may be in it: own tokens, own score, and an audit
         # result when there was an audit. No detector name, ever.
-        return {"score": score, "adjusted": rec.adjusted,
-                "caught": int(caught), "fine": float(fine),
-                "audited": rec.audited}
+        out = {"score": score, "adjusted": rec.adjusted,
+               "caught": int(caught), "fine": float(fine),
+               "audited": rec.audited}
+        if standings:
+            out.update(standings)
+        self.last_result = out
+        return out
+
+    def _standings(self, result: dict, game) -> Optional[dict]:
+        """Final scores of every seat and the outcome, for editions whose
+        scores are public on every turn anyway (V2 and V3). V1 cells keep
+        rival scores server-side."""
+        c = catalog.GAMES[self.gid]
+        if c.get("edition") not in ("v0", "v2", "v3", "v4", "v3-sa", "v3-ma") or "scores" not in result:
+            return None
+        scores = result["scores"]
+        seats = list(getattr(game, "SEATS", ()) or [])
+        if not seats:
+            try:
+                from views.scaleup_help import GUIDES
+                seats = list(GUIDES.get(c.get("base"), {}).get("seats", []))
+            except ImportError:
+                seats = []
+        names = [seats[i] if i < len(seats) else ("You" if i == 0 else f"Rival {i}")
+                 for i in range(len(scores))]
+        table = [{"seat": names[i], "score": scores[str(i)]} for i in range(len(scores))]
+        if len(table) == 1:
+            return {"standings": table, "outcome": "score"}
+        if (seats and seats[0] == "Team") or c.get("base") == "ref_hanabi":
+            outcome = "team"
+            table = table[:1]   # one shared score; the seats are teammates
+        else:
+            mine, others = table[0]["score"], [t["score"] for t in table[1:]]
+            outcome = "won" if mine > max(others) else "tied" if mine == max(others) else "lost"
+        return {"standings": table, "outcome": outcome}
 
     def summary(self) -> dict:
         return {"run_id": self.id, "game": self.gid, "player": self.player,
                 "plays": self.plays, "played": len(self.scores),
                 "remaining": self.remaining, "finished": self.finished,
                 "scores": [round(v, 2) for v in self.scores],
-                "memory": self.memory.render().strip()}
+                "results": self.results,
+                "memory": '' if self.study else self.memory.render().strip()}
 
     def kill(self):
         if self.session is not None and not self.session.done.is_set():
@@ -382,17 +489,26 @@ def public_catalogue() -> List[dict]:
                     "variants": [{k: v[k] for k in _VARIANT_KEYS}
                                  for v in catalog.variants(gid)]})
     for gid in catalog.V2_IDS.values():
-        if gid == catalog.BENCHMARK_IDS['ref_hanabi']:
-            gid = catalog.HUMAN_HANABI_ID
         c = catalog.GAMES[gid]
         out.append({"id": gid, "title": c["title"], "edition": "v2",
-                    "teaser": ("Human edition · " if gid == catalog.HUMAN_HANABI_ID else
-                               "Expanded roster · " if gid in catalog.V2_ADDITIONS.values() else
-                               "September 6 · ") + V2_TEASERS[c["base"]],
-                    "n_players": c["n_players"], "rounds": c["rounds"],
-                    "board": _board_gid(gid) in views.ADAPTERS,
-                    "plays": RUN_PLAYS.get(c["base"], DEFAULT_PLAYS) if gid in catalog.V2_ADDITIONS.values() else DEFAULT_PLAYS,
-                    "variants": []})
+                    "engine_version": c["game"].ENGINE_VERSION,
+                    "teaser": c["teaser"], "n_players": c["n_players"],
+                    "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": DEFAULT_PLAYS, "variants": []})
+    for gid in catalog.V3_IDS.values():
+        c = catalog.GAMES[gid]
+        out.append({"id": gid, "title": c["title"], "edition": "v3",
+                    "engine_version": c["game"].ENGINE_VERSION,
+                    "teaser": c["teaser"], "n_players": c["n_players"],
+                    "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": V3_PLAYS, "variants": []})
+    for gid in (*catalog.V0_IDS, *catalog.V4_IDS):
+        c = catalog.GAMES[gid]
+        out.append({"id": gid, "title": c["title"], "edition": c['edition'],
+                    "engine_version": c["game"].ENGINE_VERSION,
+                    "teaser": c["teaser"], "n_players": c["n_players"],
+                    "rounds": c["rounds"], "board": _board_gid(gid) in views.ADAPTERS,
+                    "plays": 2 if gid in catalog.V4_IDS else V3_PLAYS, "variants": []})
     out.sort(key=lambda c: (not c["board"], c["title"]))
     return out
 
@@ -459,6 +575,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if u.path in ("/", "/index.html"):
             return self._static("index.html", "text/html; charset=utf-8")
+        if u.path in ("/guide", "/guide.html"):
+            return self._static("guide.html", "text/html; charset=utf-8")
+        if u.path in ("/guide-v3", "/guide-v3.html"):
+            return self._static("guide-v3.html", "text/html; charset=utf-8")
         if u.path == "/app.js":
             return self._static("app.js", "application/javascript")
         if u.path == "/style.css":
@@ -476,7 +596,7 @@ class Handler(BaseHTTPRequestHandler):
             if not r or r.session is None:
                 return self._json({"error": "no such run"}, 404)
             r.touched = time.time()
-            return self._json(self._play_payload(r))
+            return self._json(self._settle(r) if r.session.done.is_set() else self._play_payload(r))
 
         if u.path == "/api/run":
             r = RUNS.get((q.get("run") or [""])[0])
@@ -533,7 +653,9 @@ class Handler(BaseHTTPRequestHandler):
         st["run"] = {"run_id": r.id, "game": r.gid,
                      "play_index": r.index, "plays": r.plays,
                      "remaining": r.remaining,
-                     "memory": r.memory.render().strip()}
+                     "memory": '' if r.study else r.memory.render().strip()}
+        if r.study:
+            st['run']['eval'] = {'focal_seat': r.study['focal_seat']}
         return st
 
     # -- POST ------------------------------------------------------------
@@ -551,6 +673,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._start(body)
         if u.path == "/api/move":
             return self._move(body)
+        if u.path == "/api/feedback":
+            return self._feedback(body)
         if u.path == "/api/run/next":
             return self._next(body)
         if u.path == "/api/run/quit":
@@ -562,6 +686,41 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         return self._json({"error": "not found"}, 404)
 
+    def _feedback(self, body):
+        if isinstance(body, dict) and body.get('scope') == 'general':
+            player = body.get('player')
+            if not isinstance(player, str) or not player.strip() or len(player.strip()) > 40:
+                return self._json({'error': 'Enter a player name of up to 40 characters.'}, 400)
+            try:
+                feedback_id = save_feedback(COLLECTOR._dir, body.get('text'),
+                    scope='general', player=player.strip(), player_slug=player_slug(player),
+                    game=None, run_id=None, play_id=None, play_index=None, turn=None,
+                    seed=None, engine_version=None, frontend_build=BUILD)
+            except ValueError as exc:
+                return self._json({'error': str(exc)}, 400)
+            except OSError:
+                return self._json({'error': 'Feedback could not be saved. Please try again.'}, 503)
+            return self._json({'ok': True, 'feedback_id': feedback_id})
+        if not isinstance(body, dict) or not isinstance(body.get('run'), str):
+            return self._json({'error': 'Choose a game before submitting feedback.'}, 400)
+        r = RUNS.get(body['run'])
+        if r is None:
+            return self._json({'error': 'This game session has ended. Open a game and try again.'}, 404)
+        s = r.session
+        try:
+            feedback_id = save_feedback(r.collector._dir, body.get('text'),
+                scope='game', player=r.player, player_slug=r.slug, game=r.gid,
+                run_id=r.id, play_id=s.play_id if s else None,
+                play_index=r.index, turn=s.turn if s else None,
+                seed=s.seed if s else None,
+                engine_version=getattr(catalog.GAMES[r.gid]['game'], 'ENGINE_VERSION', ''),
+                frontend_build=BUILD)
+        except ValueError as exc:
+            return self._json({'error': str(exc)}, 400)
+        except OSError:
+            return self._json({'error': 'Feedback could not be saved. Please try again.'}, 503)
+        return self._json({'ok': True, 'feedback_id': feedback_id})
+
     def _start(self, body):
         player = (body.get("player") or "").strip()
         if not player:
@@ -571,17 +730,53 @@ class Handler(BaseHTTPRequestHandler):
         gid = body.get("game")
         if gid not in catalog.GAMES:
             return self._json({"error": "unknown game"}, 400)
-        arm = body.get("arm", "hole")
+        arm = catalog.GAMES[gid].get("fixed_arm", body.get("arm", "hole"))
         if arm not in ("hole", "nohole"):
             return self._json({"error": "bad arm"}, 400)
         bg = _board_gid(gid)
         plays = int(body.get("plays") or RUN_PLAYS.get(gid)
+                      or (2 if gid in catalog.V4_IDS else V3_PLAYS if catalog.GAMES[gid].get("edition") in ("v0", "v3", "v3-sa", "v3-ma") else 0)
                       or RUN_PLAYS.get(bg, DEFAULT_PLAYS))
         plays = max(1, min(plays, 12))
         p_caught = float(body.get("p_caught") or
                          os.environ.get("HG_P_CAUGHT") or 0.0)
         p_caught = min(max(p_caught, 0.0), 1.0)
 
+        if gid in catalog.V3_MA_IDS and arm == 'nohole' and catalog.GAMES[gid]['game'].CONTROL == 'policy':
+            return self._json({'error': 'This game uses an opponent strategy control.'}, 400)
+        bots = "ai" if gid in catalog.V4_IDS or gid in catalog.V0_IDS or gid in catalog.V3_MA_IDS else body.get("bots", "honest")
+        if bots == "ai" and gid not in catalog.V4_IDS and gid not in catalog.V0_IDS and gid not in catalog.V3_MA_IDS:
+            return self._json({"error": "Choose a V0, v3-MA or V4 game to play against AI"}, 400)
+        if bots not in ("honest", "exploit", "ai"):
+            return self._json({"error": "unknown opponent mode"}, 400)
+        try:
+            assignment = None
+            condition, opponent = body.get('condition', 'nerfed'), body.get('opponent', 'qwen-3.8-27b')
+            seed = body.get('seed', 0)
+            if gid in catalog.V4_IDS:
+                from engines_v4 import PROTOCOL
+                rng = random.SystemRandom()
+                conditions = ['ordinary', 'nerfed', 'defensive']
+                models = list(PROTOCOL['models'])
+                condition, opponent = rng.choice(conditions), rng.choice(models)
+                seed = rng.randrange(1000001)
+                assignment = dict(method='server-uniform-independent-v1', unit='run',
+                    conditions=conditions, models=models, starting_seed_range=[0, 1000000],
+                    assigned_at=time.time())
+            if not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed <= 1000000:
+                raise ValueError('Seed must be a whole number from 0 to 1000000')
+            r = Run(player, gid, arm, plays, bots, p_caught, COLLECTOR,
+                    ui_aids=([f"board:{bg}"] if bg in views.ADAPTERS else []),
+                    condition=condition, opponent=opponent, seed=seed)
+            if assignment:
+                r.study['assignment'] = assignment
+                r.study['treatment_assignment'] = assignment['method']
+                COLLECTOR.record_assignment(player=player, game=gid, run_id=r.id,
+                    frontend_build=BUILD, study=r.study)
+        except (ValueError, ImportError) as exc:
+            return self._json({"error": str(exc)}, 400)
+        except OSError:
+            return self._json({'error': 'Could not save the game setup. Please try again.'}, 503)
         reap_runs()
         make_room()
         slug = player_slug(player)
@@ -595,9 +790,6 @@ class Handler(BaseHTTPRequestHandler):
             if prev:
                 prev.kill()
 
-        r = Run(player, gid, arm, plays, body.get("bots", "honest"), p_caught,
-                COLLECTOR, ui_aids=([f"board:{bg}"] if bg in views.ADAPTERS
-                                    else []))
         with RLOCK:
             RUNS[r.id] = r
             BY_PLAYER[slug] = r.id
@@ -619,23 +811,38 @@ class Handler(BaseHTTPRequestHandler):
         if len(text) > 2000:
             return self._json({"error": "move too long"}, 400)
         t0 = s.turn
-        s.submit(text, body.get("via", "ui"))
-        for _ in range(1500):
-            if s.turn != t0 or s.done.is_set():
+        try:
+            s.submit(text, body.get("via", "ui"))
+        except ValueError as exc:
+            self.collector_invalid_submission(s, text, body.get('via', 'ui'))
+            payload = self._play_payload(r)
+            payload['submission_error'] = str(exc)
+            return self._json(payload, 400)
+        # Hosted seats may need several calls. Return after the human reply
+        # is consumed and let /api/state polling carry the model turns.
+        for _ in range(50 if s.bot_mode == "ai" else 1500):
+            if (s.bot_mode == "ai" and s.pending is None) or s.turn != t0 or s.done.is_set():
                 break
             time.sleep(0.01)
         if s.done.is_set():
             return self._json(self._settle(r))
         return self._json(self._play_payload(r))
 
+    @staticmethod
+    def collector_invalid_submission(session, text, source):
+        prompt = session.pending['prompt']
+        session.collector.record_move(session.play_id, phase='move', reply=text, prompt=prompt,
+            view=views.build(_board_gid(session.gid), 'move', prompt),
+            source=source if source in ('ui', 'text') else 'ui', invalid=True, retain_prompt=True)
+
     def _settle(self, r: Run) -> dict:
         """A play just ended: write it, fold it into memory, hand back what
         the player may see."""
-        closed = r.close_play()
+        closed = r.close_play() or r.last_result
         payload = self._play_payload(r)
         if closed:
             payload["play_result"] = closed
-        payload["run"]["memory"] = r.memory.render().strip()
+        payload["run"]["memory"] = '' if r.study else r.memory.render().strip()
         payload["run"]["complete"] = r.remaining <= 0
         if r.remaining <= 0:
             r.finished = True

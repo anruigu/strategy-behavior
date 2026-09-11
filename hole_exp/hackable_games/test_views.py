@@ -54,7 +54,8 @@ import catalog          # noqa: E402
 import views            # noqa: E402
 from collector import PlayCollector   # noqa: E402
 
-OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values()}
+OFF_ROSTER_ADAPTERS = {"ref_battleship", "v2_ref_hanabi_human1", catalog.HUMAN_HANABI_ID, *catalog.V2_IDS.values(), *catalog.HISTORICAL_V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V4_IDS, *catalog.V3_SA_IDS, *catalog.V3_MA_IDS}
+OFF_ROSTER_ADAPTERS.update(catalog.HISTORICAL_V3_IDS)
 BASE_GAMES = tuple(sorted(set(views.ADAPTERS) - OFF_ROSTER_ADAPTERS))
 DRIVEN_GAMES = BASE_GAMES + tuple(sorted(OFF_ROSTER_ADAPTERS & set(views.ADAPTERS)))
 
@@ -82,6 +83,15 @@ def _from_view(v: dict, phase: str, prompt: str) -> str:
     k = v["kind"]
     if k == 'hanabi_human':
         return v['actions'][-1]['token']
+    if k == "v3_move":
+        if v.get('public_state', {}).get('game', '').startswith('v3ma_'):
+            return ' '.join(f['token'].format(value=f['options'][0] if f.get('options') else 'none')
+                            for f in v['actions'][0]['fields'])
+        from test_v3_views import normal_from_public as v3_normal
+        return v3_normal(v)
+    if k == "benchmark_move" and 'public_state' in v:
+        from test_scaleup_views import normal_from_public
+        return normal_from_public(v)
     if k == "benchmark_move":
         # Independent normal decisions, using the values in the public view.
         a = v["actions"][0]
@@ -183,7 +193,12 @@ def drive(gid: str, seed: int = 11, arm: str = "hole"):
     from test_referee_games import Scripted as RefScripted
 
     c = catalog.GAMES[gid]
-    if c["family"] == "generated":
+    if getattr(c['game'], 'is_eval', False):
+        bot = lambda pid, phase, prompt: _from_view(views.build(gid, phase, prompt), phase, prompt)
+    elif gid in catalog.V3_MA_IDS:
+        from bots_v3_ma import Scripted
+        bot = Scripted()
+    elif c["family"] == "generated":
         bot = GENBOTS.Scripted("honest", seed)
     elif c["family"] == "textarena":
         bot = TABOTS.Scripted("honest", seed)
@@ -342,8 +357,9 @@ def gate_no_leak(gid="gen_quiet_sonar") -> int:
             print(f"  FAIL leak: live payloads carry the string {word!r}")
             bad += 1
 
-    if len(catalogue) != 34:
-        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected 34 (24 V1 + 10 V2)")
+    expected = 34 + len(catalog.V0_IDS) + len(catalog.V3_IDS) + len(catalog.V4_IDS)
+    if len(catalogue) != expected:
+        print(f"  FAIL leak: catalogue has {len(catalogue)} rows, expected {expected} across V0, V1, V2, V3 and V4")
         bad += 1
     hf_ids = [r["id"] for r in catalogue if r["id"].startswith("hf_")]
     if hf_ids:
@@ -760,9 +776,17 @@ def main() -> int:
     bad += gate_hanabi_human()
     from test_estate_views import gate as gate_estate
     bad += gate_estate()
+    from test_scaleup_views import gate as gate_scaleup
+    bad += gate_scaleup()
+    from test_v3_views import gate as gate_v3
+    bad += gate_v3()
+    print("\n== V0 ARCHIVE / V4 EVAL PARITY ==")
+    import unittest
+    suite = unittest.defaultTestLoader.loadTestsFromNames(['test_v0', 'test_v4', 'test_hosted_opponents'])
+    bad += int(not unittest.TextTestRunner(verbosity=1).run(suite).wasSuccessful())
     print("\n== NO LEAK ==")
     bad += gate_no_leak()
-    for gid in catalog.V2_IDS.values():
+    for gid in (*catalog.V2_IDS.values(), *catalog.V3_IDS.values(), *catalog.V3_SA_IDS, *catalog.V3_MA_IDS):
         bad += gate_no_leak(gid)
     bad += gate_no_leak(catalog.HUMAN_HANABI_ID)
     print("\n== PLAYER-VISIBLE COPY ==")

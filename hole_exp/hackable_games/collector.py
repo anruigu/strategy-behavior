@@ -55,7 +55,7 @@ DEFAULT_DIR = HERE / "play_data"
 # Bumped whenever the recorded schema changes shape. An analysis that pools
 # two schema versions without noticing is a silent wrong answer, so the
 # version travels in every row rather than in a README.
-SCHEMA = 3
+SCHEMA = 6
 
 
 def player_slug(name: str) -> str:
@@ -78,6 +78,7 @@ class MoveRecord:
     dt: float                    # seconds since the previous decision
     prompt_sha: str = ""
     prompt_len: int = 0
+    observation: str = ""       # Exact focal observation for V4 eval replay.
     # Structured reading of the decision, from views/. Empty for cells that
     # have no bespoke UI yet -- those players answered the text composer, and
     # the empty dict is the honest record of that.
@@ -122,7 +123,11 @@ class PlayRecord:
     # not the same measurement and must be separable after the fact.
     ui_aids: List[str] = field(default_factory=list)
     frontend_build: str = ""
+    engine_version: str = ""
+    engine_trace: dict = field(default_factory=dict)
+    study: dict = field(default_factory=dict)
     schema: int = SCHEMA
+    opponent: dict = field(default_factory=dict)
     abandoned: bool = False
 
 
@@ -147,7 +152,7 @@ class PlayCollector:
     def start(self, *, player: str, game: str, seat: int, arm: str, seed: int,
               bots: str, run_id: str, play_index: int,
               ui_aids: Optional[List[str]] = None,
-              frontend_build: str = "") -> str:
+              frontend_build: str = "", engine_version: str = "", study: Optional[dict] = None) -> str:
         slug = player_slug(player)
         with self._lock:
             stale = [k for k, r in self._live.items() if r.player_slug == slug]
@@ -159,15 +164,52 @@ class PlayCollector:
             player=(player or "anon").strip() or "anon", player_slug=slug,
             game=game, seat=seat, arm=arm, seed=seed, bots=bots,
             started_at=time.time(), ui_aids=list(ui_aids or []),
-            frontend_build=frontend_build or "",
+            frontend_build=frontend_build or "", engine_version=engine_version, study=study or {},
         )
         with self._lock:
             self._live[rec.play_id] = rec
         return rec.play_id
 
+    def record_assignment(self, **assignment):
+        """Persist a run's assignment before its first opponent request."""
+        with self._lock:
+            with (self._dir / 'assignments.jsonl').open('a') as fh:
+                fh.write(json.dumps(assignment, separators=(',', ':')) + '\n')
+                fh.flush()
+                os.fsync(fh.fileno())
+
+    def record_discovery(self, *, player: str, event: dict):
+        """Separate durable event: can be marked even after a play is settled."""
+        row = dict(event, player=player, player_slug=player_slug(player))
+        line = json.dumps(row, separators=(",", ":")) + "\n"
+        for path in (self._dir / row['game'] / 'discoveries.jsonl',
+                     self._dir / 'players' / player_slug(player) / 'discoveries.jsonl'):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                with path.open('a') as fh:
+                    fh.write(line)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+
+    def record_opponent(self, play_id: str, metadata: dict):
+        with self._lock:
+            if play_id in self._live:
+                previous = self._live[play_id].opponent
+                # Parallel seats may publish snapshots out of completion order.
+                # Never replace a newer AI transcript with an older snapshot.
+                if ('decisions' in metadata and
+                        len(metadata['decisions']) < len(previous.get('decisions', []))):
+                    return
+                self._live[play_id].opponent = metadata
+
+    def record_engine_event(self, play_id: str, event: dict):
+        with self._lock:
+            if play_id in self._live:
+                self._live[play_id].engine_trace.setdefault('events', []).append(event)
+
     def record_move(self, play_id: str, *, phase: str, reply: str,
                     prompt: str = "", view: Optional[dict] = None,
-                    source: str = "ui", invalid: bool = False) -> bool:
+                    source: str = "ui", invalid: bool = False, retain_prompt: bool = False) -> bool:
         with self._lock:
             rec = self._live.get(play_id)
             if rec is None:
@@ -177,7 +219,7 @@ class PlayCollector:
             rec.moves.append(MoveRecord(
                 i=len(rec.moves), phase=phase, reply=reply, t=now,
                 dt=round(now - prev, 3), prompt_sha=prompt_sha(prompt),
-                prompt_len=len(prompt or ""), view=dict(view or {}),
+                prompt_len=len(prompt or ""), observation=prompt if retain_prompt else '', view=dict(view or {}),
                 source=source, invalid=invalid))
             return True
 
@@ -192,6 +234,7 @@ class PlayCollector:
         rec.duration_s = round(rec.finished_at - rec.started_at, 3)
         rec.abandoned = abandoned
         if result:
+            rec.engine_trace = result.get("engine_trace", rec.engine_trace)
             rec.score = result.get("my_score")
             rec.margin = result.get("margin")
             rec.gain = result.get("gain")

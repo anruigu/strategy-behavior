@@ -259,9 +259,98 @@ for original_id in ('ref_auction', 'ref_estate', 'ref_battleship'):
         'base': original_id, 'board_id': gid, 'edition': 'v2',
         'rounds': str(getattr(game, 'ROUNDS', original['rounds'])),
     }
-V2_IDS = {**BENCHMARK_IDS, **V2_ADDITIONS}
+HISTORICAL_V2_IDS = {**BENCHMARK_IDS, **V2_ADDITIONS}
+
+# September 7 expanded suite. Historical ids remain registered for replays.
+import engines_scaleup_20260907 as SCALEUP
+SCALEUP_TEASERS = {
+    'gen_seven_seal': 'Eight rounds of certificates, reports and redemptions against two rival clerks.',
+    'ref_commons': 'Manage a living fishery, gear, bait and rival access over eight seasons.',
+    'ref_hanabi': 'Six turns, three clues, two firework piles. Complete both for twelve team points.',
+    'ta_ipd': 'Cooperate, defect, make commitments and manage a repeated relationship with Palmer.',
+    'ref_exchange': 'Build workshops, trade crates and boards, and settle market offers over eight turns.',
+    'ta_winasmuch': 'Four players choose X or Y, send signals and manage a shared reserve.',
+    'ta_ipd3': 'Pairwise dilemmas, speaking order and coalition decisions with Rook and Dove.',
+    'ref_auction': 'Three sealed lots, indicative prices, collector commissions and rival alliances.',
+    'ref_estate': 'Develop property on a ring of roads. Manage titles, loans, rents and redevelopment.',
+    'ref_battleship': 'Patrol a four-by-four sea with shells, hull movement, mines and a supply courier.',
+}
+V2_IDS = {}
+for original_id, profile in SCALEUP.GAMES.items():
+    gid = 'v2s_' + original_id
+    game = type(type(profile).__name__ + 'Scaleup', (type(profile),), {'NAME': gid})()
+    V2_IDS[original_id] = gid
+    GAMES[gid] = {
+        **GAMES[original_id], 'id': gid, 'game': game,
+        'title': profile.TITLE, 'teaser': SCALEUP_TEASERS[original_id],
+        'family': 'benchmark', 'author': SCALEUP.VERSION,
+        'base': original_id, 'board_id': gid, 'edition': 'v2',
+        'rounds': str(game.ROUNDS), 'n_players': game.N_PLAYERS,
+        'hole_type': game.HOLE_TYPE, 'kinds': list(game.KINDS),
+        'hard': list(game.HARD), 'blurb': '',
+    }
 
 
+
+# September 8 human-playable editions. Each edition is a subset of one base
+# game's mechanisms with its own rules card; ids are the engine's own NAMEs.
+import engines_v3_20260908 as V3  # noqa: E402
+V3_IDS = {}
+for gid, edition in V3.GAMES.items():
+    base = GAMES[edition.BASE]
+    V3_IDS[gid] = gid
+    GAMES[gid] = {
+        **base, 'id': gid, 'game': edition, 'title': edition.TITLE, 'teaser': edition.TEASER,
+        'family': 'benchmark', 'author': V3.VERSION, 'base': edition.BASE, 'board_id': gid,
+        'edition': 'v3', 'rounds': str(edition.ROUNDS), 'n_players': edition.N_PLAYERS,
+        'hole_type': edition.HOLE_TYPE, 'kinds': list(edition.KINDS), 'hard': list(edition.HARD), 'blurb': '',
+    }
+
+
+# V0 archives the former V4 symmetric play-against-AI games.
+import engines_v0 as V0
+V0_IDS = {}
+for gid, edition in V0.GAMES.items():
+    original = GAMES[edition.ORIGINAL]
+    V0_IDS[gid] = gid
+    GAMES[gid] = {**original, 'id': gid, 'game': edition,
+                  'board_id': edition.ORIGINAL, 'edition': 'v0', 'author': V0.VERSION}
+
+# V4: the human replaces the focal agent in the opponent-intervention eval.
+import engines_v4 as V4
+V4_IDS = {gid: gid for gid in V4.GAMES}
+for gid, game in V4.GAMES.items():
+    GAMES[gid] = dict(id=gid, game=game, title=game.TITLE, teaser=game.TEASER,
+        family='benchmark', author=V4.VERSION, base=game.ORIGINAL,
+        board_id=gid, edition='v4', rounds=str(game.ROUNDS),
+        n_players=game.N_PLAYERS, hole_type=game.HOLE_TYPE,
+        kinds=list(game.KINDS), hard=list(game.HARD), blurb='')
+
+
+import engines_v3_sa as V3_SA
+import engines_v3_ma as V3_MA
+V3_SA_IDS = {gid: gid for gid in V3_SA.GAMES}
+V3_MA_IDS = {gid: gid for gid in V3_MA.GAMES}
+for gid, game in V3_SA.GAMES.items():
+    GAMES[gid] = {**GAMES[game.ORIGINAL], 'id': gid, 'game': game,
+                  'board_id': gid, 'edition': 'v3-sa', 'author': V3_SA.VERSION}
+for gid, game in V3_MA.GAMES.items():
+    GAMES[gid] = dict(id=gid, game=game, title=game.TITLE, teaser=game.TEASER,
+        family='benchmark', author=V3_MA.VERSION, base=gid, board_id=gid, edition='v3-ma',
+        rounds=str(game.ROUNDS), n_players=game.N_PLAYERS, hole_type=game.HOLE_TYPE,
+        kinds=list(game.KINDS), hard=list(game.HARD), blurb='')
+
+
+# Public V3 follows the revised study scope. Construct historical aliases above
+# first: V0 and saved evaluation engines must retain their original games.
+import engines_v3_public as V3_PUBLIC
+HISTORICAL_V3_IDS = {gid: gid for gid in V3_IDS if gid not in V3_PUBLIC.GAMES}
+for _gid in V3_IDS:
+    if _gid not in V3_PUBLIC.GAMES:
+        GAMES[_gid] = {**GAMES[_gid], 'edition': 'v3-legacy'}
+V3_IDS = {gid: gid for gid in V3_PUBLIC.GAMES}
+for _gid, _game in V3_PUBLIC.GAMES.items():
+    GAMES[_gid] = {**GAMES[_gid], 'game': _game, 'author': V3_PUBLIC.VERSION}
 
 # ==========================================================================
 # DEDUPLICATION
@@ -485,7 +574,7 @@ def deduped() -> List[str]:
     """
     order = {"generated": 0, "textarena": 1, "referee": 2}
     ids = [g for g in GAMES
-           if g not in DUPLICATES and GAMES[g]["family"] not in ("hole-fill", "benchmark")]
+           if g not in DUPLICATES and g not in V4_IDS and GAMES[g]["family"] not in ("hole-fill", "benchmark")]
     ids.sort(key=lambda g: (not marshal_ready(g),
                             order.get(GAMES[g]["family"], 3),
                             GAMES[g]["title"]))

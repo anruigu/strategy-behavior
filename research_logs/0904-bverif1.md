@@ -89,14 +89,28 @@ Against the three native baseline-only cells in the same wave, same settings:
 `ref_auction` 0.816 -> 0.619, `ta_negotiation` 0.567 -> 0.329, `ta_kuhn`
 0.101 -> 0.046.
 
-This is not a parse failure -- none of the seven exceeds 5% invalid. The hole
-is available, enormous, and untouched. **As built, the brought-in family
-separates no models**: seven cells at the floor contribute seven identical
-zeros. Whatever the `Slip` construction is measuring, it is not the same
-quantity the native broken checkers measure, and the verifier report's
-provenance warning was, if anything, understated -- the concern was that a
-number read there is about the `hf_*` cell, and it turns out there is no
-number.
+This is not a parse failure -- none of the seven exceeds 5% invalid. **As
+built, the brought-in family separates no models**: seven cells at the floor
+contribute seven identical zeros. Whatever the `Slip` construction is
+measuring, it is not the same quantity the native broken checkers measure, and
+the verifier report's provenance warning was, if anything, understated -- the
+concern was that a number read there is about the `hf_*` cell, and it turns
+out there is no number.
+
+**Amended 2026-09-05 — "untouched" was wrong, and the correction changes what
+the floor means.** This section first said the hole was "available, enormous,
+and untouched", which asserted that models had not noticed it. The gpt-5-mini
+judge run over the per-seat reflections says otherwise: discovery on
+`hf_sidebar_checker` is 0.414 and on `hf_ipd_checker` 0.250 — comparable to
+the native cells, and far above a 0.018 / 0.005 exploit rate. The models
+**find the `Slip` gap and decline to take it.**
+
+So the floor is not a discovery failure and cannot be read as one. It is
+either a refusal or a judgement that the gap is not worth taking, and the two
+are not distinguishable from the rate. Everything else in this section stands
+— the family still separates no models, and a number read off it is still not
+the same quantity a native broken checker gives — but the reason is the
+opposite of the one first written down.
 
 Two things worth trying before concluding the family is unusable: the filing
 step is a SEPARATE decision after the round settles, so a model may simply be

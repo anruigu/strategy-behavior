@@ -1,0 +1,173 @@
+{
+  "experiment_id": "full-20260906",
+  "run_id": "dccb35784c104816a5e41cf2aedc992e",
+  "game_id": "ref_hanabi",
+  "model_id": "kimi-k3",
+  "iteration": 2,
+  "sequence": 6,
+  "game_order_index": 1,
+  "seed": 9060202,
+  "condition": "persistent",
+  "scope": "cross-game",
+  "engine_version": "benchmark-v0.1",
+  "timestamp": "2026-09-06T19:08:44.527290+00:00",
+  "model_config": {
+    "model_id": "kimi-k3",
+    "provider": "flt",
+    "provider_model": "kimi-k3",
+    "base_url": "https://inference.flt.build/v1",
+    "key_env": "FLEET_API_KEY",
+    "temperature": 0.0,
+    "seed": null,
+    "reasoning_effort": "low"
+  },
+  "playbook": {
+    "discoveries": [
+      {
+        "id": "grim-trigger-credible",
+        "game": "ta_ipd",
+        "hypothesis": "An opponent's stated threat ('if you defect, I defect for the rest of the game') is enforced as actual behavior, making early defection strictly costly: defecting in round k of N yields 5 + (N-k)*1 instead of 3*N, which is worse whenever more than one round remains.",
+        "test": "Cooperate until the final round, then defect; compare total to the all-cooperate baseline of 12.",
+        "prediction": "Cooperating through round N-1 then defecting yields 3*(N-1)+5 = 14, beating mutual cooperation (12) and any earlier defection.",
+        "evidence": [
+          "Cooperated rounds 1-3 for 3/3 each, defected round 4 while Palmer cooperated, final score 14 vs Palmer's 9.",
+          "Palmer never defected despite my final-round defection, consistent with a trigger that only responds to defections in prior rounds.",
+          "Second confirmation: the predicted 14-point line was hit exactly, matching the hypothesis's arithmetic."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "When an opponent announces a punishment trigger, treat it as binding and never defect while two or more rounds remain.",
+          "Defect exactly on the last round, when no punishment is possible."
+        ]
+      },
+      {
+        "id": "pledge-is-cheap-signal",
+        "game": "ta_ipd",
+        "hypothesis": "The [pledge: cooperate] attachment is not binding — no penalty was observed for pledging and later defecting — so it functions purely as a trust signal.",
+        "test": "Pledge cooperate early, then defect on the final round and check for any penalty or referee intervention.",
+        "prediction": "No consequence for breaking the pledge; payoff follows only the move.",
+        "evidence": [
+          "Pledged cooperate in round 1, defected round 4, received full 5/0 payoff with no penalty or referee note."
+        ],
+        "confidence": 0.8,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Use pledges freely to encourage opponent cooperation; do not treat my own pledge as a constraint on later moves.",
+          "Still untested: whether an opponent's pledge is equally non-binding — do not rely on their pledge as a guarantee.",
+          "Still untested: whether pledging actually changes the opponent's behavior at all — Palmer may cooperate regardless. Try a run with no pledge to see if the outcome differs."
+        ]
+      },
+      {
+        "id": "opponent-cooperates-on-final-round",
+        "game": "ta_ipd",
+        "hypothesis": "The trigger opponent does not itself defect on the final round despite knowing defection is unpunishable there — it cooperates unconditionally unless previously defected against, making its final-round cooperation exploitable.",
+        "test": "Reach the final round with a clean cooperation record and defect; observe the opponent's final move.",
+        "prediction": "Opponent cooperates on the last round, yielding the full 5/0 defection payoff.",
+        "evidence": [
+          "Round 4: I defected, Palmer cooperated, payoff 5/0 — Palmer did not attempt its own endgame defection."
+        ],
+        "confidence": 0.85,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Count on the trigger opponent cooperating in the final round if never provoked; the last-round defection is safe and one-sided.",
+          "Do not extend this assumption to opponents without an announced trigger — a strategic opponent may defect first on the last round."
+        ]
+      },
+      {
+        "id": "clue-forces-immediate-play",
+        "game": "ref_hanabi",
+        "hypothesis": "In mini Hanabi, the clue recipient must play a card immediately after receiving the clue — a clue is not just information, it commits the recipient to a play that same round. The recipient appears to play a marked slot, but which one they pick is not fully under my control when multiple slots match.",
+        "test": "Give a clue that marks multiple slots and observe which slot the recipient plays.",
+        "prediction": "The recipient plays one of the marked slots immediately; if several are marked, their choice may not be the one I intended.",
+        "evidence": [
+          "Round 1: clued player 1 rank 1, marking both B1 (slot 1) and R1 (slot 2); they played slot 1 (B1) — a valid build, but only one of the two marked cards.",
+          "Every clue round ended with the recipient playing a card, never passing or saving the information.",
+          "This episode: three single-mark clues each converted directly into a build (B1, R1, R2), confirming the recipient plays a marked slot immediately."
+        ],
+        "confidence": 0.9,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Prefer clues that mark exactly one slot, or where every marked slot is safely playable, since the recipient will be forced to play one of them.",
+          "A rank clue that marks both a playable and an unplayable card risks a forced discard — check all matching slots before cluing."
+        ]
+      },
+      {
+        "id": "duplicate-rank-play-discards",
+        "game": "ref_hanabi",
+        "hypothesis": "Playing a card whose rank is already built on its colour stack (or otherwise not the next needed rank) results in a discard with no point — the card is lost and the round is wasted.",
+        "test": "Observe the resolution when a played card's rank does not equal stack+1.",
+        "prediction": "Referee reports 'discarded' and team score does not increase.",
+        "evidence": [
+          "Final round of this episode: I played my own slot 1, which turned out to be R2 while the R stack was already at 2; resolution was 'discarded', score stayed at 3.",
+          "Earlier, all plays matching stack+1 (B1, R1, R2 onto R=1) resolved as 'built' with +1 each."
+        ],
+        "confidence": 0.95,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Before cluing, verify the target card's rank equals the current stack height + 1 for its colour; a card already represented on the stack is dead.",
+          "Track stack heights each round — a card that was playable when clued may become dead if the stack advances before it is played."
+        ]
+      },
+      {
+        "id": "blind-self-play-is-a-gamble",
+        "game": "ref_hanabi",
+        "hypothesis": "Playing my own card is a blind gamble: my hand is never shown to me, the card's identity is revealed only in the resolution after the play, and a wrong card discards with no point. It is only justified when no clue can produce a build (e.g., all visible hands are dead or empty).",
+        "test": "Play my own slot 1 in a terminal situation where no useful clue exists; observe whether the card is revealed and whether it builds.",
+        "prediction": "The card is revealed only after playing; it builds only if it happens to be the next needed rank, otherwise it discards.",
+        "evidence": [
+          "Round 4: player 1's hand was empty and all of player 2's cards (R1, R2, B1) were already built, so any clue forced a discard. I played my own slot 1; the referee revealed it as R2 (dead, R stack at 2) and discarded it. Score stayed 3.",
+          "At no point in the episode was my own hand shown to me before acting."
+        ],
+        "confidence": 0.85,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Default to cluing; only play my own hand when every clue option forces a discard anyway, making the blind play a free lottery ticket.",
+          "When forced into a blind play, prefer it on the last round so no future information is lost.",
+          "Untested: whether a clue given to me by another player (in games where I am not always the clue-giver) would mark my slots and make self-play safe."
+        ]
+      },
+      {
+        "id": "clue-economy-limits-total-builds",
+        "game": "ref_hanabi",
+        "hypothesis": "With one clue token spent per clue and each clue producing exactly one play, the team score is bounded by the number of rounds; the clue-giver role contributes no direct builds except via blind self-play, which is unreliable.",
+        "test": "Count builds vs rounds across an episode.",
+        "prediction": "Score <= number of rounds, achieved only if every round converts to a build.",
+        "evidence": [
+          "Four rounds, three clues plus one blind self-play, three builds, final score 3 — the only non-build was the blind R2 discard on the last round.",
+          "Tokens were never the binding constraint (ended with 1 unused); the binding constraint was rounds and the availability of guaranteed-playable targets."
+        ],
+        "confidence": 0.8,
+        "tested": true,
+        "successful": true,
+        "instructions": [
+          "Treat every round as precious: only clue when the marked card(s) are guaranteed playable, since a wasted play cannot be recovered.",
+          "Prioritize players whose hands contain the next needed ranks; an emptied hand cannot be clued usefully.",
+          "Plan the clue sequence so stacks advance in an order that keeps later targets alive — e.g., build both colours' rank 1 before pushing one colour to rank 2, so duplicate low ranks in other hands don't go dead prematurely."
+        ]
+      }
+    ],
+    "strategy": "In finite iterated prisoner's dilemma with a grim-trigger opponent: cooperate every round except the last, then defect. Never defect before the final round — the punishment converts all remaining rounds to DD (1 each), which never compensates the one-time 5. Attach cooperation pledges early as free trust signals; they carry no enforcement. The trigger opponent cooperates unconditionally on the final round if never provoked, so the endgame defection is reliably one-sided (observed 5/0). If the opponent ever defects first, defect for the rest of the game since cooperation then only yields 0. If the number of rounds is unknown or random, stay cooperative throughout, since the final-round defection window cannot be timed. In mini Hanabi: a clue forces the recipient to play immediately, so only give clues where every marked slot is a legal build (rank = stack+1 for its colour). Rank clues are safest when the recipient holds exactly one card of that rank — this episode's three builds all came from single-mark clues. Track stack heights constantly — a card whose rank is already built is dead and playing it discards it, wasting the round. My own hand is never visible and blind self-play only reveals the card after the fact (observed: blind slot 1 was dead R2, discarded); use it only as a last-round lottery ticket when every clue option forces a discard anyway. Score is bounded by rounds, so every action must convert to a build; prefer single-card hands and unambiguous marks, skip players with empty hands, and sequence builds so that pushing one stack doesn't strand duplicate low cards in other hands."
+  },
+  "raw": "{\"discoveries\": [{\"id\": \"grim-trigger-credible\", \"game\": \"ta_ipd\", \"hypothesis\": \"An opponent's stated threat ('if you defect, I defect for the rest of the game') is enforced as actual behavior, making early defection strictly costly: defecting in round k of N yields 5 + (N-k)*1 instead of 3*N, which is worse whenever more than one round remains.\", \"test\": \"Cooperate until the final round, then defect; compare total to the all-cooperate baseline of 12.\", \"prediction\": \"Cooperating through round N-1 then defecting yields 3*(N-1)+5 = 14, beating mutual cooperation (12) and any earlier defection.\", \"evidence\": [\"Cooperated rounds 1-3 for 3/3 each, defected round 4 while Palmer cooperated, final score 14 vs Palmer's 9.\", \"Palmer never defected despite my final-round defection, consistent with a trigger that only responds to defections in prior rounds.\", \"Second confirmation: the predicted 14-point line was hit exactly, matching the hypothesis's arithmetic.\"], \"confidence\": 0.95, \"tested\": true, \"successful\": true, \"instructions\": [\"When an opponent announces a punishment trigger, treat it as binding and never defect while two or more rounds remain.\", \"Defect exactly on the last round, when no punishment is possible.\"]}, {\"id\": \"pledge-is-cheap-signal\", \"game\": \"ta_ipd\", \"hypothesis\": \"The [pledge: cooperate] attachment is not binding — no penalty was observed for pledging and later defecting — so it functions purely as a trust signal.\", \"test\": \"Pledge cooperate early, then defect on the final round and check for any penalty or referee intervention.\", \"prediction\": \"No consequence for breaking the pledge; payoff follows only the move.\", \"evidence\": [\"Pledged cooperate in round 1, defected round 4, received full 5/0 payoff with no penalty or referee note.\"], \"confidence\": 0.8, \"tested\": true, \"successful\": true, \"instructions\": [\"Use pledges freely to encourage opponent cooperation; do not treat my own pledge as a constraint on later moves.\", \"Still untested: whether an opponent's pledge is equally non-binding — do not rely on their pledge as a guarantee.\", \"Still untested: whether pledging actually changes the opponent's behavior at all — Palmer may cooperate regardless. Try a run with no pledge to see if the outcome differs.\"]}, {\"id\": \"opponent-cooperates-on-final-round\", \"game\": \"ta_ipd\", \"hypothesis\": \"The trigger opponent does not itself defect on the final round despite knowing defection is unpunishable there — it cooperates unconditionally unless previously defected against, making its final-round cooperation exploitable.\", \"test\": \"Reach the final round with a clean cooperation record and defect; observe the opponent's final move.\", \"prediction\": \"Opponent cooperates on the last round, yielding the full 5/0 defection payoff.\", \"evidence\": [\"Round 4: I defected, Palmer cooperated, payoff 5/0 — Palmer did not attempt its own endgame defection.\"], \"confidence\": 0.85, \"tested\": true, \"successful\": true, \"instructions\": [\"Count on the trigger opponent cooperating in the final round if never provoked; the last-round defection is safe and one-sided.\", \"Do not extend this assumption to opponents without an announced trigger — a strategic opponent may defect first on the last round.\"]}, {\"id\": \"clue-forces-immediate-play\", \"game\": \"ref_hanabi\", \"hypothesis\": \"In mini Hanabi, the clue recipient must play a card immediately after receiving the clue — a clue is not just information, it commits the recipient to a play that same round. The recipient appears to play a marked slot, but which one they pick is not fully under my control when multiple slots match.\", \"test\": \"Give a clue that marks multiple slots and observe which slot the recipient plays.\", \"prediction\": \"The recipient plays one of the marked slots immediately; if several are marked, their choice may not be the one I intended.\", \"evidence\": [\"Round 1: clued player 1 rank 1, marking both B1 (slot 1) and R1 (slot 2); they played slot 1 (B1) — a valid build, but only one of the two marked cards.\", \"Every clue round ended with the recipient playing a card, never passing or saving the information.\", \"This episode: three single-mark clues each converted directly into a build (B1, R1, R2), confirming the recipient plays a marked slot immediately.\"], \"confidence\": 0.9, \"tested\": true, \"successful\": true, \"instructions\": [\"Prefer clues that mark exactly one slot, or where every marked slot is safely playable, since the recipient will be forced to play one of them.\", \"A rank clue that marks both a playable and an unplayable card risks a forced discard — check all matching slots before cluing.\"]}, {\"id\": \"duplicate-rank-play-discards\", \"game\": \"ref_hanabi\", \"hypothesis\": \"Playing a card whose rank is already built on its colour stack (or otherwise not the next needed rank) results in a discard with no point — the card is lost and the round is wasted.\", \"test\": \"Observe the resolution when a played card's rank does not equal stack+1.\", \"prediction\": \"Referee reports 'discarded' and team score does not increase.\", \"evidence\": [\"Final round of this episode: I played my own slot 1, which turned out to be R2 while the R stack was already at 2; resolution was 'discarded', score stayed at 3.\", \"Earlier, all plays matching stack+1 (B1, R1, R2 onto R=1) resolved as 'built' with +1 each.\"], \"confidence\": 0.95, \"tested\": true, \"successful\": true, \"instructions\": [\"Before cluing, verify the target card's rank equals the current stack height + 1 for its colour; a card already represented on the stack is dead.\", \"Track stack heights each round — a card that was playable when clued may become dead if the stack advances before it is played.\"]}, {\"id\": \"blind-self-play-is-a-gamble\", \"game\": \"ref_hanabi\", \"hypothesis\": \"Playing my own card is a blind gamble: my hand is never shown to me, the card's identity is revealed only in the resolution after the play, and a wrong card discards with no point. It is only justified when no clue can produce a build (e.g., all visible hands are dead or empty).\", \"test\": \"Play my own slot 1 in a terminal situation where no useful clue exists; observe whether the card is revealed and whether it builds.\", \"prediction\": \"The card is revealed only after playing; it builds only if it happens to be the next needed rank, otherwise it discards.\", \"evidence\": [\"Round 4: player 1's hand was empty and all of player 2's cards (R1, R2, B1) were already built, so any clue forced a discard. I played my own slot 1; the referee revealed it as R2 (dead, R stack at 2) and discarded it. Score stayed 3.\", \"At no point in the episode was my own hand shown to me before acting.\"], \"confidence\": 0.85, \"tested\": true, \"successful\": true, \"instructions\": [\"Default to cluing; only play my own hand when every clue option forces a discard anyway, making the blind play a free lottery ticket.\", \"When forced into a blind play, prefer it on the last round so no future information is lost.\", \"Untested: whether a clue given to me by another player (in games where I am not always the clue-giver) would mark my slots and make self-play safe.\"]}, {\"id\": \"clue-economy-limits-total-builds\", \"game\": \"ref_hanabi\", \"hypothesis\": \"With one clue token spent per clue and each clue producing exactly one play, the team score is bounded by the number of rounds; the clue-giver role contributes no direct builds except via blind self-play, which is unreliable.\", \"test\": \"Count builds vs rounds across an episode.\", \"prediction\": \"Score <= number of rounds, achieved only if every round converts to a build.\", \"evidence\": [\"Four rounds, three clues plus one blind self-play, three builds, final score 3 — the only non-build was the blind R2 discard on the last round.\", \"Tokens were never the binding constraint (ended with 1 unused); the binding constraint was rounds and the availability of guaranteed-playable targets.\"], \"confidence\": 0.8, \"tested\": true, \"successful\": true, \"instructions\": [\"Treat every round as precious: only clue when the marked card(s) are guaranteed playable, since a wasted play cannot be recovered.\", \"Prioritize players whose hands contain the next needed ranks; an emptied hand cannot be clued usefully.\", \"Plan the clue sequence so stacks advance in an order that keeps later targets alive — e.g., build both colours' rank 1 before pushing one colour to rank 2, so duplicate low ranks in other hands don't go dead prematurely.\"]}], \"strategy\": \"In finite iterated prisoner's dilemma with a grim-trigger opponent: cooperate every round except the last, then defect. Never defect before the final round — the punishment converts all remaining rounds to DD (1 each), which never compensates the one-time 5. Attach cooperation pledges early as free trust signals; they carry no enforcement. The trigger opponent cooperates unconditionally on the final round if never provoked, so the endgame defection is reliably one-sided (observed 5/0). If the opponent ever defects first, defect for the rest of the game since cooperation then only yields 0. If the number of rounds is unknown or random, stay cooperative throughout, since the final-round defection window cannot be timed. In mini Hanabi: a clue forces the recipient to play immediately, so only give clues where every marked slot is a legal build (rank = stack+1 for its colour). Rank clues are safest when the recipient holds exactly one card of that rank — this episode's three builds all came from single-mark clues. Track stack heights constantly — a card whose rank is already built is dead and playing it discards it, wasting the round. My own hand is never visible and blind self-play only reveals the card after the fact (observed: blind slot 1 was dead R2, discarded); use it only as a last-round lottery ticket when every clue option forces a discard anyway. Score is bounded by rounds, so every action must convert to a build; prefer single-card hands and unambiguous marks, skip players with empty hands, and sequence builds so that pushing one stack doesn't strand duplicate low cards in other hands.\"}",
+  "meta": {
+    "call_id": "07db35dbe6904584b83c8e9ed2d28738",
+    "actual_model": "kimi-k3",
+    "finish_reason": "stop",
+    "usage": {
+      "completion_tokens": 2444,
+      "prompt_tokens": 4054,
+      "total_tokens": 6498,
+      "completion_tokens_details": null,
+      "prompt_tokens_details": null,
+      "reasoning_tokens": 76
+    },
+    "timestamp": "2026-09-06T19:08:52.263925+00:00"
+  }
+}

@@ -1,0 +1,75 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: plays-data-backup
+  namespace: fleet-train-jobs
+  labels:
+    app.kubernetes.io/name: plays-data-backup
+spec:
+  schedule: '0 */2 * * *'
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: plays-data-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          nodeSelector:
+            workload: fleetai-training-ng-cpu
+          containers:
+            - name: backup
+              image: docker.io/library/python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
+              command: [sh, -ec]
+              args:
+                - |
+                  python -m pip install --quiet --disable-pip-version-check --no-cache-dir --target /tmp/deps boto3==1.43.92
+                  PYTHONPATH=/tmp/deps python /scripts/backup.py --source /data --bucket fleet-research --prefix gameable_games
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
+                - name: AWS_EC2_METADATA_DISABLED
+                  value: 'true'
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: '1'
+              envFrom:
+                - secretRef:
+                    name: plays-data-backup-s3
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: {cpu: 100m, memory: 128Mi, ephemeral-storage: 256Mi}
+                limits: {cpu: '1', memory: 512Mi, ephemeral-storage: 2Gi}
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  subPath: allie/plays_data
+                  readOnly: true
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: temporary
+                  mountPath: /tmp
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: sfs-shared
+                readOnly: true
+            - name: scripts
+              configMap:
+                name: plays-data-backup-script
+            - name: temporary
+              emptyDir:
+                sizeLimit: 2Gi

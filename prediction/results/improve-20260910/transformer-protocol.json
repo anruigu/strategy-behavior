@@ -1,0 +1,83 @@
+{
+  "schema": "qwen-representation-protocol-v1",
+  "model_id": "Qwen/Qwen3-4B",
+  "revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "targets": [
+    "action0",
+    "cooperation",
+    "coordination"
+  ],
+  "seed": 20260910,
+  "input": {
+    "field": "input_text",
+    "chat_template": true,
+    "enable_thinking": false,
+    "add_generation_prompt": true,
+    "max_tokens": 512,
+    "overflow": "error",
+    "padding_side": "right",
+    "generated_tokens": 0
+  },
+  "representation": {
+    "pooling": "last_nonpadding_final_hidden_state",
+    "backbone_dtype": "bfloat16",
+    "head_dtype": "float32",
+    "attention": "sdpa",
+    "trust_remote_code": false
+  },
+  "frozen": {
+    "standardization": "training_example_mean_std",
+    "scale_floor": 1e-06,
+    "pca": null,
+    "head": "linear_3_sigmoid",
+    "l2": 0.01,
+    "optimizer": "LBFGS",
+    "max_iter": 200,
+    "history_size": 10,
+    "tolerance_grad": 1e-06,
+    "tolerance_change": 1e-09
+  },
+  "lora": {
+    "r": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "v_proj"
+    ],
+    "bias": "none",
+    "epochs": 2,
+    "microbatch": 4,
+    "accumulation": 8,
+    "adapter_lr": 0.0002,
+    "head_lr": 0.0001,
+    "adapter_weight_decay": 0.01,
+    "head_l2": 0.01,
+    "warmup_fraction": 0.1,
+    "schedule": "cosine",
+    "gradient_clip": 1.0,
+    "gradient_checkpointing": true,
+    "checkpoint_every_steps": 20,
+    "initialization": "same_fold_frozen_head_and_scaler; LoRA standard no-op initialization",
+    "checkpoint_selection": "final_fixed_epoch; no held-out labels or score-based selection"
+  },
+  "loss": {
+    "name": "fractional_binomial_BCE",
+    "weighting": "within-training-canonical-group event equalization",
+    "formula": "mean_supported_targets(sum_i (n_it/N_gt)*BCE(logit_it,k_it/n_it) / supported_groups_t)",
+    "missing": "null prediction when a target has no supported training opportunities",
+    "minibatch": "uniform permutation; each optimizer batch uses N/B times its global-normalized loss"
+  },
+  "comparison_scope": {
+    "fits": 10,
+    "folds": "7 leave-family-out + within-family interpolation + extrapolation + full",
+    "optimization_seeds": 1,
+    "model_selection": "none",
+    "hyperparameter_search": "none"
+  },
+  "sources": [
+    "https://huggingface.co/Qwen/Qwen3-4B",
+    "https://huggingface.co/docs/transformers/model_doc/qwen3",
+    "https://huggingface.co/docs/peft/developer_guides/lora"
+  ]
+}
